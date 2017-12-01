@@ -1,0 +1,9 @@
+param int k = 2; // size of each queue. Default is 2.
+// Simple network made of a sequence of two queues
+
+struct PktTypes {
+    val: int;  
+}
+
+Sink(Queue(k,(Queue(k,Source(PktTypes)))));
+

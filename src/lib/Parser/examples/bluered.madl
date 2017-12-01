@@ -1,0 +1,14 @@
+// Blue-Red example.
+
+enum rb {
+  red;
+  blue;
+} 
+ 
+
+chan q0, q1 := Fork(Source(rb));
+chan b1, r1 := Switch(Queue(2, q0),blue);
+chan r2, b2 := Switch(Queue(2, q1),blue);
+
+Sink(CtrlJoin(r1, r2));
+Sink(CtrlJoin(b1, b2));

@@ -1,0 +1,18 @@
+module Main(main) where
+
+import System.Environment
+--import Madl2fsm.Madl2fsm
+import Madl.Network
+import Utils.File
+
+main :: IO ()
+main = do
+  args <- getArgs
+  parsed <- readNetworkFromFile defaultReadOptions $ head args
+  network <- case parsed of
+    Left err -> error err
+    Right net -> return net
+  putStrLn $ show $ network
+  putStrLn "**************"
+  putStrLn $ show $ getMacros network
+

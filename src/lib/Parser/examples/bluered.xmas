@@ -1,0 +1,7 @@
+
+chan q0, q1 := Fork(Source(type));
+chan b1, r1 := Switch(type, Queue(2, q0));
+chan r2, b2 := Switch(type, Queue(2, q1));
+
+Sink(CtrlJoin(r1, r2));
+Sink(CtrlJoin(b1, b2))

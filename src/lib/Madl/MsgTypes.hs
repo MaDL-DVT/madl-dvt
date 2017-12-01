@@ -1,0 +1,872 @@
+{-# LANGUAGE OverloadedStrings, FlexibleContexts, MultiParamTypeClasses, FlexibleInstances, ScopedTypeVariables #-}
+
+{-|
+Module      : Madl.MsgTypes
+Description : Representation of data and functions in madl networks.
+Copyright   : (c) Sanne Wouda 2015, Tessa Belder 2015-2016
+
+Provides a data types for colors and functions in madl networks.
+-}
+module Madl.MsgTypes (
+    -- * Colorsets
+    -- ** Type Class
+    IsColorSet(..),
+    -- ** Data Types
+    ColorSet(..), Struct(..), BitVector(..), OrBitVector, WithColors,
+    -- ** Construction
+    nul, constColorSet, enumColorSet, makeColorSet,
+    one, makeStruct, makeBitStruct,
+    bitT, bitvecT, bitvecFromInts,
+    addColors,
+    -- ** Query
+    emptyColorSet, isConstant, isEnum, subTypeOf,
+    colorSetKeys, colorSetKeySize, colorSetElems, colorSetAssocs, lookupKey,
+    emptyStruct, structKeys, structElems, structAssocs, lookupStructKey,
+    bvInts,
+    encodingSize, bvSize, nrBits,
+    -- ** Operation
+    typeUnion, typeIntersection, typeDifference,
+    -- ** Print
+    showColorSetNoSpaces, showColorSetList,
+
+    -- * Colors
+    -- ** Data Types
+    Color(..), VStruct(..), Value(..), OrValue,
+    -- ** Construction
+    constantColor, makeVStruct, makeValue,
+    -- ** Query
+    isConstantColor,
+    colorKey, colorContent, matches,
+    emptyVStruct, vstructValue, vstructKeys,
+    valValue,
+    -- ** Print
+    showColorNoSpaces, color2mfunction,
+
+    -- * Functions
+    -- ** Data Types
+    MFunction(..), MFunctionDisj(..), MFunctionStruct(..), MFunctionBool(..), MFunctionVal(..), OrMFVal,
+    UnaryOperator(..), BinaryOperator(..), UnaryOperatorBool(..), BinaryOperatorBool(..), ComparisonOperator(..),
+    Arguments, VArguments,
+    -- ** Construction
+    makeArguments, makeVArguments,
+    -- ** Query
+    resultingType, resultingTypeStrict,
+    eval,
+    mayMatch, matched, predIsTrue,
+    -- ** Operation
+    equivClasses
+) where
+
+-- import Debug.Trace
+
+import qualified Data.HashMap as Hash
+import qualified Data.IntMap as IM
+import Data.List (intercalate, (\\), partition)
+import Data.Maybe
+import qualified Data.Set as Set
+
+import Utils.Either
+import Utils.Map
+import Utils.Text
+import Utils.Tuple
+
+import Madl.Base (ComponentID)
+
+-- Error function
+fileName :: Text
+fileName = "Madl.MsgTypes"
+
+fatal :: Int -> Text -> a
+fatal i s = error ("Fatal "++show i++" in " ++utxt fileName ++":\n  "++ utxt s)
+
+src :: Int -> (Text, Int)
+src i = (fileName, i)
+
+_okWhenNotUsed :: a
+_okWhenNotUsed = undefined fatal src
+-- End of error function
+
+--------------------------------------
+-- MaDL ColorSets and Bitvectors
+--------------------------------------
+
+-- | Colorset data type
+data ColorSet = ColorSet (Set Color) deriving (Eq, Ord)
+-- | Struct data type
+data Struct = Struct (Set VStruct)
+-- | Bitvector data type
+data BitVector = BitVector (Set Value)
+-- | Data type to indicate that something may also be a bitvector
+type OrBitVector a = Either a BitVector
+
+instance Show ColorSet where
+    show (ColorSet cs) = "Set Color [" ++ intercalate ", " cs' ++ "]" where
+        cs' = f cs
+        f = Set.toList . Set.map show
+instance Show Struct where
+    show struct = "Struct [" ++ foldr (uncurry showAssoc) "" (structAssocs struct) ++ "]" where
+        showAssoc k v = (++) $ "(" ++ show k ++ ": " ++either show show v ++ "), "
+instance Show BitVector where
+    show = ("Bitvector " ++) . show . bvValues
+
+instance IsMap ColorSet Text (OrBitVector Struct) where
+    lookup' = lookupKey
+instance IsMap Struct Text (OrBitVector ColorSet) where
+    lookup' = lookupStructKey
+
+-- | Convert a colorset to a string without spaces. Useful for identifiers in code-generation.
+showColorSetNoSpaces :: ColorSet -> String
+showColorSetNoSpaces = intercalate "+" . map (\(k,v) -> (utxt k) ++ "<" ++ either showStruct showBv v ++ ">") . colorSetAssocs where
+    showStruct = intercalate "+" . map (\(k,v) -> (utxt k) ++ "<" ++ either showColorSetNoSpaces showBv v ++ ">") . structAssocs
+    showBv = intercalate "+" . map show . Set.toList . bvValues
+
+showColorSetList :: ColorSet -> [String]
+showColorSetList (ColorSet cs) = map showColorNoSpaces (Set.toList cs)
+
+-- | Check whether a colorset is empty.
+emptyColorSet :: ColorSet -> Bool
+emptyColorSet = Set.null . getColorsSet
+
+-- | Check whether a struct is empty.
+emptyStruct :: Struct -> Bool
+emptyStruct (Struct vstructs) = all emptyVStruct $ Set.toList vstructs
+--note: Do not use `structValues` or `getVStructsFromStruct` to implement this! It will result in non-termination.
+
+-- | The empty colorset.
+nul :: ColorSet
+nul = makeColorSet []
+
+-- | The empty struct.
+one :: Struct
+one = makeStruct []
+
+-- | A colorset consisting of a single color without fields.
+constColorSet :: Text -> ColorSet
+constColorSet = enumColorSet . (:[])
+
+-- | A colorset consisting solely of colors without fields.
+enumColorSet :: [Text] -> ColorSet
+enumColorSet = toColorSet . map constantColor
+
+-- | Make a color set from a list of text-value pairs.
+makeColorSet :: [(Text, OrBitVector Struct)] -> ColorSet
+makeColorSet = toColorSet . Set.unions . map (uncurry toColorset) where
+    toColorset :: Text -> OrBitVector Struct -> Set Color
+    toColorset fld (Left struct) = Set.map (Color fld . Left) $ structValues struct
+    toColorset fld (Right vals) = Set.map (Color fld . Right) $ bvValues vals
+
+-- | Make a struct from a list of text-value pairs.
+makeStruct :: [(Text, OrBitVector ColorSet)] -> Struct
+makeStruct [] = Struct Set.empty
+makeStruct (fld:flds) = Struct . Set.unions . map (uncurry addToVStruct fld) . getVStructsFromStruct $ makeStruct flds where
+    addToVStruct :: Text -> OrBitVector ColorSet -> VStruct -> Set VStruct
+    addToVStruct name (Left colors) vstruct = Set.map (\c -> VStruct . Hash.insert name (Left  c) $ vstructValue vstruct) $ getColorsSet colors
+    addToVStruct name (Right vals) vstruct  = Set.map (\v -> VStruct . Hash.insert name (Right v) $ vstructValue vstruct) $ bvValues vals
+
+-- | Make a struct from a list of text-int pairs.
+makeBitStruct :: [(Text, Int)] -> Struct
+makeBitStruct = makeStruct . map (mapSnd $ Right . bitvecT)
+
+-- | True if the given colorset consists of a single color without fields.
+isConstant :: IsColorSet a => a -> Bool
+isConstant cs = all isConstantColor (getColors cs) && nrOfColors cs == 1
+
+-- | True if the given colorset consists solely of colors without fields.
+isEnum :: IsColorSet a => a -> Bool
+isEnum cs = all isConstantColor (getColors cs) && nrOfColors cs >= 1
+
+-- | Get the set of keys from a colorset.
+colorSetKeys :: ColorSet -> [Text]
+colorSetKeys = Set.toList . Set.fromList . map colorKey . getColors
+
+-- | Get the number of keys from a colorset.
+colorSetKeySize :: ColorSet -> Int
+colorSetKeySize = length . colorSetKeys
+
+-- | Get the set of elements from a colorset.
+colorSetElems :: ColorSet -> [OrBitVector Struct]
+colorSetElems colors = mapMaybe (flip lookupKey colors) $ colorSetKeys colors
+
+-- | Get the set of assocs from a colorset.
+colorSetAssocs :: ColorSet -> [(Text, OrBitVector Struct)]
+colorSetAssocs colors = map toAssoc $ colorSetKeys colors where
+    toAssoc key = (key, lookupM (src 159) key colors)
+
+-- | Get the element corresponing to a key from a colorset.
+lookupKey :: Text -> ColorSet -> Maybe (OrBitVector Struct)
+lookupKey key colors = case getColors $ pruneColorSet key colors of
+    [] -> Nothing
+    cs -> case partitionEithers $ map colorContent cs of
+        (vstructs, []) -> Just . Left $ structFromVStructs vstructs
+        ([], vals) -> Just . Right $ bitvecFromValues vals
+        _ -> fatal 130 "Inconsistent colors in colorset"
+
+-- | Get the field names of a struct
+structKeys :: Struct -> [Text]
+structKeys = Set.toList . Set.fromList . concat . map vstructKeys . getVStructsFromStruct
+
+-- | Get the field types of a struct
+structElems :: Struct -> [OrBitVector ColorSet]
+structElems struct = mapMaybe (flip lookupStructKey struct) $ structKeys struct
+
+-- | Get the field names and types of a struct
+structAssocs :: Struct -> [(Text, OrBitVector ColorSet)]
+structAssocs struct = map toAssoc $ structKeys struct where
+    toAssoc key = (key, lookupM (src 146) key struct)
+
+-- | Find the field type of the given field of a struct
+lookupStructKey :: Text -> Struct -> Maybe (OrBitVector ColorSet)
+lookupStructKey key struct = case all isNothing values of
+    True -> Nothing
+    False -> case any isNothing values of
+        True -> fatal 146 "Inconsistent vstructs in struct"
+        False -> case partitionEithers $ map fromJust values of
+            (colors, []) -> Just . Left $ toColorSet colors
+            ([], vals) -> Just . Right $ bitvecFromValues vals
+            _ -> fatal 150 "Inconsistent vstructs in struct"
+    where
+        values = map (Hash.lookup key . vstructValue) $ getVStructsFromStruct struct
+
+-- | Only keep colors of which the type corresponds to the given key.
+pruneColorSet :: Text -> ColorSet -> ColorSet
+pruneColorSet key = toColorSet . Set.filter ((== key) . colorKey) . getColorsSet
+
+-- | Extends a type with a colorset.
+type WithColors a = (a, ColorSet)
+
+-- | Pair something with a colorset.
+addColors :: ColorSet -> a -> WithColors a
+addColors t a = (a, t)
+
+--------------------------------------
+-- MaDL Colors and Values
+--------------------------------------
+
+-- | Color data type
+data Color = Color Text (OrValue VStruct) deriving (Eq, Ord)
+-- | VStruct data type
+data VStruct = VStruct (Hash.Map Text (OrValue Color)) deriving (Eq, Ord)
+-- | Value data type
+data Value = Value Int deriving (Eq, Ord)
+-- | Data type to indicate that something may also be a value
+type OrValue a = Either a Value
+
+instance Show Color where
+    show (Color fld vstruct) = utxt fld ++ "<" ++ either show show vstruct ++ ">" where
+instance Show VStruct where
+    show (VStruct m) = intercalate ", " $ map (\(k,v) -> utxt k ++ ":" ++ either show show v) (Hash.assocs m)
+instance Show Value where
+    show = show . valValue
+
+instance IsMap VStruct Text (OrValue Color) where
+    lookup' key = Hash.lookup key . vstructValue
+
+-- | Show a color without using spaces
+showColorNoSpaces :: Color -> String
+showColorNoSpaces (Color fld structOrVal) = utxt fld ++ "<" ++ either showStruct showVal structOrVal ++ ">" where
+    showStruct = intercalate "+" . map (\(k,v) -> (utxt k) ++ "-" ++ either showColorNoSpaces showVal v) . Hash.assocs . vstructValue
+    showVal = show . valValue
+
+-- | Create a color without content
+constantColor :: Text -> Color
+constantColor = flip Color $ Left $ makeVStruct Hash.empty
+
+-- | Checks if the given color has content
+isConstantColor :: Color -> Bool
+isConstantColor (Color _ (Left vstruct)) = emptyVStruct vstruct
+isConstantColor _ = False
+
+-- | Get the top-level type of a color
+colorKey :: Color -> Text
+colorKey (Color key _) = key
+
+-- | Get the content of a color
+colorContent :: Color -> OrValue VStruct
+colorContent (Color _ content) = content
+
+-- | Check whether a vstruct is empty
+emptyVStruct :: VStruct -> Bool
+emptyVStruct = Hash.null . vstructValue
+
+-- | Create a 'VStruct' from a map of field names to field values
+makeVStruct :: Hash.Map Text (OrValue Color) -> VStruct
+makeVStruct = VStruct
+
+-- | Extract a map of field names to field values from a 'VStruct'
+vstructValue :: VStruct -> Hash.Map Text (OrValue Color)
+vstructValue (VStruct val) = val
+
+-- | Get the field names from a 'VStruct'
+vstructKeys :: VStruct -> [Text]
+vstructKeys = Hash.keys . vstructValue
+
+-- | Create a 'Value' representing the given integer
+makeValue :: Int -> Value
+makeValue = Value
+
+-- | Return the integer represented by the given value
+valValue :: Value -> Int
+valValue (Value n) = n
+
+color2mfunction :: Color -> MFunctionDisj
+color2mfunction (Color name vstruct) = XChoice name (vstruct2mfunction vstruct) where
+    vstruct2mfunction :: OrValue VStruct -> OrMFVal MFunctionStruct
+    vstruct2mfunction (Left (VStruct m)) = Left $ XConcat (Hash.map orValue2mfunction m)
+    vstruct2mfunction (Right (Value v)) = Right $ XConst v
+    orValue2mfunction :: OrValue Color -> OrMFVal MFunctionDisj
+    orValue2mfunction (Left c) = Left $ color2mfunction c
+    orValue2mfunction (Right (Value v)) = Right $ XConst v
+
+
+--------------------------------------
+-- MaDL ColorSet <-> Color and BitVector <-> Value convertions
+--------------------------------------
+
+-- | Class to group types that represent a color set
+class Show a => IsColorSet a where
+    -- | The list of colors represented by a colorset.
+    getColors :: a -> [Color]
+    -- | The set of colors represented by a colorset.
+    getColorsSet :: a -> Set Color
+    -- | Checks if the given colorset is empty.
+    empty :: a -> Bool
+    -- | Converts to type @ColorSet@.
+    toColorSet :: a -> ColorSet
+    -- | The amount of colors represented by a colorset.
+    nrOfColors :: a -> Int
+
+instance IsColorSet Color where
+    getColors = (:[])
+    getColorsSet = Set.singleton
+    empty _ = False
+    toColorSet = ColorSet . Set.singleton
+    nrOfColors = const 1
+instance IsColorSet ColorSet where
+    getColors = Set.toList . getColorsSet
+    getColorsSet (ColorSet colors) = colors
+    empty = emptyColorSet
+    toColorSet = id
+    nrOfColors (ColorSet colors) = Set.size colors
+instance IsColorSet [Color] where
+    getColors = id
+    getColorsSet = Set.fromList
+    empty = null
+    toColorSet = ColorSet . Set.fromList
+    nrOfColors = length
+instance IsColorSet (Set Color) where
+    getColors = Set.toList
+    getColorsSet = id
+    empty = Set.null
+    toColorSet = ColorSet
+    nrOfColors = Set.size
+
+-- | Convert a struct to a set of vstructs.
+structValues :: Struct -> Set VStruct
+structValues struct@(Struct vstructs)
+    | emptyStruct struct = Set.singleton $ makeVStruct Hash.empty
+    | otherwise = vstructs
+
+-- | Convert a struct to a list of vstructs.
+getVStructsFromStruct :: Struct -> [VStruct]
+getVStructsFromStruct = Set.toList . structValues
+
+-- | Convert a list of vstructs to a struct
+structFromVStructs :: [VStruct] -> Struct
+structFromVStructs = Struct . Set.fromList . filter (not . emptyVStruct)
+
+------------------------
+-- Type Operations
+------------------------
+
+-- | Union of two colorsets.
+typeUnion :: (IsColorSet a, IsColorSet b) => a -> b -> ColorSet
+typeUnion cs1 cs2 = toColorSet $ Set.union (getColorsSet cs1) (getColorsSet cs2)
+
+-- | Union of two struct.
+structUnion :: Struct -> Struct -> Struct
+structUnion (Struct n) (Struct m) = Struct $ Set.union n m
+
+-- | Union of two bitvectors.
+bitvecUnion :: BitVector -> BitVector -> BitVector
+bitvecUnion n m = BitVector $ Set.union (bvValues n) (bvValues m)
+
+-- | Intersection of two colorsets.
+typeIntersection :: (IsColorSet a, IsColorSet b) => a -> b -> ColorSet
+typeIntersection n m = toColorSet $ Set.intersection (getColorsSet n) (getColorsSet m)
+
+-- | Difference of two colorsets. todo(tssb, snnw) : more efficient implementation
+typeDifference :: (IsColorSet a, IsColorSet b) => a -> b -> ColorSet
+typeDifference n m = toColorSet $ (getColors n) \\ (getColors m)
+
+-- | Calculates whether type1 is a subtype of type2
+subTypeOf :: (IsColorSet a, IsColorSet b) => a -> b -> Bool
+subTypeOf type1 type2 = typeIntersection type1 type2 == (toColorSet type1)
+
+-- | Calculates whether a color matches (is represented by) a colorset.
+matches :: Color -> ColorSet -> Bool
+matches color (ColorSet colors) = Set.member color colors
+
+--------------------------------------
+-- Bit operations
+--------------------------------------
+
+-- | Create the specified set of booleans.
+bitT :: Bool -> Bool -> Set Bool
+bitT hasTrue hasFalse = Set.filter (\x -> case x of True -> hasTrue; False -> hasFalse) (Set.fromList [True, False])
+
+-- | Create a bitvector with the given length.
+bitvecT :: Int -> BitVector
+bitvecT n = bitvecFromInts [0..(2^n-1)]
+
+-- | Create a bitvector representing the given value.
+bitvecFromValue :: Value -> BitVector
+bitvecFromValue = BitVector . Set.singleton
+
+-- | Create a bitvector representing the given list of values.
+bitvecFromValues :: [Value] -> BitVector
+bitvecFromValues = BitVector . Set.fromList
+
+-- | Create a bitvector representing the given integer.
+bitvecFromInt :: Int -> BitVector
+bitvecFromInt = bitvecFromValue . makeValue
+
+-- | Create a bitvector representing the given list of integers.
+bitvecFromInts :: [Int] -> BitVector
+bitvecFromInts = bitvecFromValues . map makeValue
+
+-- | Calculates the encodingsize for a coloset.
+encodingSize :: ColorSet -> Int
+encodingSize colors = choiceSize + maximum elemSizes where
+    elemSizes = if emptyColorSet colors then [0]
+        else map (either structSize bvSize) $ colorSetElems colors
+    choiceSize = nrBits $ colorSetKeySize colors
+
+-- | Calculates the encodingsize for a struct.
+structSize :: Struct -> Int
+structSize = sum . map (either encodingSize bvSize) . structElems
+
+-- | Return the set of values represented by a bitvector.
+bvValues :: BitVector -> Set Value
+bvValues (BitVector vals) = vals
+
+-- | Return the set of integers represented by a bitvector.
+bvInts :: BitVector -> Set Int
+bvInts = Set.map valValue . bvValues
+
+-- | Calculates the encodingsize of a bitvector.
+bvSize :: BitVector -> Int
+bvSize values = if Set.null $ bvValues values then 1
+    else max maxSize minSize where
+        maxSize = if maximum vs < 1 then 1 else nrBits (maximum vs + 1)
+        minSize = if minimum vs >= 0 then 1 else 1 + nrBits (-(minimum vs))
+        vs = Set.toList $ bvInts values
+
+-- | Calculates the number of bits needed to represent the given amount of values.
+nrBits :: Int -> Int
+nrBits 0 = 0
+nrBits n = ceiling bits
+  where bits :: Double
+        bits = logBase 2 $ fromIntegral n
+
+--------------------------
+-- MaDL Functions
+---------------------------
+
+-- | Binary operators for integers
+data BinaryOperator = Plus | Minus | Mult | Mod deriving (Show,Eq,Ord)
+-- | Unary operators for integers
+data UnaryOperator = Neg deriving (Show,Eq,Ord)
+-- | Binary operators for booleans
+data BinaryOperatorBool = And | Or  deriving (Show,Eq,Ord)
+-- | Unary operators for booleans
+data UnaryOperatorBool = Not deriving (Show,Eq,Ord)
+-- | Relational operators on integers
+data ComparisonOperator = Eq | Gt deriving (Show,Eq,Ord)
+
+-- | Function that produces a boolean value
+data MFunctionBool
+    = XCompare ComparisonOperator MFunctionVal MFunctionVal -- ^ Compare the given values with the given operator
+    | XMatch MFunctionDisj MFunctionDisj -- ^ Check if the given colors have the same type on top-level
+    | XTrue -- ^ True
+    | XFalse -- ^ False
+    | XUnOpBool UnaryOperatorBool MFunctionBool -- ^ Apply the given operator to the given boolean
+    | XBinOpBool BinaryOperatorBool MFunctionBool MFunctionBool -- ^ Apply the given operators to the given boolean
+    | XAppliedToB MFunctionBool [MFunctionDisj] -- ^ Apply the given boolean function to the given list of colors
+    | XSelectB MFunctionDisj (Hash.Map Text MFunctionBool) -- ^ Select one of the provided booleans, according to the top-level type of the given color
+    | XIfThenElseB MFunctionBool MFunctionBool MFunctionBool -- ^ Select one of the provided booleans, according to the value of the first provided boolean
+    deriving (Show,Eq,Ord)
+-- | Function that produces an integer value
+data MFunctionVal
+    = XConst Int -- ^ An integer value
+    | XUnOp UnaryOperator MFunctionVal -- ^ Apply the given operator to the given value
+    | XBinOp BinaryOperator MFunctionVal MFunctionVal -- ^ Apply the given operator to the given values
+    | XChooseVal Text MFunctionDisj -- ^ Extract the integer content from the given key of the given color
+    | XGetFieldVal Text MFunctionStruct -- ^ Extract the integer content from the given field of the given struct
+    | XIfThenElseV MFunctionBool MFunctionVal MFunctionVal -- ^ Select one of the provided values, according to the value of the provided boolean
+    deriving (Show,Eq,Ord)
+-- | Data type to indicate that something may also be a function that produces a value
+type OrMFVal a = Either a MFunctionVal
+-- | Function that produces a struct
+data MFunctionStruct
+    = XConcat (Hash.Map Text (OrMFVal MFunctionDisj)) -- ^ Create a struct according to the given map of field names and field content
+    | XChooseStruct Text MFunctionDisj -- ^ Extract the struct content from the given field of the given color
+    | XIfThenElseC MFunctionBool MFunctionStruct MFunctionStruct -- ^ Select one of the provided structs, according to the value of the provided boolean
+     deriving (Show,Eq,Ord)
+-- | Function that produces a color
+data MFunctionDisj
+    = XChoice Text (OrMFVal MFunctionStruct) -- ^ Create a color with the given type and the given content
+    | XSelect MFunctionDisj (Hash.Map Text MFunctionDisj) -- ^ Select one of the provided colors, according to the top-level type of the first provided color
+    | XIfThenElseD MFunctionBool MFunctionDisj MFunctionDisj -- ^ Selected one of the provided colors, according to the value of the provided boolean
+    | XInput ComponentID -- ^ The color produced by the component identified by the given componentID
+    | XAppliedTo MFunctionDisj [MFunctionDisj] -- ^ Apply the given function to the list of given colors
+    | XVar Int -- ^ The color of the argument represented by the given Int
+    | XGetFieldDisj Text MFunctionStruct -- ^ Extract the color content from the given field of the given struct
+    deriving (Show,Eq,Ord)
+-- | A function that result in any type
+data MFunction = MFBool MFunctionBool
+               | MFVal MFunctionVal
+               | MFStruct MFunctionStruct
+               | MFDisj MFunctionDisj
+               deriving (Show,Eq,Ord)
+
+-- | Class to relate a type of function to the type of objects it produces
+class Show f => HasType f t where
+    -- TODO (tssb) : unit-tests for resultingType
+    -- | Calculates the resulting type of the given function using the given arguments.
+    resultingType :: Arguments -> f -> Either t Error
+instance HasType MFunctionBool (Set Bool) where
+    resultingType = resultingBools
+instance HasType MFunctionVal BitVector where
+    resultingType = resultingVals
+instance HasType MFunctionStruct Struct where
+    resultingType = resultingStruct
+instance HasType MFunctionDisj ColorSet where
+    resultingType = resultingDisj
+instance HasType a b => HasType (OrMFVal a) (OrBitVector b) where
+    resultingType args = either (mapLeft Left . resultingType args) (mapLeft Right . resultingType args)
+
+-- | Class to relate a type of function to the type of object it produces
+class HasValue f v where
+    -- | Calculates the resulting value of applying the given function to the given arguments
+    eval :: VArguments -> f -> v
+instance HasValue MFunctionBool Bool where
+    eval = evalB
+instance HasValue MFunctionVal Value where
+    eval = evalV
+instance HasValue MFunctionStruct VStruct where
+    eval = evalC
+instance HasValue MFunctionDisj Color where
+    eval = evalD
+instance HasValue a b => HasValue (OrMFVal a) (OrValue b) where
+    eval args = mapBoth (eval args) (eval args)
+
+-- | Class to group types that may be the result of an MFunction
+class IsReturnType t where
+    unionResults :: t -> t -> t -- ^ Unions two objects
+    emptyResult :: t -- ^ The empty result
+instance IsReturnType (Set Bool) where
+    unionResults = Set.union
+    emptyResult = Set.empty
+instance IsReturnType  BitVector where
+    unionResults = bitvecUnion
+    emptyResult = bitvecFromValues []
+instance IsReturnType Struct where
+    unionResults = structUnion
+    emptyResult = one
+instance IsReturnType ColorSet where
+    unionResults = typeUnion
+    emptyResult = nul
+
+---------------------------
+-- MFunction evaluation
+---------------------------
+
+-- | Create Arguments
+makeArguments :: IsColorSet a => [a] -> Arguments
+makeArguments = IM.fromList . zip [0..] . map toColorSet
+-- | Arguments for the resultingType function
+type Arguments = IntMap ColorSet
+
+-- | Error that may be produced by the resultingType function
+type Error = (Int, Text)
+
+-- | Resulting type function for MFunctionVals
+resultingVals :: Arguments -> MFunctionVal -> Either BitVector Error
+resultingVals _ (XConst n) = Left $ bitvecFromInt n
+resultingVals args (XUnOp Neg bvF) = case resultingType args bvF of
+    Right err -> Right err
+    Left (_::BitVector) -> fatal 412 "unimplemented"
+resultingVals args (XBinOp op a b) = case (resultingType args a, resultingType args b) of
+    (Right err, _) -> Right err
+    (Left _, Right err) -> Right err
+    (Left xs, Left ys) -> Left $ bitvecFromInts result where
+        result = [ x `operator` y | x <- Set.toList $ bvInts xs, y <- Set.toList $ bvInts ys]
+        operator = case op of Plus -> (+); Minus -> (-); Mult -> (*); Mod -> mod;
+resultingVals args (XChooseVal t disj) = case resultingType args disj of
+    Right err -> Right err
+    Left colors -> case lookupKey t colors of
+        Nothing -> Right (399, "Illegal key: " +++ t +++ " in: " +++showT colors)
+        Just (Left _) -> Right (493, "Found struct instead of bitvector. Use XChooseStruct instead of XChooseVal.")
+        Just (Right bv) -> Left bv
+resultingVals args (XGetFieldVal t struct) = case resultingType args struct of
+    Right err -> Right err
+    Left m -> case lookupStructKey t m of
+        Nothing -> Right (418,  "Illegal key: " +++ t +++ " in: " +++showT m)
+        Just (Left (_::ColorSet)) -> Right (499, "Found colorset instead of bitvector. Use XGetFieldDisj instead of XGetFieldVal.")
+        Just (Right bv) -> Left bv
+resultingVals args (XIfThenElseV b t f) = resultingIfThenElse args b t f
+
+-- | Resulting type function for MFunctionBools
+resultingBools :: Arguments -> MFunctionBool -> Either (Set Bool) Error
+resultingBools args (XCompare op a b) = case (resultingType args a, resultingType args b) of
+    (Right err, _) -> Right err
+    (_, Right err) -> Right err
+    (Left xs, Left ys) -> if maybeTrue || maybeFalse
+        then Left $ bitT maybeTrue maybeFalse
+        else Right (433, "Invalid arguments") where
+        maybeTrue = or result
+        maybeFalse = any not result
+        result = [ x `operator` y | x :: Int <- Set.toList $ bvInts xs, y :: Int <- Set.toList $ bvInts ys]
+        operator = case op of Eq -> (==); Gt -> (>)
+resultingBools args (XMatch f g) = case (resultingType args f, resultingType args g) of
+    (Right err, _) -> Right err
+    (Left _, Right err) -> Right err
+    (Left fType, Left gType) ->
+        case (colorSetKeys fType, colorSetKeys gType) of
+            ([fKey], [gKey]) -> Left $ Set.singleton (fKey == gKey)
+            (fKeys, gKeys) -> Left $ bitT maybeTrue maybeFalse where
+                maybeTrue = not . Set.null $ Set.intersection (Set.fromList fKeys) (Set.fromList gKeys)
+                maybeFalse = not (null fKeys) && not (null gKeys)
+resultingBools _ XTrue = Left $ Set.singleton True
+resultingBools _ XFalse = Left $ Set.singleton False
+resultingBools args (XUnOpBool op a) = case resultingType args a of
+    Right err -> Right err
+    Left x -> Left $ Set.map operator x where
+        operator = case op of Not -> not;
+resultingBools args (XBinOpBool op a b) = case (resultingType args a, resultingType args b) of
+    (Right err, _) -> Right err
+    (Left _, Right err) -> Right err
+    (Left xs, Left ys) -> case [x `operator` y | x <- Set.toList xs, y <- Set.toList ys] of
+        [] -> Right (539, "Invalid arguments")
+        l -> Left $ Set.fromList l
+        where operator = case op of Or -> (||); And -> (&&);
+resultingBools args (XAppliedToB f gs) =
+    case partitionEithers $ map (resultingType args) gs of
+        (types, []) -> if any emptyColorSet types
+            then Left Set.empty
+            else resultingType (IM.fromList $ zip [0..] types) f -- TODO(tssb, snnw): unsafe in case of state variables?
+        (_, err:_) -> Right err
+resultingBools args (XSelectB s m) = case resultingType args s of
+    Right err -> Right err
+    Left colors -> case partitionEithers bools of
+        (bools', []) -> Left $ Set.unions bools'
+        (_, err:_) -> Right err
+        where
+            bools :: [Either (Set Bool) Error]
+            bools = map keyToBool $ colorSetKeys colors
+            keyToBool :: Text -> Either (Set Bool) Error
+            keyToBool key = case Hash.lookup key m of
+                Nothing -> Right (576, "Key not covered by switch.")
+                Just mfbool -> resultingType (args' key) mfbool
+            args' key = case s of
+                XVar i -> IM.adjust (pruneColorSet key) i args
+                _ -> args
+resultingBools args (XIfThenElseB b t f) = resultingIfThenElse args b t f
+
+-- | Resulting type function for MFunctionStructs
+resultingStruct :: Arguments -> MFunctionStruct -> Either Struct Error
+resultingStruct args (XConcat m) = toStruct . Hash.assocs $ Hash.map (resultingType args) m where
+    toStruct flds = case extractError flds of
+        Right err -> Right err
+        Left flds' -> Left $ makeStruct flds'
+
+    extractError [] = Left []
+    extractError ((fld, Left val):flds) = case extractError flds of
+        Right err -> Right err
+        Left flds' -> Left ((fld, val):flds')
+    extractError ((_, Right err):_) = Right err
+resultingStruct args (XChooseStruct t disj) = case resultingType args disj of
+    Right err -> Right err
+    Left colors -> case lookupKey t colors of
+        Nothing -> Right (399, "Illegal key: " +++ t +++ " in: " +++showT colors)
+        Just (Left struct) -> Left struct
+        Just (Right _) -> Right (549, "Found bitvector instead of struct. Use XChooseVal instead of XChooseStruct.")
+resultingStruct args (XIfThenElseC b t f) = resultingIfThenElse args b t f
+
+-- | Split up the colors and calculate the function one by one, to reduce the over-approximation of the resulting types
+splitColors :: (Arguments -> f -> Either ColorSet Error) -> Arguments -> f -> Either ColorSet Error
+splitColors m args f = case errors of
+    [] -> Left $ foldl typeUnion nul colors -- Union result
+    x:_ -> Right x
+    where
+        -- Pull apart the colors in the arguments
+        errors = [err | (Right err) <- computedColors]
+        colors = [cs | (Left cs) <- computedColors]
+        splitArgs = map getColors colorList
+        -- Generate cartesian product of args to get all combinations of individual colors
+        seqs = sequence $ map (\i -> if null i then [Nothing] else map Just i) $ splitArgs
+        -- Unfold arguments and check each color individually
+        computedColors = map resolveColor combinations
+        combinations = map makeColorSets seqs
+        makeColorSets = map (\c -> case c of Nothing -> nul; Just cs -> toColorSet cs)
+        colorList = map snd $ IM.toAscList args
+        resolveColor c = m (makeArguments c) f
+
+-- | Calculate resultingDisj for individual colors and union at the end, instead of calculating for unions of colors
+resultingDisj :: Arguments -> MFunctionDisj -> Either ColorSet Error
+resultingDisj = splitColors resultingDisj'
+
+-- | Resulting type function for MFunctionDisjs
+resultingDisj' :: Arguments -> MFunctionDisj -> Either ColorSet Error
+resultingDisj' args (XChoice k v) = case resultingType args v of
+    Right err -> Right err
+    Left vType -> Left $ makeColorSet [(k, vType)]
+resultingDisj' _ (XInput _) = fatal 377 "unimplemented"
+resultingDisj' args (XSelect s m) = case resultingType args s of
+    Right err -> Right err
+    Left colors -> case partitionEithers newTypes of
+        (newTypes', []) -> Left $ foldr typeUnion nul newTypes'
+        (_, err:_) -> Right err
+        where
+            newTypes :: [Either ColorSet Error]
+            newTypes = map keyToType $ colorSetKeys colors
+            keyToType :: Text -> Either ColorSet Error
+            keyToType key = case Hash.lookup key m of
+                Nothing -> Right (576, "Key not covered by switch.")
+                Just mfun -> resultingType (args' key) mfun
+            args' key = case s of
+                XVar i -> IM.adjust (pruneColorSet key) i args
+                _ -> args
+resultingDisj' args (XIfThenElseD b t f) = resultingIfThenElse args b t f
+resultingDisj' args (XAppliedTo f gs) =
+    case partitionEithers $ map (resultingType args) gs of
+        (types, []) -> if any emptyColorSet types
+            then Left nul
+            else resultingType (IM.fromList $ zip [0..] types) f -- TODO(tssb, snnw): unsafe in case of state variables?
+        (_, err:_) -> Right err
+resultingDisj' args (XVar i) = Left $ lookupM (src 404) i args
+resultingDisj' args (XGetFieldDisj t struct) = case resultingType args struct of
+    Right err -> Right err
+    Left m -> case lookupStructKey t m of
+        Nothing -> Right (725, "Illegal key " +++ t +++ " in: " +++showT m)
+        Just (Left disj) -> Left disj
+        Just (Right (_::BitVector)) -> Right (568, "Found bitvector instead of colorset. Use XGetFieldVal instead of XGetFieldDisj.")
+
+-- | Resulting type function for XIfThenElse operators
+resultingIfThenElse :: forall f t. (IsReturnType t, HasType f t) => Arguments -> MFunctionBool -> f -> f -> Either t Error
+resultingIfThenElse args condition thencase elsecase = case resultingType args condition of
+    Right err -> Right err
+    Left cond -> case partitionEithers $ mapMaybe newType [True, False] of
+        (newTypes, []) -> Left $ foldr unionResults emptyResult newTypes
+        (_, err:_) -> Right err
+        where
+            newType :: Bool -> Maybe (Either t Error)
+            newType bool = if Set.member bool cond then Just (resultingType args $ if bool then thencase else elsecase) else Nothing
+
+-- | Turns an error produced by the resultingType function to a fatal
+resultingTypeStrict :: HasType f t => Arguments -> f -> t
+resultingTypeStrict args f = case resultingType args f of
+    Left t -> t
+    Right (i, msg) -> fatal i msg
+
+-- | Make VArguments
+makeVArguments :: [Color] -> VArguments
+makeVArguments = IM.fromList . zip [0..]
+
+-- | Input for the eval function
+type VArguments = IntMap Color
+
+-- | Evaluates an MFunctionBool
+evalB :: VArguments -> MFunctionBool -> Bool
+evalB args (XCompare op f g) = (valValue $ evalV args f) `operator` (valValue $ evalV args g) where
+    operator = case op of Eq -> (==); Gt -> (>)
+evalB args (XMatch f g) = fField == gField where
+    Color fField _ = eval args f
+    Color gField _ = eval args g
+evalB _ XTrue = True
+evalB _ XFalse = False
+evalB args (XUnOpBool op x) = operator (eval args x) where
+    operator = case op of Not -> not;
+evalB args (XBinOpBool op x y) = (eval args x) `operator` (eval args y) where
+    operator = case op of Or -> (||); And -> (&&);
+evalB args (XAppliedToB f gs) = eval (IM.fromList $ zip [0..] (map (eval args) gs)) f
+evalB args (XSelectB s m) = case Hash.lookup key m of
+    Nothing -> fatal 674 "invalid select function"
+    Just f -> eval args f
+    where
+    (Color key _) = eval args s
+evalB args (XIfThenElseB b t f) = evalIfThenElse args b t f
+
+-- | Evaluates an MFunctionVal
+evalV :: VArguments -> MFunctionVal -> Value
+evalV _ (XConst i) = makeValue i
+evalV args (XUnOp op f) = operator (eval args f :: Value) where
+    operator = case op of Neg -> fatal 703 "unimplemented"
+evalV args (XBinOp op f g) = makeValue result where
+    result = (valValue $ eval args f) `operator` (valValue $ eval args g)
+    operator = case op of Plus -> (+); Minus -> (-); Mult -> (*); Mod -> mod;
+evalV args (XGetFieldVal fld struct) = case lookupM (src 104) fld $ evalC args struct of
+    Left (_::Color) -> fatal 603 "Found color instead of value. Use XGetFieldDisj instead of XGetFieldVal."
+    Right bv -> bv
+evalV args (XChooseVal fld t)
+    | fld == fld' = case v of Right bv -> bv; Left _ -> fatal 606 "Found vstruct instead of value. Use XChooseStruct instead of XChooseVal."
+    | otherwise = fatal 102 $ "choosing non-existant field: " +++ fld +++" in color: " +++fld'
+    where Color fld' v = eval args t
+evalV args (XIfThenElseV b t f) = evalIfThenElse args b t f
+
+-- | Evaluates an MFunctionDisj
+evalD :: VArguments -> MFunctionDisj -> Color
+evalD args (XChoice k v) = Color k (eval args v)
+evalD args (XSelect s m) = case Hash.lookup key m of
+    Nothing -> fatal 674 "invalid select function"
+    Just f -> eval args f
+    where
+    (Color key _) = eval args s
+evalD args (XIfThenElseD b t f) = evalIfThenElse args b t f
+evalD _ (XInput _) = fatal 118 "unimplemented" -- TODO(snnw) implement eval of XInput
+evalD args (XAppliedTo f gs) = eval (IM.fromList $ zip [0..] (map (eval args) gs)) f
+evalD args (XVar i) = lookupM (src 106) i args
+evalD args (XGetFieldDisj fld struct) = case lookupM (src 104) fld $ evalC args struct of
+    Left disj -> disj
+    Right (_::Value) -> fatal 621 "Found value instead of color. Use XGetFieldVal instead of XGetFieldDisj."
+
+-- | Evaluates an MFunctionStruct
+evalC :: VArguments -> MFunctionStruct -> VStruct
+evalC args (XConcat m) = makeVStruct $ Hash.map (eval args) m
+evalC args (XChooseStruct fld t)
+    | fld == fld' = case v of Left struct -> struct; Right _ -> fatal 626 "Found value instead of vstruct. Use XChooseVal instead of XChooseStruct."
+    | otherwise = fatal 638 $ "choosing non-existant field: " +++ fld +++" in color: " +++fld'
+    where Color fld' v = eval args t
+evalC args (XIfThenElseC b t f) = evalIfThenElse args b t f
+
+-- | Evaluates an IfThenElse operator
+evalIfThenElse :: forall f v. HasValue f v => VArguments -> MFunctionBool -> f -> f -> v
+evalIfThenElse args cond true false = case eval args cond of True -> eval args true; False -> eval args false;
+
+-- | Given a boolean function and two sets of input arguments, calculate whether the result may be 'val'.
+mayMatch :: (IsColorSet a, IsColorSet b) => Bool -> MFunctionBool -> a -> b -> Bool
+mayMatch val f arg0 arg1 = Set.member val $ resultingTypeStrict args (XAppliedToB f [XVar 0, XVar 1]) where
+    args = makeArguments [toColorSet arg0, toColorSet arg1]
+
+-- | Given a boolean function and two input arguments, calculate the result.
+matched :: MFunctionBool -> Color -> Color -> Bool
+matched f arg0 arg1 = predIsTrue f [arg0, arg1]
+
+-- | Given a boolean function and a list of input arguments, calculate the result.
+predIsTrue :: MFunctionBool -> [Color] -> Bool
+predIsTrue f args = eval (IM.fromList $ zip [0..] args) f
+
+-- | Given a boolean function and two sets of input arguments, calculate the equivalence classes of these arguments.
+equivClasses :: (IsColorSet a, IsColorSet b) => MFunctionBool -> a -> b -> [([Color], [Color])]
+equivClasses f aColorSet bColorSet = case (getColors aColorSet, getColors bColorSet) of
+    ([], bTypes) -> map (\b -> ([], [b])) bTypes
+    (aTypes, []) -> map (\a -> ([a], [])) aTypes
+    (aType:aTypes, bTypes) -> (matchingAs, matchingBs):(equivClasses f notMatchingAs notMatchingBs) where
+        matchingAs, matchingBs :: [Color]
+        (matchingBs, notMatchingBs) = partition (matchResult aType) bTypes
+        (matchingAs, notMatchingAs) = case matchingBs of
+            [] -> ([aType], aTypes)
+            bType:_ -> mapFst (aType:) $ partition (flip matchResult bType) aTypes
+
+        matchResult :: Color -> Color -> Bool
+        matchResult atype btype = eval (IM.fromList [(0, atype), (1, btype)]) f

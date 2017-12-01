@@ -46,6 +46,10 @@ extra-deps:
 - zenc-0.1.1
 - minisat-0.1.2
 - data-partition-0.3.0.0
+- integer-logarithms-1.0.2
+- sbv-7.4
+- crackNum-1.9
+- FloatingHex-0.4
 
 # Override default flag values for local packages and extra-deps
 flags: {}

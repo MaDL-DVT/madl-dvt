@@ -1,0 +1,27 @@
+module Madl2fsm.Madl2fsm
+where
+
+--import Madl.MsgTypes
+import qualified Data.ByteString as B
+
+test :: String
+test = "Hey from madl2fsm"
+
+--i need a function which gets all text types and declares a corresponding sv datatype
+--i need a mapper from text color fields to corresponding sv fields 
+
+class ColorConv a where
+  col2fsm :: a -> B.ByteString
+
+{-
+-- | Color data type
+data Color = Color Text (OrValue VStruct) deriving (Eq, Ord)
+-- | VStruct data type
+data VStruct = VStruct (Hash.Map Text (OrValue Color)) deriving (Eq, Ord)
+-- | Value data type
+data Value = Value Int deriving (Eq, Ord)
+-- | Data type to indicate that som
+
+-------
+Color Const
+-}

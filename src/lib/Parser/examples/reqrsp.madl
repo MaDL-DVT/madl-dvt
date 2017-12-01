@@ -1,0 +1,24 @@
+// 2 types: requests and responses
+enum reqAndRsp {
+   req;
+   rsp; 
+}
+
+function toRsp (p:reqAndRsp) : reqAndRsp {
+      rsp;
+}
+
+chan x0 := Source(reqAndRsp);
+
+chan x1, x2 := Fork(x0);
+chan x6 := Queue(2, x1);
+
+chan x3 := Source(req);
+chan x5 := Queue(2, Merge(x2, x3));
+
+chan x7, x8 := Switch(x5, rsp);
+chan x8prime := Function(toRsp,x8);
+
+chan x9 := CtrlJoin(x7, x6);
+chan x10 := Merge(x8prime, x9);
+Sink(x10)

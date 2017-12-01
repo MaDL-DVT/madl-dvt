@@ -1,0 +1,80 @@
+module Madl.MetaIslands where
+
+import Madl.Network
+import Madl.MsgTypes
+import Utils.Text
+import qualified Data.List as L
+import qualified Data.Sequence as S
+import qualified Data.HashMap as H
+
+data CompType = Src | Snk | Q | Frk | CJ | FJ | Swtch | Mrg
+
+--first list of type [String] contains all the type and field names
+data MetaIslands = MetaIslands [String] (H.Map Int MFunctionDisj, H.Map Int [MFunctionBool]) [MetaIsle]
+
+--first list - input components, second list - output components
+data MetaIsle = MetaIsle [MetaComp] [MetaComp]
+
+--sequence of ints contains function and predicate identifiers in the order they affect the component's input
+data MetaComp = MetaComp ComponentID (S.Seq Int) CompType
+
+--gets type and field names from a network
+typeFieldGetter :: ColoredNetwork -> [String]
+typeFieldGetter net = map (\x -> show x) $ L.nub (networkTypes net ++ networkStructFields net) 
+
+--function/predicate map
+getAllSwitches :: ColoredNetwork -> [XComponent Text]
+getAllSwitches network = filter (\x -> case x of Switch _ _ -> True; _ -> False) $ getComponents network
+
+getAllSources :: ColoredNetwork -> [XComponent Text]
+getAllSources network = filter (\x -> case x of Source _ _ -> True; _ -> False) $ getComponents network
+
+getAllQueues :: ColoredNetwork -> [XComponent Text]
+getAllQueues network = filter (\x -> case x of Queue _ _ -> True; _ -> False) $ getComponents network
+
+getAllSinks :: ColoredNetwork -> [XComponent Text]
+getAllSinks network = filter (\x -> case x of Sink _ -> True; _ -> False) $ getComponents network
+
+getAllMerges :: ColoredNetwork -> [XComponent Text]
+getAllMerges network = filter (\x -> case x of Merge _ -> True; _ -> False) $ getComponents network
+
+getAllSwitchesWithID :: ColoredNetwork -> [(ComponentID, XComponent Text)]
+getAllSwitchesWithID network = filter (\x -> case x of (_,Switch _ _) -> True; _ -> False) $ getComponentsWithID network
+
+getAllSourcesWithID :: ColoredNetwork -> [(ComponentID, XComponent Text)]
+getAllSourcesWithID network = filter (\x -> case x of (_,Source _ _) -> True; _ -> False) $ getComponentsWithID network
+
+getAllMergesWithID :: ColoredNetwork -> [(ComponentID, XComponent Text)]
+getAllMergesWithID network = filter (\x -> case x of (_,Merge _) -> True; _ -> False) $ getComponentsWithID network
+
+getAllQueuesWithID :: ColoredNetwork -> [(ComponentID, XComponent Text)]
+getAllQueuesWithID network = filter (\x -> case x of (_,Queue _ _) -> True; _ -> False) $ getComponentsWithID network
+
+getAllSourceIDs :: ColoredNetwork -> [ComponentID]
+getAllSourceIDs net = map (\(i,_) -> i) $ getAllSourcesWithID net
+
+getAllSinksWithID :: ColoredNetwork -> [(ComponentID, XComponent Text)]
+getAllSinksWithID network = filter (\x -> case x of (_,Sink _) -> True; _ -> False) $ getComponentsWithID network
+
+getAllFunctionsWithID :: ColoredNetwork -> [(ComponentID, XComponent Text)]
+getAllFunctionsWithID network = filter (\x -> case x of (_,Function _ _ _) -> True; _ -> False) $ getComponentsWithID network
+
+getAllFJoinsWithID :: ColoredNetwork -> [(ComponentID, XComponent Text)]
+getAllFJoinsWithID network = filter (\x -> case x of (_,FControlJoin _ _) -> True; _ -> False) $ getComponentsWithID network
+
+
+funPredMap :: ColoredNetwork -> (H.Map Int MFunctionDisj, H.Map Int [MFunctionBool])
+funPredMap net = let funs = L.nub . map (\(_,x) -> let (Function _ f _) = x in f) $ getAllFunctionsWithID net
+                     preds = L.nub . map (\(_,x) -> case x of
+                                                      Switch _ ps -> ps
+                                                      FControlJoin _ p -> [p]
+                                                      _ -> error "incorrect primitive")
+                             $ (getAllSwitchesWithID net) ++ (getAllFJoinsWithID net)
+                     fkv = zip [i | i <- [0..length funs]] funs
+                     pkv = zip [i | i <- [0..length preds]] preds
+                 in (H.fromList fkv, H.fromList pkv)
+
+
+makeMetaComp :: ColoredNetwork -> ComponentID -> MetaComp
+makeMetaComp net cid = 
+

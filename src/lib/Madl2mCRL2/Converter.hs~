@@ -1,0 +1,7 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+module Madl2mCRL2.Converter
+where
+
+tst :: Int -> Int
+tst x = x + 1
