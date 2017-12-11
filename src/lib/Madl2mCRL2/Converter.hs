@@ -177,12 +177,11 @@ ioActs' pref1 pref2 = [pref1 ++ "_" ++ pref2 ++ "_io"]
 srcTemplate :: ColoredNetwork -> ComponentID -> String
 srcTemplate net c = "proc " ++ (compName net c True) ++ "(s:S) = \n" ++
                     "\t((s == free)\n" ++
-                    "\t\t-> (" ++ (compName net c False) ++ "_idle|" ++ (compName net c False) ++ "_o0_out(false,false,def) + " ++ (compName net c False) ++ "_idle|" ++ (compName net c False) ++ "_o0_out(false,true,def))." ++ (compName net c True) ++ "(free)\n" ++
-                    "\t\t   + sum x:C.((" ++ (getCond net c False 0) ++ ") -> " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free))\n" ++
-                    "\t\t   + sum x:C.((" ++ (getCond net c False 0) ++ ") -> " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))))\n" ++
-                    "\t+ sum x:C.((s == next(x) && (" ++ (getCond net c False 0) ++ "))\n" ++
-                    "\t\t-> " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))\n" ++
-                    "\t\t   + " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free));"
+                    "\t\t-> ((" ++ (compName net c False) ++ "_idle|" ++ (compName net c False) ++ "_o0_out(false,false,def) + " ++ (compName net c False) ++ "_idle|" ++ (compName net c False) ++ "_o0_out(false,true,def))." ++ (compName net c True) ++ "(free)\n" ++
+                    "\t\t   + sum x:C.((" ++ (getCond net c False 0) ++ ") -> (" ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free) + " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))))))\n" ++
+                    "\t+ sum x:C.((s == next(x))\n" ++
+                    "\t\t-> (" ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))\n" ++
+                    "\t\t   + " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free)));"
 
 
 queueTemplate :: ColoredNetwork -> ComponentID -> String
