@@ -1,0 +1,44 @@
+// Simple 5x5 Router
+
+const tok;
+
+param int XBITS = 0;
+param int YBITS = 0;
+param int QSIZE = 2; // size of input buffers
+param int XDIM = 2;  // size of the x dimension
+param int YDIM = 2;  // size of the y dimension
+
+
+struct Pkt {
+  destx : [XBITS:0]; // x-coordinate of the destination
+  desty : [YBITS:0]; // y-coordinate of the destination
+};
+
+uses lib.main;
+
+
+// we instantiate a simple router with source and sink
+
+// ins[0] : local in
+// ins[1] : west in
+// ins[2] : east in
+// ins[3] : north in
+// ins[4] : south in
+
+chan src_lcl   := Source(Pkt);
+chan src_east  := Source(Pkt);
+chan src_west  := Source(Pkt);
+chan src_north := Source(Pkt);
+chan src_south := Source(Pkt);
+
+bus<5> outs := XYRouter5 (0,0,src_lcl,src_west,src_east,src_north,src_south);
+//bus<5> outs := XYRouter5_lrl (0,0,src_lcl,src_west,src_east,src_north,src_south);
+
+Sink(outs[0]);
+Sink(outs[1]);
+Sink(outs[2]);
+Sink(outs[3]);
+Sink(outs[4]);
+
+
+
