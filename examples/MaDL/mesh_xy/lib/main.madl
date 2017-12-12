@@ -1,0 +1,149 @@
+// Main macros we often used.
+// Author: Julien Schmaltz
+// v00: 03.05.2016
+// Requires:
+// Type 'const tok'
+// Type 'Pkt' (struct)
+// Parameters XDIM and YDIM
+
+macro FilterXY (int xID, int yID, chan input) => chan o {
+// Filters packets produced by a source.
+// This filters removes packets sent to the local node.
+    pred BadPackets (p: Pkt) {
+    	 p.destx == xID && p.desty == yID
+    };
+    chan toSink;
+    let toSink,o := Switch(input,BadPackets,otherwise);
+    Sink(toSink);
+};
+
+
+macro FilterXY2 (int xID, int yID, chan input) => chan o {
+// Filters packets produced by a source.
+// This filters removes packets sent to the local node.
+    pred BadPackets (p: Pkt) {
+    	 (p.destx == xID && p.desty == yID) || p.destx >= XDIM || p.desty >= YDIM
+    };
+    chan toSink;
+    let toSink,o := Switch(input,BadPackets,otherwise);
+    Sink(toSink);
+};
+
+
+macro deadSource () => chan o {
+  enum empty {};
+  let o := Source(empty);
+};
+
+macro Latch (chan input) => chan output {
+// Used as a 1 place register to break cycle
+   let output := Queue(1,input);
+};
+
+macro CreditCounter(int counters, chan i) => chan o {
+// Our standard credit counter
+//   let o:= Queue(counters,PatientSource(tok));
+//   Sink(i);
+   chan q_in;
+   let q_in, o := Fork(PatientSource(tok));
+   Sink(CtrlJoin(Queue(counters, q_in), i));
+};
+
+macro Merge5 (bus<5> inPorts) => chan o {
+    let o:= Merge(inPorts[4],Merge(inPorts[3], Merge(inPorts[2], Merge(inPorts[0],inPorts[1]))));
+};
+
+macro ChannelKill (chan input) => chan o {
+      chan toDeadSink;
+      let o,toDeadSink := Fork(input);
+      DeadSink(toDeadSink);
+
+};
+
+// Implemention of XY routing logic for a 2D-mesh
+macro XYRoutingLogic (int xID, int yID, chan inPort) => bus<5> outPorts {
+// outPorts[0] = local
+// outPorts[1] = West output
+// outPorts[2] = East output
+// outPorts[3] = North output
+// outports[4] = South output
+
+   chan eqx,notEqx;
+   let eqx, notEqx := Switch(inPort,Pkt.destx == xID,otherwise);
+   chan notEqy;
+   let outPorts[0],notEqy := Switch(eqx,Pkt.desty == yID, otherwise); 
+   // route in the same dimension
+   let outPorts[1],outPorts[2] := Switch(notEqx,Pkt.destx < xID,otherwise);
+
+   // change dimension
+   let outPorts[4],outPorts[3] := Switch (notEqy, Pkt.desty < yID,otherwise);
+};
+
+
+
+// Generic XYRouter with 5 ports 
+macro XYRouter5 (int xID, int yID, bus<5> ins) => bus<5> outs{
+// Router with input buffers
+// ins[0] : local in
+// ins[1] : west in
+// ins[2] : east in
+// ins[3] : north in
+// ins[4] : south in
+// outs[0] = local
+// outs[1] = West output
+// outs[2] = East output
+// outs[3] = North output
+// outs[4] = South output
+
+   bus<5> routedInLocal;
+   let routedInLocal  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[0]));
+
+   bus<5> routedInWest;
+   let routedInWest   := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[1]));
+
+   bus<5> routedInEast;
+   let routedInEast   := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[2]));
+
+   bus<5> routedInNorth;
+   let routedInNorth  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[3]));
+
+   bus<5> routedInSouth;
+   let routedInSouth  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[4]));
+
+   for (int i = 0;i<5;i++) {
+     let outs[i] := Merge5(routedInLocal[i],routedInWest[i],routedInEast[i],routedInNorth[i],routedInSouth[i]);
+   };
+};
+
+
+// Generic XYRouter with 5 ports 
+macro XYRouter5_lrl (int xID, int yID, bus<5> ins) => bus<5> outs{
+// Router with input buffers
+// ins[0] : local in
+// ins[1] : west in
+// ins[2] : east in
+// ins[3] : north in
+// ins[4] : south in
+// outs[0] = local
+// outs[1] = West output
+// outs[2] = East output
+// outs[3] = North output
+// outs[4] = South output
+
+
+   chan inLocal := Queue(QSIZE,ins[0]);
+   chan inWest  := Queue(QSIZE,ins[1]);
+   chan inEast  := Queue(QSIZE,ins[2]);
+   chan inNorth := Queue(QSIZE,ins[3]);
+   chan inSouth := Queue(QSIZE,ins[4]);
+
+   // we merge all inputs
+   chan mrgLW := Merge(inLocal,inWest);
+   chan mrgEN := Merge(inEast,inNorth);
+   chan mrg0 := Merge(mrgLW,mrgEN);
+   chan mrg1 := Merge(mrg0,inSouth);
+
+   let outs := XYRoutingLogic(xID,yID,mrg1);
+
+};
+
