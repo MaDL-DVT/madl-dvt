@@ -27,9 +27,128 @@ makemCRL2 net = makeTypeDecl net
                 ++ "\n\n"
                 ++ instantiateProcs net
                 ++ "\n\n"
-                ++ "init " ++ hide net ++ ";"
+                -- ++ "init " ++ hide net ++ ";"
+                ++ getHideCommAllow net
                 ++ "\n\n"
-                   
+                -- ++ getComm net
+
+data HideCommAllow = HideCommAllow { usedComps :: [ComponentID],
+                                     unusedComps :: [ComponentID],
+                                     result :: String
+                                   }
+
+--function that takes two lists of compIDs and computes communicating actions, using comm pairs
+
+--function that takes a list of compIDs and computes external actions
+
+--function that makes a hide by using a list of communicating actions
+
+--function that makes an allow using a communicating and external actions
+
+{-
+allow :: ColoredNetwork -> String
+allow net = let syncacts = syncActs net
+                syncacts' = map (\x -> foldr (\a b -> case b of
+                                                        "" -> a ++ b
+                                                        _ -> a ++ "|" ++ b) "" x) syncacts
+                syncacts'' = foldr (\x y -> case y of
+                                              "" -> x ++ y
+                                              _ -> x ++ "," ++ y) "" syncacts'
+            in "allow({" ++ syncacts'' ++ "}," ++ communication net ++ ")"
+-}
+
+getHideCommAllow :: ColoredNetwork -> String
+getHideCommAllow net = let cs = getComponentIDs net
+                           r = case getComponent net (head cs) of
+                                 (Source _ _) -> "(free)"
+                                 (Queue _ _) -> "([])"
+                                 _ -> ""
+                           c = (compName net (head cs) True) ++ r
+                       in "init " ++ getHideCommAllow' (HideCommAllow ([head cs]) (tail cs) c) ++ ";"
+  where getHideCommAllow' :: HideCommAllow -> String
+        getHideCommAllow' hda = case (unusedComps hda) of
+                                  [] -> result hda
+                                  _ -> let comm = getCommRes net (usedComps hda) [(head $ unusedComps hda)]
+                                           alw = getAllowActs net (usedComps hda) [(head $ unusedComps hda)]
+                                           alw' = map (\x -> foldr (\a b -> case b of
+                                                                       "" -> a ++ b
+                                                                       _ -> a ++ "|" ++ b) "" x) alw
+                                           alw'' = foldr (\x y -> case y of
+                                                             "" -> x ++ y
+                                                             _ -> x ++ "," ++ y) "" alw'
+                                           hid = foldr (\x y -> case y of
+                                                             "" -> x ++ y
+                                                             _ -> x ++ "," ++ y) "" (getCommActs net (usedComps hda) [(head $ unusedComps hda)])
+                                           cmp = case (getComponent net (head $ unusedComps hda)) of
+                                                   (Source _ _) -> "(free)"
+                                                   (Queue _ _) -> "([])"
+                                                   _ -> ""
+                                           cmp' = (compName net (head $ unusedComps hda) True) ++ cmp
+                                           res = case comm of
+                                                   "" -> "allow({" ++ alw'' ++ "},(" ++ "(" ++ (result hda) ++ ") || " ++ cmp' ++ "))"
+                                                   _ -> "hide({" ++ hid ++ "},allow({" ++ alw'' ++ "},comm({" ++ comm ++ "},(" ++ (result hda) ++ ") || " ++ cmp' ++ ")))"
+                                       in getHideCommAllow' (HideCommAllow ((usedComps hda) ++ [(head $ unusedComps hda)]) (tail $ unusedComps hda) res)
+                                         
+
+getCommRes :: ColoredNetwork -> [ComponentID] -> [ComponentID] -> String
+getCommRes net c1 c2 = let pairs = communicatingPairs net
+                           pairs' = filter (\(a,_,_,b) ->
+                                              (elem a c1 && elem b c2) || (elem a c2 && elem b c1)) pairs
+                           pairActs = foldr (\x y -> case y of
+                                                    "" -> x ++ y
+                                                    _ -> x ++ "," ++ y) ""
+                                      (concat (map (\(a,b,c,d) -> commActs
+                                                                  ((compName net a False) ++ "_o" ++ (show b))
+                                                                  ((compName net d False) ++ "_i" ++ (show c))) pairs'))
+                       in pairActs
+
+getCommActs :: ColoredNetwork -> [ComponentID] -> [ComponentID] -> [String]
+getCommActs net c1 c2 = let pairs = communicatingPairs net
+                            pairs' = filter (\(a,_,_,b) ->
+                                               (elem a c1 && elem b c2) || (elem a c2 && elem b c1)) pairs
+                            pairActs = (concat (map (\(a,b,c,d) -> [((compName net a False) ++ "_o" ++ (show b)) ++ "_" ++
+                                                                   ((compName net d False) ++ "_i" ++ (show c)) ++ "_io"]) pairs'))
+                        in pairActs
+
+getAllowActs :: ColoredNetwork -> [ComponentID] -> [ComponentID] -> [[String]]
+getAllowActs net c1 c2 = let c = L.nub (c1 ++ c2)
+                             cacts = getCommActs net c1 c2
+                             srcs = getAllSourceIDs net
+                             srcs' = L.intersect srcs c
+                             iSrcActs = map (\x -> [{-compName net x False ++ "_idle",-}compName net x False ++ "_inject"])  srcs'
+                             snks = getAllSinkIDs net
+                             snks' = L.intersect snks c
+                             iSnkActs = map (\x -> [{-compName net x False ++ "_reject",-}compName net x False ++ "_consume"]) snks'
+                             pairs = communicatingPairs net
+                             pairs' = filter (\(a,_,_,b) ->
+                                                not ((elem a c1 && elem b c2) || (elem a c2 && elem b c1) || (elem a c1 && elem b c1))) pairs
+                             ncomo = filter (\(x,_) -> L.elem x c) (map (\(a,b,_,_) -> (a,b)) pairs')
+                             ncomi = filter (\(x,_) -> L.elem x c) (map (\(_,_,a,b) -> (b,a)) pairs')
+                             ids = L.nub ((map (\(x,_) -> x) ncomi) ++ (map (\(x,_) -> x) ncomo))
+                             nc = map (\x -> let i = map (\(g,h) -> ((compName net g False) ++ "_i" ++ (show h) ++ "_in")) (filter (\(a,_) -> x == a) ncomi)
+                                                 o = map (\(g,h) -> ((compName net g False) ++ "_o" ++ (show h) ++ "_out")) (filter (\(a,_) -> x == a) ncomo)
+                                             in {-cartprod ([i] ++ [o])-} (i ++ o)) ids
+                         in cartprod (filter (\x -> x /= []) (iSrcActs ++ iSnkActs ++ (map (\x -> [x]) cacts) ++ (map (\y -> [y]) (concat nc))))
+--cartprod needs [[string]]
+{-
+syncActs :: ColoredNetwork -> [[String]]
+syncActs net = cartprod (intSrcActs net ++ intSnkActs net ++ cActs net)
+
+intSrcActs :: ColoredNetwork -> [[String]]
+intSrcActs net = let srcs = getAllSourceIDs net
+                 in map (\x -> [compName net x False ++ "_idle",compName net x False ++ "_inject"]) srcs
+
+intSnkActs :: ColoredNetwork -> [[String]]
+intSnkActs net = let snks = getAllSinkIDs net
+                 in map (\x -> [compName net x False ++ "_reject",compName net x False ++ "_consume"]) snks
+
+cActs :: ColoredNetwork -> [[String]]
+cActs net = let pairs = communicatingPairs net
+                pairActs = map (\(a,b,c,d) -> ioActs'
+                                              ((compName net a False) ++ "_o" ++ (show b))
+                                              ((compName net d False) ++ "_i" ++ (show c))) pairs
+-}
+                           
 compName :: ColoredNetwork -> ComponentID -> Bool -> String
 compName net c b = let comps = getComponentIDs net
                        i = show $ fromJust $ L.elemIndex c comps
@@ -78,14 +197,24 @@ getCond net comp isinp i = let inChans = getInChannels net comp
                               else if isinp
                                    then let ColorSet colors = getColorSet net (inChans !! i)
                                             cm = colorMap net
-                                        in foldr (\a b -> case b of
-                                                            "" -> a ++ b
-                                                            _ -> a ++ " || " ++ b) "" (map (\x -> "x == c" ++ (show $ cm M.! x)) (Set.toList colors))
+                                            res = foldr (\a b -> case b of
+                                                                   "" -> a ++ b
+                                                                   _ -> a ++ " || " ++ b)
+                                                  ""
+                                                  (map (\x -> "x == c" ++ (show $ cm M.! x)) (Set.toList colors))
+                                        in case res of
+                                             "" -> "true"
+                                             _ -> res
                                    else let ColorSet colors = getColorSet net (outChans !! i)
                                             cm = colorMap net
-                                        in foldr (\a b -> case b of
-                                                            "" -> a ++ b
-                                                            _ -> a ++ " || " ++ b) "" (map (\x -> "x == c" ++ (show $ cm M.! x)) (Set.toList colors))
+                                            res = foldr (\a b -> case b of
+                                                                   "" -> a ++ b
+                                                                   _ -> a ++ " || " ++ b)
+                                                  ""
+                                                  (map (\x -> "x == c" ++ (show $ cm M.! x)) (Set.toList colors))
+                                        in case res of
+                                             "" -> "true"
+                                             _ -> res
 
 {-
 map def_frk0: C;
@@ -111,11 +240,11 @@ makeActs net = let compIDs = getComponentIDs net
         makeActs' c = let c' = getComponent net c
                           n = compName net c False
                       in case c' of
-                           (Source _ _) -> [n ++ "_idle",
-                                            n ++ "_inject:C"] ++
+                           (Source _ _) -> [--n ++ "_idle",
+                                            n ++ "_inject:Bool # C"] ++
                                            outActs (n ++ "_o0")
-                           (Sink _) -> [n ++ "_reject",
-                                        n ++ "_consume:C"] ++
+                           (Sink _) -> [--n ++ "_reject",
+                                        n ++ "_consume:Bool # C"] ++
                                        inActs (n ++ "_i0")
                            (Function _ _ _) -> inActs (n ++ "_i0") ++
                                                outActs (n ++ "_o0")
@@ -177,11 +306,11 @@ ioActs' pref1 pref2 = [pref1 ++ "_" ++ pref2 ++ "_io"]
 srcTemplate :: ColoredNetwork -> ComponentID -> String
 srcTemplate net c = "proc " ++ (compName net c True) ++ "(s:S) = \n" ++
                     "\t((s == free)\n" ++
-                    "\t\t-> ((" ++ (compName net c False) ++ "_idle|" ++ (compName net c False) ++ "_o0_out(false,false,def) + " ++ (compName net c False) ++ "_idle|" ++ (compName net c False) ++ "_o0_out(false,true,def))." ++ (compName net c True) ++ "(free)\n" ++
-                    "\t\t   + sum x:C.((" ++ (getCond net c False 0) ++ ") -> (" ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free) + " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))))))\n" ++
+                    "\t\t-> ((" ++ (compName net c False) ++ "_inject(false,def)|" ++ (compName net c False) ++ "_o0_out(false,false,def) + " ++ (compName net c False) ++ "_inject(false,def)|" ++ (compName net c False) ++ "_o0_out(false,true,def))." ++ (compName net c True) ++ "(free)\n" ++
+                    "\t\t   + sum x:C.((" ++ (getCond net c False 0) ++ ") -> (" ++ (compName net c False) ++ "_inject(true,x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free) + " ++ (compName net c False) ++ "_inject(true,x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))))))\n" ++
                     "\t+ sum x:C.((s == next(x))\n" ++
-                    "\t\t-> (" ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))\n" ++
-                    "\t\t   + " ++ (compName net c False) ++ "_inject(x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free)));"
+                    "\t\t-> (" ++ (compName net c False) ++ "_inject(true,x)|" ++ (compName net c False) ++ "_o0_out(true,false,x)." ++ (compName net c True) ++ "(next(x))\n" ++
+                    "\t\t   + " ++ (compName net c False) ++ "_inject(true,x)|" ++ (compName net c False) ++ "_o0_out(true,true,x)." ++ (compName net c True) ++ "(free)));"
 
 
 queueTemplate :: ColoredNetwork -> ComponentID -> String
@@ -210,9 +339,9 @@ queueTemplate net c = case getComponent net c of
 
 snkTemplate :: ColoredNetwork -> ComponentID -> String
 snkTemplate net c = "proc " ++ (compName net c True) ++ " =\n" ++
-                    "\tsum x:C.(" ++ (compName net c False) ++ "_reject|" ++ (compName net c False) ++ "_i0_in(false,false,x) + " ++ (compName net c False) ++ "_reject|" ++ (compName net c False) ++ "_i0_in(true,false,x))." ++ (compName net c True) ++ "\n" ++
-                    "\t\t+ sum x:C.((" ++ getCond net c True 0 ++ ") -> " ++ (compName net c False) ++ "_consume(x)|" ++ (compName net c False) ++ "_i0_in(false,true,x)." ++ (compName net c True) ++ ")\n" ++
-                    "\t\t+ sum x:C.((" ++ getCond net c True 0 ++ ") -> " ++  (compName net c False) ++ "_consume(x)|" ++ (compName net c False) ++ "_i0_in(true,true,x)." ++ (compName net c True) ++ ");"
+                    "\tsum x:C.(" ++ (compName net c False) ++ "_consume(false,def)|" ++ (compName net c False) ++ "_i0_in(false,false,x) + " ++ (compName net c False) ++ "_consume(false,def)|" ++ (compName net c False) ++ "_i0_in(true,false,x))." ++ (compName net c True) ++ "\n" ++
+                    "\t\t+ sum x:C.((" ++ getCond net c True 0 ++ ") -> " ++ (compName net c False) ++ "_consume(true,x)|" ++ (compName net c False) ++ "_i0_in(false,true,x)." ++ (compName net c True) ++ ")\n" ++
+                    "\t\t+ sum x:C.((" ++ getCond net c True 0 ++ ") -> " ++  (compName net c False) ++ "_consume(true,x)|" ++ (compName net c False) ++ "_i0_in(true,true,x)." ++ (compName net c True) ++ ");"
 
 frkTemplate :: ColoredNetwork -> ComponentID -> String
 frkTemplate net c = "proc " ++ (compName net c True) ++ " =\n" ++
@@ -529,8 +658,8 @@ lbCond :: ([(Bool,Bool)],[(Bool,Bool)]) -> Bool
 lbCond cs = let i = (head . fst) cs
                 o = snd cs
                 cond1 = snd i == ((foldr (\a b -> a || b) False $ map (\x -> snd x) o))
-                cond2 = foldr (\a b -> a && b) True $ map (\x -> fst x == fst i) o
-                cond3 = countTransfers o <= 1
+                cond2 = countIrdys o <= 1
+                cond3 = if (countTransfers [i] > 0) then (countTransfers o > 0) else True 
             in cond1 && cond2 && cond3
 
 lbIO :: ColoredNetwork -> ComponentID -> [([(Bool,Bool)],[(Bool,Bool)])]
