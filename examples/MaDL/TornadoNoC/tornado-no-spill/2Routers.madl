@@ -1,0 +1,11 @@
+const token;
+
+struct pkt {
+	spilled : [0:0];
+    dst : [0:0];
+};
+
+uses Router;
+//  [R0=R1]
+chan R0_OUT_N, R0_OUT_E, R0_OUT_S, R0_OUT_W := Router(0, 2, 2, R0_OUT_N, R1_OUT_W, R0_OUT_S, R0_OUT_W);
+chan R1_OUT_N, R1_OUT_E, R1_OUT_S, R1_OUT_W := Router(1, 2, 2, R1_OUT_N, R1_OUT_E, R1_OUT_S, R0_OUT_E);

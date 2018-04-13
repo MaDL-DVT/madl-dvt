@@ -1,0 +1,25 @@
+param int NODE_ID = 0;
+param int ROW_WIDTH = 1;
+param int direction = 0;
+
+uses Register;
+macro RingStop(int NODE_ID, int ROW_WIDTH, int direction, chan in__OUT, chan inject__OUT) => chan out, chan eject { 
+    // Continue if not at the right location, and should not change to Y direction.
+    pred sw_p (p: pkt) { 
+        p.dst == NODE_ID || (direction == 0 && p.dst % ROW_WIDTH == NODE_ID % ROW_WIDTH)
+        //p.dst == NODE_ID
+    }; 
+
+    // Switch incoming trafic
+    chan sw_EJECT, sw_CONTINUE := Switch(in__OUT, sw_p, otherwise);
+    chan loadBalancer__OUTA, loadBalancer__OUTB := LoadBalancer(sw_EJECT);
+
+    //chan loadBalance_queue := Queue(1, loadBalancer__OUTA)[loadBalancerOUTACycleBreak];
+    chan lb_sw_merge := Merge(Cut(loadBalancer__OUTA), sw_CONTINUE);
+
+    chan gq_out := GuardQueue(2, lb_sw_merge, inject__OUT)[GQ_RingBuffer];
+
+    let out := Register(gq_out);
+
+    let eject := Queue(2, loadBalancer__OUTB)[IntermediateBuffer];
+ }; 

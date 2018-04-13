@@ -1,0 +1,42 @@
+uses RingStop;
+uses FilteredSource;
+
+macro Router(int NODE_ID, int RING_WIDTH, int NUM_ROUTERS, chan in_N, chan in_E, chan in_S, chan in_W) => chan out_N, chan out_E, chan out_S, chan out_W {
+	// Predicates
+	pred atDestination(p: pkt) { p.dst == NODE_ID }; // Is packet at destination
+	pred onVRing(p: pkt) { p.dst % RING_WIDTH == NODE_ID % RING_WIDTH }; // Should packet travel on the horizontal or vertical ring
+	pred destLarger2(p: pkt) { p.dst % RING_WIDTH > NODE_ID % RING_WIDTH }; // Is the packet's destination smaller or larger than the current node
+	pred destLarger(p: pkt) { p.dst > NODE_ID }; // Is the packet's destination smaller or larger than the current node
+
+	chan nic_IN := FilteredSource(NODE_ID, NUM_ROUTERS)[NIC_IN];
+	chan nic_IN_V, nic_IN_H := Switch(nic_IN, onVRing, otherwise);
+	chan nic_IN_E, nic_IN_W := Switch(nic_IN_H, destLarger2, otherwise);
+
+	chan RS_W_OUT, RS_W_EJECT := RingStop(NODE_ID, RING_WIDTH, 0, in_E, nic_IN_W)[RS_W];
+	chan RS_E_OUT, RS_E_EJECT := RingStop(NODE_ID, RING_WIDTH, 0, in_W, nic_IN_E)[RS_E];
+
+	let out_W := Vars(RS_W_OUT);
+	let out_E := Vars(RS_E_OUT);
+
+	// IRI {
+	chan intermediatBuffer_W := Queue(1, RS_W_EJECT);
+	chan intermediatBuffer_E := Queue(1, RS_E_EJECT);
+
+	chan nic_OUT_W, H_to_V_W := Switch(intermediatBuffer_W, atDestination, otherwise);
+	chan nic_OUT_E, H_to_V_E := Switch(intermediatBuffer_E, atDestination, otherwise);
+
+	chan to_V_Ring := Merge(Merge(nic_IN_V, H_to_V_W), H_to_V_E);
+	chan IRI_OUT_S, IRI_OUT_N := Switch(to_V_Ring, destLarger, otherwise);
+	// } End of IRI
+
+	chan RS_N_OUT, RS_N_EJECT := RingStop(NODE_ID, RING_WIDTH, 1, in_S, IRI_OUT_N)[RS_N];
+	chan RS_S_OUT, RS_S_EJECT := RingStop(NODE_ID, RING_WIDTH, 1, in_N, IRI_OUT_S)[RS_S];
+
+	let out_N := Vars(RS_N_OUT);
+	let out_S := Vars(RS_S_OUT);
+
+	Sink(nic_OUT_W);
+	Sink(nic_OUT_E);
+	Sink(RS_N_EJECT);
+	Sink(RS_S_EJECT);
+};

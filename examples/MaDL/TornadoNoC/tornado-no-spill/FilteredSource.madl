@@ -1,0 +1,12 @@
+const token;
+
+macro FilteredSource(int filter, int max) => chan source__OUT {
+    pred filter_pred(p: pkt) {
+        p.dst == filter || p.dst >= max
+    };
+
+    chan src__OUT := Source(pkt);
+    chan switch__OUTA, switch__OUTB := Switch(src__OUT, filter_pred, otherwise);
+    let source__OUT := Vars(switch__OUTB);
+    Sink(switch__OUTA);
+};

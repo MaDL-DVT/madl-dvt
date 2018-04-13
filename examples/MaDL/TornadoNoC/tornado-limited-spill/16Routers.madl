@@ -1,0 +1,35 @@
+const token;
+
+struct pkt {
+    spilled : [0:0];
+    dst : [3:0];
+};
+
+uses Router;
+//  [R0==R1==R2==R3 ]
+//	 ||  ||  ||  ||
+//	[R4==R5==R6==R7 ]
+//	 ||  ||  ||  ||
+//	[R8==R9==R10=R11]
+//	 ||  ||  ||  ||
+//	[R12=R13=R14=R15]
+
+chan R0_OUT_N, R0_OUT_E, R0_OUT_S, R0_OUT_W := Router(0, 4, 16, R0_OUT_N, R1_OUT_W, R4_OUT_N, R0_OUT_W);
+chan R1_OUT_N, R1_OUT_E, R1_OUT_S, R1_OUT_W := Router(1, 4, 16, R1_OUT_N, R2_OUT_W, R5_OUT_N, R0_OUT_E);
+chan R2_OUT_N, R2_OUT_E, R2_OUT_S, R2_OUT_W := Router(2, 4, 16, R2_OUT_N, R3_OUT_W, R6_OUT_N, R1_OUT_E);
+chan R3_OUT_N, R3_OUT_E, R3_OUT_S, R3_OUT_W := Router(3, 4, 16, R3_OUT_N, R3_OUT_E, R7_OUT_N, R2_OUT_E);
+
+chan R4_OUT_N, R4_OUT_E, R4_OUT_S, R4_OUT_W := Router(4, 4, 16, R0_OUT_S, R5_OUT_W, R8_OUT_N, R4_OUT_W);
+chan R5_OUT_N, R5_OUT_E, R5_OUT_S, R5_OUT_W := Router(5, 4, 16, R1_OUT_S, R6_OUT_W, R9_OUT_N, R4_OUT_E);
+chan R6_OUT_N, R6_OUT_E, R6_OUT_S, R6_OUT_W := Router(6, 4, 16, R2_OUT_S, R7_OUT_W, R10_OUT_N, R5_OUT_E);
+chan R7_OUT_N, R7_OUT_E, R7_OUT_S, R7_OUT_W := Router(7, 4, 16, R3_OUT_S, R7_OUT_E, R11_OUT_N, R6_OUT_E);
+
+chan R8_OUT_N, R8_OUT_E, R8_OUT_S, R8_OUT_W := Router(8, 4, 16, R4_OUT_S, R9_OUT_W, R12_OUT_N, R8_OUT_W);
+chan R9_OUT_N, R9_OUT_E, R9_OUT_S, R9_OUT_W := Router(9, 4, 16, R5_OUT_S, R10_OUT_W, R13_OUT_N, R8_OUT_E);
+chan R10_OUT_N, R10_OUT_E, R10_OUT_S, R10_OUT_W := Router(10, 4, 16, R6_OUT_S, R11_OUT_W, R14_OUT_N, R9_OUT_E);
+chan R11_OUT_N, R11_OUT_E, R11_OUT_S, R11_OUT_W := Router(11, 4, 16, R7_OUT_S, R11_OUT_E, R15_OUT_N, R10_OUT_E);
+
+chan R12_OUT_N, R12_OUT_E, R12_OUT_S, R12_OUT_W := Router(12, 4, 16, R8_OUT_S, R13_OUT_W, R12_OUT_S, R12_OUT_W);
+chan R13_OUT_N, R13_OUT_E, R13_OUT_S, R13_OUT_W := Router(13, 4, 16, R9_OUT_S, R14_OUT_W, R13_OUT_S, R12_OUT_E);
+chan R14_OUT_N, R14_OUT_E, R14_OUT_S, R14_OUT_W := Router(14, 4, 16, R10_OUT_S, R15_OUT_W, R14_OUT_S, R13_OUT_E);
+chan R15_OUT_N, R15_OUT_E, R15_OUT_S, R15_OUT_W := Router(15, 4, 16, R11_OUT_S, R15_OUT_E, R15_OUT_S, R14_OUT_E);

@@ -1,0 +1,3 @@
+macro Register(chan in) => chan out {
+	let out := Queue(1, in);
+};

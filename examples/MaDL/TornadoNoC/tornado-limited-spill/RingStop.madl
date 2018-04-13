@@ -1,0 +1,48 @@
+param int NODE_ID = 0;
+param int ROW_WIDTH = 1;
+param int direction = 0;
+
+uses Register;
+macro RingStop(int NODE_ID, int ROW_WIDTH, int direction, chan in__OUT, chan inject__OUT) => chan out, chan eject { 
+    // Continue if not at the right location, and should not change to Y direction.
+    pred sw_p (p: pkt) { 
+        p.dst == NODE_ID || (direction == 0 && p.dst % ROW_WIDTH == NODE_ID % ROW_WIDTH)
+        //p.dst == NODE_ID
+    };
+
+    pred is_spilled(p: pkt) {
+        p.spilled == 1
+    };
+
+    function spillPacket(p: pkt): pkt {
+        spilled = 1;
+        dst = p.dst;
+    };
+
+    function notSpilled(p: pkt): pkt {
+        spilled = 0;
+        dst = p.dst;
+    };
+
+    // Switch incoming trafic
+    chan sw_EJECT, sw_CONTINUE := Switch(in__OUT, sw_p, otherwise);
+
+    // Check if spilled
+    chan sw_spilled, sw_not_spilled := Switch(sw_EJECT, is_spilled, otherwise);
+
+    // Decide to spill non-spilled packet
+    chan loadbalancer_spill, loadbalancer_eject := LoadBalancer(sw_not_spilled);
+
+    chan eject_merge := Merge(sw_spilled, Cut(loadbalancer_eject));
+
+    chan spilled_packet := Function(spillPacket, Cut(loadbalancer_spill));
+
+    chan lb_sw_merge := Merge(spilled_packet, sw_CONTINUE);
+
+    chan inj_unspill := Function(notSpilled, inject__OUT);
+    chan gq_out := GuardQueue(2, lb_sw_merge, inj_unspill)[GQ_RingBuffer];
+
+    let out := Register(gq_out);
+
+    let eject := Queue(2, eject_merge)[IntermediateBuffer];
+ }; 

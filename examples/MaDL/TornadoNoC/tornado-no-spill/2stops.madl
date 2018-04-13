@@ -1,0 +1,15 @@
+const token;
+
+struct pkt {
+	spilled : [0:0];
+    dst : [0:0];
+};
+
+uses RingStop;
+uses FilteredSource;
+chan src1_OUT := FilteredSource(0, 2)[FS0];
+chan src2_OUT := FilteredSource(1, 2)[FS1];
+chan RS0_OUT, RS0_EJECT := RingStop(0, 2, 0, RS1_OUT, src1_OUT)[R0];
+chan RS1_OUT, RS1_EJECT := RingStop(1, 2, 0, RS0_OUT, src2_OUT)[R1];
+Sink(RS0_EJECT);
+Sink(RS1_EJECT);
