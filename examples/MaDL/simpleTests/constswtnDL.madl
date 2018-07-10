@@ -1,0 +1,12 @@
+// Testing interaction between switch and const
+// deadlock!
+
+const type1;
+const type2;
+
+chan inject := Queue(2,Merge(Source(type1),Source(type2)));
+
+chan out1,out2 := Switch(inject,type1,type2);
+
+Sink(out1);
+DeadSink(out2);

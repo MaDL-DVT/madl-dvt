@@ -1,0 +1,13 @@
+// Playing with data specification
+
+struct pkt {
+	header : enum {req;rsp;};
+	payload : [7:0]
+};
+
+chan src := Queue(2,Source(pkt));
+
+chan up,down := Switch(src, pkt.payload >= 0,otherwise); // pb with otherwise
+
+Sink(up);
+DeadSink(down);

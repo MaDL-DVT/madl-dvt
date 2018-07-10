@@ -1,0 +1,9 @@
+// Test Network 0003
+// 2 sources, 1 merge, 3 queues, 1 sink
+
+const pkt;
+
+chan src_a := Source(pkt);
+chan src_b := Source(pkt);
+
+Sink(Queue(2,Merge(Queue(2,src_a),Queue(2,src_b))));

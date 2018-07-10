@@ -1,0 +1,26 @@
+// testing FSMs with two output channels
+
+
+const pkt;
+
+process P0 () => chan out1, chan out2 {
+
+	state s0() {
+		trans {
+			pkt -> out1;
+			next s1();
+		};
+	};
+	state s1() {
+		trans {
+			pkt -> out2;
+			next s0();
+		};
+	};
+
+};
+
+
+chan o1,o2 := P0();
+
+Sink(Merge(o1,o2));

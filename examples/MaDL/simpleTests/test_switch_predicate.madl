@@ -1,0 +1,18 @@
+
+
+enum pkt {red;blue;};
+const red;
+const blue;
+
+pred red_select (p: pkt) {
+  p == red
+};
+
+
+pred blue_select (p: pkt) {
+  p == blue
+};
+
+chan up, down := Switch(Source(pkt), red_select, blue_select);
+Sink(up);
+Sink(down);

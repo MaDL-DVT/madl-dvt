@@ -1,0 +1,49 @@
+sort T = struct red;
+     S = struct free | next_t;
+
+sort TXT = T;
+
+sort FTXT = struct left | right;
+
+sort Color = struct color (text: TXT, valOrStruct: ValueOrVstruct);
+
+sort ValueOrVstruct = struct value(x: Int) ? isVal | vstruct(v: List(FTextValOrCol)) ? isVstruct;
+
+sort FTextValOrCol = struct ftextOrValOrCol(ftext: FTXT, valOrCol: ValOrColor);
+
+sort ValOrColor = struct value(v: Int) ? isVal | col(c: Color) ? isCol;
+
+act  idle;
+     inject:Color;
+     reject;
+     consume:Color;
+
+proc P(s: S, q: List(Color)) =
+       sum x:Color.(!(#q < 2) && !(#q > 0) && (s == free) && (x == color(red,vstruct([])))) 
+       	    ->   ((idle|reject + idle|consume(x)).P(s,q)
+	       + (inject(x)|reject + inject(x)|consume(x)).P(next_t,q))
+     + sum x:Color.(!(#q < 2) && !(#q > 0) && !(s == free) && (x == color(red,vstruct([]))))
+       	    ->   (inject(x)|reject + inject(x)|consume(x)).P(next_t,q)
+     + sum x:Color.((#q < 2) && !(#q > 0) && (s == free) && (x == color(red,vstruct([]))))
+       	    ->   ((idle|reject + idle|consume(x)).P(s,q) + (inject(x)|reject.P(s,[x] ++ q)
+	       + inject(x)|consume(x).P(s,[x] ++ q)))
+     + sum x:Color.((#q < 2) && !(#q > 0) && !(s == free) && (x == color(red,vstruct([])))) 
+       	    -> (inject(x)|reject.P(free,[x]++q) + inject(x)|consume(x).P(free,[x]++q))
+     + sum x:Color.(!(#q < 2) && (#q > 0) && (s == free) && (x == color(red,vstruct([]))))
+       	    ->   (idle|reject.P(s,q)
+	       + idle|consume(x).P(s,rtail(q))
+	       + inject(x)|reject.P(next_t,q)
+	       + inject(x)|consume(x).P(next_t,rtail(q)))
+     + sum x:Color.(!(#q < 2) && (#q > 0) && !(s == free) && (x == color(red,vstruct([])))) 
+       	    ->   (inject(x)|reject.P(next_t,q)
+	       + inject(x)|consume(x).P(next_t,rtail(q)))
+     + sum x:Color.((#q < 2) && (#q > 0) && (s == free) && (x == color(red,vstruct([])))) %(1,1)
+       	    ->   (idle|reject.P(s,q)
+	       + idle|consume(x).P(s,rtail(q))
+	       + inject(x)|reject.P(s,[x]++q)
+	       + inject(x)|consume(x).P(s,[x]++rtail(q)))
+     + sum x:Color.((#q < 2) && (#q > 0) && !(s == free) && (x == color(red,vstruct([]))))
+       	    ->   (inject(x)|reject.P(free,[x]++q)
+	       + inject(x)|consume(x).P(free,[x]++rtail(q)));
+
+init P(free, []);

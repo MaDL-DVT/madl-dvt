@@ -1,0 +1,7 @@
+const red;
+
+chan s1_m := Source(red);
+chan s2_m := Source(red);
+chan m_q := Merge(s1_m,s2_m);
+chan q_s := Queue(2,m_q);
+Sink(q_s);

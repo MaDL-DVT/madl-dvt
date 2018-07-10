@@ -1,0 +1,31 @@
+// Illustrate issue #174
+// Fatal 669 in Parser.MadlTypeChecker:
+//   remote_req was found in context multiple times: [DataType (TypeVariable "remote_req"),DataAttribute ["remote_req"]]
+
+param int ID_SIZE = 1;
+
+const local_req;
+const local_rsp;
+const remote_req;
+const remote_rsp;
+const empty_t;
+const origin_t;
+
+struct cfg_t {
+    src : [ID_SIZE - 1: 0];
+    tgt : [ID_SIZE - 1: 0];
+
+    type : union {
+        local_req : empty_t;
+        local_rsp : empty_t;
+        remote_req : origin_t;
+        remote_rsp : origin_t;
+    };
+};
+
+chan rsp_i := Source(cfg_t);
+bus<4> b := Switch(rsp_i, cfg_t.type == remote_req, cfg_t.type == local_req, cfg_t.type == remote_rsp, cfg_t.type == local_rsp);
+Sink(b[0]);
+Sink(b[1]);
+Sink(b[2]);
+Sink(b[3]);

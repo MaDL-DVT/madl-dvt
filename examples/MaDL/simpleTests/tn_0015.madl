@@ -1,0 +1,17 @@
+// test network 0005
+// test that naturals are never negative.
+// There is a deadsink but no packet ever reaches it. 
+// --smt-only finds no deadlock
+struct pkt{
+    header : enum {req;rsp;};
+	payload: [3:0];
+};
+
+chan src := Source(pkt);
+
+// now we switch such that one output is never selected
+chan up,down := Switch(src,pkt.payload>=0,otherwise);
+
+// We "deadsink" the never selected output. 
+Sink(Queue(2,up)); // no packet ever reaches this queue.
+DeadSink(Queue(2,down));

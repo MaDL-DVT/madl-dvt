@@ -1,0 +1,94 @@
+// Testing writing processes with internal variable.
+// P0 sends three tokens
+// P1 waits to have three tokens before sending them back.
+
+const tok;
+
+struct val {
+  cnt : [1:0]; // counter from 0 to 3
+};
+
+function InitCnt () : val {
+  cnt = 1;
+};
+
+function IncCnt (p: val) : val {
+  cnt = p.cnt + 1;
+};
+
+function DecCnt (p: val) : val {
+  cnt = p.cnt - 1;
+};
+
+process P0 (chan input) => chan output {
+  state s0 () {
+    trans{
+      // send token to the other process
+      tok -> output;
+      next s1(InitCnt());
+    };
+  };
+
+  state s1 (val TCNT) {
+    trans {
+      tok -> output;
+	    guard TCNT.cnt < 3;
+	    next s1(IncCnt(TCNT));
+    };
+    trans {
+      tok d <- input;
+	    guard TCNT.cnt == 3;
+	    next s2(DecCnt(TCNT));
+    };
+  };
+
+  state s2 (val TCNT) {
+    trans  {
+      tok d <- input;
+	    guard TCNT.cnt > 1;
+	    next s2(DecCnt(TCNT));
+    };
+    trans {
+      tok d <- input;
+      guard TCNT.cnt == 1;
+	    next s0();
+    };
+  };
+
+};
+
+process P1 (chan input) => chan output {
+  state s0 (){
+    trans {
+      tok d <- input;
+      next s1(InitCnt());
+    };    
+  };
+  state s1 (val TCNT) {
+    trans {
+      tok d <- input;
+      guard TCNT.cnt < 3;
+      next s1 (IncCnt(TCNT));
+    };
+    trans {
+      tok -> output;
+      guard TCNT.cnt == 3;
+      next s2 (DecCnt(TCNT));
+    };
+  };
+  state s2 (val TCNT) {
+    trans {
+      tok -> output;
+      guard TCNT.cnt > 1;
+      next s2(DecCnt(TCNT));
+    };
+    trans {
+      tok -> output;
+      guard TCNT.cnt == 1;
+      next s0 ();
+    };
+  };
+};
+
+chan P0_out := Queue(3, P0(P1_out));
+chan P1_out := Queue(3, P1(P0_out));

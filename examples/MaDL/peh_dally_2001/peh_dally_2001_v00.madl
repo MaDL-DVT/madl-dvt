@@ -1,0 +1,59 @@
+// Model of a canonical router architecture.
+// Based on
+// "A delay model for router micro-architectures"
+// by Peh and Dally
+// IEEE Micro 2001
+// Model based on figure 2 on page 28
+
+
+param int p = 5;
+// number of physical channels.
+// Default is 5, 2D-mesh router: Local, West, East, North, South
+
+param int w = 4;
+// channel width (in number of bits)
+
+// Definition of the packet structure
+struct Packet {
+  head : [0:0]; // bit indicates a header flit
+  tail : [0:0]; // bit indicates a tail flit      
+};
+
+
+// Definition of the possible states of a channel
+enum PCstate {init;decode;routing;arbitration;xbar;};
+const init;
+const decode;
+const routing;
+const arbitration;
+const xbar;
+
+
+
+// Input Controller
+// 
+macro inputController () => {
+
+};
+
+
+struct SwitchArbiterState {
+// every output port has the following states:
+// granted to Local Input - 1
+// granted to West Input  - 2
+// granted to East Input  - 3
+// granted to North Input - 4
+// granted to South Input - 5
+// Free - 0
+    LocalOut : [3:0]; 
+    WestOut  : [3:0]; 
+    EastOut  : [3:0];
+    NorthOut : [3:0];
+    SouthOut : [3:0];        
+};
+
+// Switch (global) Arbiter
+macro switchArbiter () => {
+
+
+}:

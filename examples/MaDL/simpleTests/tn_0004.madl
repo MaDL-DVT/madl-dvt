@@ -1,0 +1,17 @@
+// Test Network 0004
+// 2 sources, 1 match, 1 sink, 1 deadsink
+
+
+const pkt;
+
+chan a := Source(pkt);
+chan b := Source(pkt);
+
+pred f (a: pkt, b:pkt) {
+     true
+};
+
+chan c,d := Match(f,a,b);
+
+Sink(c);
+DeadSink(d);

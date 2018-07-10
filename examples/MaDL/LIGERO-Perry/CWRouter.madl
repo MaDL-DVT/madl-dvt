@@ -1,0 +1,27 @@
+uses RingStop;
+uses InSwitch;
+macro CWRouter(int NODE_X, int NODE_Y, int NUM_X, int NUM_Y, int ESCAPE, chan IN_N, chan IN_E, chan IN_S, chan IN_W) => chan OUT_N, chan OUT_E, chan OUT_S, chan OUT_W {
+	// Ring structure
+	chan rs_n_out, loop_e, rs_n_cons := RingStop(NODE_X, NODE_Y, 0, NUM_X, NUM_Y, ESCAPE, IN_S, increment_loop_n, inj_n)[RS_N];
+	chan rs_e_out, loop_s, rs_e_cons := RingStop(NODE_X, NODE_Y, 1, NUM_X, NUM_Y, ESCAPE, IN_W, loop_e, inj_e)[RS_E];
+	chan rs_s_out, loop_w, rs_s_cons := RingStop(NODE_X, NODE_Y, 2, NUM_X, NUM_Y, ESCAPE, IN_N, loop_s, inj_s)[RS_S];
+	chan rs_w_out, loop_n, rs_w_cons := RingStop(NODE_X, NODE_Y, 3, NUM_X, NUM_Y, ESCAPE, IN_E, loop_w, inj_w)[RS_W];
+	let OUT_N := Vars(rs_n_out);
+	let OUT_E := Vars(rs_e_out);
+	let OUT_S := Vars(rs_s_out);
+	let OUT_W := Vars(rs_w_out);
+
+	chan inj_n, inj_e, inj_s, inj_w := InSwitch(NODE_X, NODE_Y, NUM_X, NUM_Y);
+
+	function incrementCycle(p: package): package {
+		dst_x = p.dst_x;
+		dst_y = p.dst_y;
+		cycles = (p.cycles + 1)%8;
+	};
+
+	chan increment_loop_n := Function(incrementCycle, loop_n);
+
+	// Consume package
+	chan cons := Merge(rs_n_cons, Merge(rs_e_cons, Merge(rs_s_cons, rs_w_cons)));
+	Sink(cons);
+};

@@ -1,0 +1,16 @@
+// Test Network 0006
+// 3 sources, 1 multi-match, 1 sink 
+// Deadlock !
+
+const pkt;
+chan a := Source(pkt);
+chan b := Source(pkt);
+chan c := Source(pkt);
+
+pred f (d: pkt, c:pkt) {
+     true
+};
+
+chan o := MultiMatch(f,c,a,b);
+
+Sink(o);

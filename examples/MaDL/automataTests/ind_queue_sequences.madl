@@ -1,0 +1,5 @@
+const tok;
+
+Sink(Queue(2,Queue(2,Source(tok))));
+
+Sink(Queue(2,Queue(2,Source(tok))));

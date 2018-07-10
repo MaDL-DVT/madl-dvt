@@ -1,0 +1,147 @@
+// Modelling a shorest path Spidergon
+// Just to play with MaDL and re-obtain some previous results
+
+param int QSIZE = 2;
+param int NUM_NODE = 1; // number of nodes in a quadrant
+param int NUM_MOVES = 2; // number of moves = log2(NUM_NODE)+1
+
+struct SPRouter8pkt {
+// route for an 8 node Spidergon
+  numACR: [NUM_MOVES-1:0]; // maximum 1 across move
+  numCCW: [NUM_MOVES-1:0]; // maximum 2 counter-clockwise moves
+  numCW:  [NUM_MOVES-1:0]; // maximum 2 clockwise moves
+};
+
+function decACR (p: SPRouter8pkt) : SPRouter8pkt {
+    numACR - 1
+};
+
+function decCW (p: SPRouter8pkt) : SPRouter8pkt {
+    numCW - 1
+};
+
+function decCCW (p: SPRouter8pkt) : SPRouter8pkt {
+    numCCW - 1
+};
+
+macro SPRouter8Logic (chan inPort) => bus<4> outPorts {
+// Routing logic for Spidergon
+// We implement across first
+// outputs
+// outPorts<0>: local out
+// outPorts<1>: across out
+// outPorts<2>: cw out
+// outPorts<3>: ccw out
+
+chan notAtDest;
+// the following switch should have a more complex condition
+let outPorts[0], notAtDest := Switch(inPort,SPRouter8pkt.numACR==0, otherwise);
+
+chan noACR, goACR := Switch(notAtDest, SPRouter8pkt.numACR==0,otherwise);
+
+let outPorts[1] := Function(decACR,goACR);
+
+chan goCCW, goCW := Switch(noACR, SPRouter8pkt.numCW==0, otherwise);
+
+let outPorts[2] := Function(decCW, goCW);
+
+let outPorts[3] := Function(decCCW, goCCW);
+
+}; // end SPRouter8Logic
+
+
+macro Merge4 (bus<4> inPorts) => chan o {
+      let o:= Merge(inPorts[3], Merge(inPorts[2], Merge(inPorts[0],inPorts[1])));
+};
+
+macro SPRouter8 (int nodeID, bus<4> inPorts) => bus<4> outPorts {
+// inputs
+// inPorts[0]: from local in
+// inPorts[1]: from across in
+// inPorts[2]: from cw neighbour in
+// inPorts[3]: from ccw neighbour in
+// outputs
+// outPorts[0]: local out
+// outPorts[1]: to across out
+// outPorts[2]: to cw out
+// outPorts[3]: to ccw out
+
+// Router has output queues
+// Each input is routed independently
+
+
+bus<4> routedINLocal,routedINACR, routedINCW,routedINCCW;
+
+// we instantiate the routing logic for each input
+let routedINLocal := SPRouter8Logic(inPorts[0]);  
+let routedINACR   := SPRouter8Logic(inPorts[1]);
+let routedINCW    := SPRouter8Logic(inPorts[2]);
+let routedINCCW   := SPRouter8Logic(inPorts[3]);
+
+// we then merge all the outputs
+
+for (int i = 0;i<4;i++){
+    let outPorts[i] :=
+    	Queue(QSIZE,Merge4(routedINLocal[i],routedINACR[i],routedINCW[i],routedINCCW[i]));
+};
+
+}; // end SPRouter8
+
+// we now create the 4 node Spidergon
+
+// we create NUM_NODE * 4 sources
+bus<NUM_NODE*4> srcs;
+for (int i = 0; i<4*NUM_NODE;i++) {
+    let srcs[i] := Source(SPRouter8pkt);
+};
+
+bus<4*NUM_NODE*4> allOUTS; // bus with all output channels for the entire network
+
+// we generate the border cases
+
+let allOUTS[0], allOUTS[1], allOUTS[2], allOUTS[3]
+   := SPRouter8(0,srcs[0]
+		 ,allOUTS[9] // ACR in // 4*2*NUM_NODE+1
+		 ,allOUTS[14] // CW IN //4*4*NUM_NODE-4+2
+		 ,allOUTS[7]); // CCW in // 4*1+3
+
+//let allOUTS[4*4*NUM_NODE - 4], allOUTS[4*4*NUM_NODE - 4 +1], allOUTS[4*4*NUM_NODE - 4+2], allOUTS[4*4*NUM_NODE - 4+3]
+let allOUTS[12], allOUTS[13], allOUTS[14], allOUTS[15]
+   := SPRouter8(3,srcs[3]
+		 ,allOUTS[5] // ACR in // 4*1+1
+		 ,allOUTS[10] // CW IN // 4*2*NUM_NODE+2
+		 ,allOUTS[3]); // CCW in // 4*0+3
+
+let allOUTS[4], allOUTS[5], allOUTS[6], allOUTS[7]
+   := SPRouter8(1,srcs[1]
+		 ,allOUTS[13] // ACR in 
+		 ,allOUTS[2] // CW IN 
+		 ,allOUTS[11]); // CCW in 
+
+let allOUTS[8], allOUTS[9], allOUTS[10], allOUTS[11]
+   := SPRouter8(2,srcs[2]
+		 ,allOUTS[1] // ACR in 
+		 ,allOUTS[6] // CW IN 
+		 ,allOUTS[15]); // CCW in 
+
+
+Sink(allOUTS[0]);
+Sink(allOUTS[4]);
+Sink(allOUTS[8]);
+Sink(allOUTS[12]);
+
+/*
+for (int i = 1;i<NUM_NODE*4-1;i++) {
+   let allOUTS[4*i], allOUTS[4*i+1], allOUTS[4*i+2], allOUTS[4*i+3]
+   := SPRouter8(i,srcs[i]
+		 ,allOUTS[4*i+2*4*NUM_NODE+1] // ACR in
+		 ,allOUTS[4*i-4+2] // CW IN
+		 ,allOUTS[4*i+4+3]); // CCW in
+};
+*/
+/*
+// we then sink all local outputs
+for (int i = 0;i<NUM_NODE*4;i++) {
+    Sink(allOUTS[4*i]);
+};
+*/

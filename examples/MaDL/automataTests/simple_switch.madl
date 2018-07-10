@@ -1,0 +1,6 @@
+const r;
+
+chan u,d := Switch(Source(r),r,otherwise);
+
+Sink(Queue(2,u));
+Sink(Queue(2,d));

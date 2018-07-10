@@ -1,0 +1,298 @@
+// Fully parametric version of the generic XYRouter with 5 ports
+// Can be used to generate arbitrary sized 2D-mesh. 
+macro XYRouter5P (int xID, int yID, bus<5> ins) => bus<5> outs{
+// Router with input buffers
+// ins[0] : local in
+// ins[1] : west in
+// ins[2] : east in
+// ins[3] : north in
+// ins[4] : south in
+// outs[0] = local
+// outs[1] = West output
+// outs[2] = East output
+// outs[3] = North output
+// outs[4] = South output
+
+    bus<5> routedInLocal;
+    if (WITH_LOCAL_QUEUE == 0) {
+       let routedInLocal  := XYRoutingLogic(xID,yID,ins[0]); 
+       // To match Freek's that has no local queues.
+    }
+    else {
+        let routedInLocal  :=XYRoutingLogic(xID,yID,Queue(QSIZE,ins[0])[local_Q]);
+    };
+
+
+   if (xID == 0) {
+     Sink(ins[1]);
+   }
+   else {
+      bus<5> routedInWest;
+      let routedInWest   := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[1])[westQ]);
+   };
+
+
+   if (xID == XDIM-1) {
+      Sink(ins[2]);
+   }
+   else {
+      bus<5> routedInEast;
+      let routedInEast   := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[2])[eastQ]);
+   };
+
+   if (yID == YDIM-1) {
+      Sink(ins[3]);
+   }
+   else {
+      bus<5> routedInNorth;
+      let routedInNorth  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[3])[northQ]);
+   };
+
+   if (yID == 0) { // no south port
+      Sink(ins[4]);
+   }
+   else {
+      bus<5> routedInSouth;
+      let routedInSouth  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[4]));
+   };
+   
+   for (int i = 0;i<5;i++) {
+     if (yID == 0) {
+        if (xID == 0) {
+	   let outs[i] := Merge(routedInLocal[i],Merge(routedInEast[i],routedInNorth[i]));
+	}
+	else {
+	   if (xID == XDIM - 1) {
+	      let outs[i] := Merge(routedInLocal[i],Merge(routedInWest[i],routedInNorth[i]));
+	   }
+	   else {
+              let outs[i] := Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInEast[i],routedInNorth[i])));
+	   };
+	};
+     }
+     else {
+        if (yID == YDIM - 1) {
+	 if (xID == 0) {
+	    let outs[i] := Merge(routedInLocal[i],Merge(routedInEast[i],routedInSouth[i]));
+	 }
+	 else {
+	    if (xID == XDIM - 1) {
+	       let outs[i] := Merge(routedInLocal[i],Merge(routedInWest[i],routedInSouth[i]));
+	    }
+	    else { 
+	       let outs[i] := Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInEast[i],routedInSouth[i])));
+	    };
+	 };
+	}
+	else {
+	 if (xID == 0) {
+	    let outs[i] := Merge(routedInLocal[i],Merge(routedInEast[i],Merge(routedInNorth[i],routedInSouth[i])));
+	 }
+	 else {
+	    if (xID == XDIM - 1) {
+	       let outs[i] := Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInNorth[i],routedInSouth[i])));
+	    }
+	    else {
+               let outs[i] := Merge5(routedInLocal[i],routedInWest[i],routedInEast[i],routedInNorth[i],routedInSouth[i]);
+	    };
+	 };
+	};
+     };
+   };
+};
+
+
+macro XYRouter5PC (int xID, int yID, bus<5> ins, bus<5> cins) => bus<5> outs, bus<5> couts {
+// Router with input buffers and credit control on all buffers
+// ins[1]  : west in
+// ins[2]  : east in
+// ins[3]  : north in
+// ins[4]  : south in
+// outs[0] : local
+// outs[1] : West output
+// outs[2] : East output
+// outs[3] : North output
+// outs[4] : South output
+// couts[0] : credits on local input buffer
+// couts[1] : credits on west  input buffer
+// couts[2] : credits on east  input buffer
+// couts[3] : credits on north input buffer
+// couts[4] : credits on south input buffer
+// cins[0]  : credits back from local output
+// cins[1]  : credits back from west  output
+// cins[2]  : credits back from east  output
+// cins[3]  : credits back from north output
+// cins[4]  : credits back from south output
+// Input credits are stored in the router, except for local ports.
+// CreditCounters are part of the router.
+
+   bus<5> routedInLocal;
+   chan localToRouting;
+   chan toCountersLocal;   
+   let localToRouting, toCountersLocal := Fork(Queue(QSIZE,ins[0]));
+   let couts[0] := CreditCounter(CSIZE, toCountersLocal);
+   let routedInLocal  := XYRoutingLogic(xID,yID,localToRouting);
+
+
+   if (xID == 0) {
+     Sink(ins[1]);
+     let couts[1] := PatientSource(tok); // here a deadsource would be OK. 
+     // couts[1] is not assigned here. 
+   }
+   else {
+      chan westToRouting;
+      chan toCounters;
+      let westToRouting, toCounters:= Fork(Queue(QSIZE,ins[1]));
+      let couts[1] := CreditCounter(CSIZE,toCounters);
+      bus<5> routedInWest;      
+      let routedInWest   := XYRoutingLogic(xID,yID,westToRouting);
+   };
+
+
+   if (xID == XDIM-1) {
+      Sink(ins[2]);
+      let couts[2] := PatientSource(tok);
+   }
+   else {
+      chan eastToRouting;
+      chan toCountersEast;
+      let eastToRouting, toCountersEast := Fork(Queue(QSIZE,ins[2]));
+      let couts[2] := CreditCounter(CSIZE,toCountersEast);
+      bus<5> routedInEast;
+      let routedInEast   := XYRoutingLogic(xID,yID,eastToRouting);
+   };
+
+   if (yID == YDIM-1) {
+      Sink(ins[3]);
+      let couts[3] := PatientSource(tok);
+   }
+   else {
+      chan northToRouting;
+      chan toCountersNorth;
+      let northToRouting, toCountersNorth := Fork(Queue(QSIZE,ins[3]));
+      let couts[3] := CreditCounter(CSIZE,toCountersNorth);
+      bus<5> routedInNorth;
+      let routedInNorth  := XYRoutingLogic(xID,yID,northToRouting);
+   };
+
+   if (yID == 0) { // no south port
+      Sink(ins[4]);
+      let couts[4] := PatientSource(tok);
+   }
+   else {
+      chan southToRouting;
+      chan toCountersSouth;
+      let southToRouting , toCountersSouth := Fork(Queue(QSIZE,ins[4]));
+      let couts[4] := CreditCounter(CSIZE,toCountersSouth);
+      bus<5> routedInSouth;
+      let routedInSouth  := XYRoutingLogic(xID,yID,southToRouting);
+   };
+   
+   for (int i = 0;i<5;i++) {
+     if (yID == 0) {
+        if (xID == 0) {
+	   if (i==1 || i == 4) {
+	      let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],routedInNorth[i])), cins[i]);
+	   }
+	   else {
+	      if (i==4) {
+	         let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],routedInNorth[i])), cins[i]);
+	      }
+	      else {
+	         let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],routedInNorth[i])), Queue(QSIZE,cins[i]));
+	      };
+	   };
+	}
+	else {
+	   if (xID == XDIM - 1) {
+	      if (i==2 || i==4) { // right south corner, no output in east and south
+	         let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],routedInNorth[i])),cins[i]);
+	      }
+	      else {
+	         if (i==4) { // row with no south outputs
+		    let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],routedInNorth[i])),cins[i]);
+		 }
+		 else {
+	            let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],routedInNorth[i])),Queue(QSIZE,cins[i]));
+		 };
+	      };
+	   }
+	   else {
+	      if (i==4) {
+	         let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInEast[i],routedInNorth[i]))), cins[i]);
+	      }
+	      else {
+                 let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInEast[i],routedInNorth[i]))), Queue(QSIZE,cins[i]));
+	      };
+	   };
+	};
+     }
+     else {
+        if (yID == YDIM - 1) {
+	 if (xID == 0) {
+	    if (i==1 || i==3) {
+	       let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],routedInSouth[i])),cins[i]);
+	    }
+	    else {
+	       if (i==3) {
+	          let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],routedInSouth[i])),cins[i]);
+	       }
+	       else {
+	          let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],routedInSouth[i])),Queue(QSIZE,cins[i]));
+	       };
+	    };
+	 }
+	 else {
+	    if (xID == XDIM - 1) {
+	       if (i==2 || i==3) {
+	          let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],routedInSouth[i])),cins[i]);
+	       }
+	       else {
+	          if (i==3) {
+		     let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],routedInSouth[i])),cins[i]);
+		  }
+		  else {
+	             let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],routedInSouth[i])),Queue(QSIZE,cins[i]));
+		  };
+	       };
+	    }
+	    else {
+	       if (i==3) {
+	          let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInEast[i],routedInSouth[i]))),cins[i]);
+	       }
+	       else {
+	          let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInEast[i],routedInSouth[i]))),Queue(QSIZE,cins[i]));
+	       };
+	    };
+	 };
+	}
+	else {
+	 if (xID == 0) {
+	    if (i==1) {
+	       let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],Merge(routedInNorth[i],routedInSouth[i]))),cins[i]);
+	    }
+	    else {
+	       let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInEast[i],Merge(routedInNorth[i],routedInSouth[i]))),Queue(QSIZE,cins[i]));
+	    };
+	 }
+	 else {
+	    if (xID == XDIM - 1) {
+	       if (i==2) {
+	          let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInNorth[i],routedInSouth[i]))),cins[i]);
+	       }
+	       else {
+	          let outs[i] := CtrlJoin(Merge(routedInLocal[i],Merge(routedInWest[i],Merge(routedInNorth[i],routedInSouth[i]))),Queue(QSIZE,cins[i]));
+	       };
+	    }
+	    else {
+               let outs[i] := CtrlJoin(Merge5(routedInLocal[i],routedInWest[i],routedInEast[i],routedInNorth[i],routedInSouth[i]),Queue(QSIZE,cins[i]));
+	    };
+	 };
+	};
+     };
+   };
+};
+
+
+
+

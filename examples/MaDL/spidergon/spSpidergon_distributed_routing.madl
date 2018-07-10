@@ -1,0 +1,39 @@
+// Modelling a shorest path Spidergon
+// (Across first algorithm)
+// 4*n-node Spidergon
+// Distributed routing version
+
+param int QSIZE = 2;
+param int SIZE = 3; // #bits to encode the number of nodes.
+param int NUM_NODE = 2 ; // number of nodes in a quadrant
+
+struct SPRouter8pkt {
+    destN : [SIZE-1:0]; // destination node
+};
+
+uses lib.spidergon;
+
+
+// we now create the Spidergon
+
+// we create NUM_NODE * 4 sources
+bus<NUM_NODE*4> srcs;
+for (int i = 0; i<4*NUM_NODE;i++) {
+    let srcs[i] := PacketFilter(i,Source(SPRouter8pkt));
+};
+
+bus<4*NUM_NODE*4> allOUTS; // bus with all output channels for the entire network
+
+// we generate the border cases
+for (int i = 0;i<NUM_NODE*4;i++) {
+    let allOUTS[4*i], allOUTS[4*i+1], allOUTS[4*i+2], allOUTS[4*i+3]
+    := SPRouter(i,srcs[i]
+      ,allOUTS[4*((i+2*NUM_NODE)%(4*NUM_NODE))+1] // ACR in
+      ,allOUTS[4*((i-1)%(4*NUM_NODE))+2] // CW IN
+      ,allOUTS[4*((i+1)%(4*NUM_NODE))+3]); // CCW in
+};
+
+// we sink all local outputs
+for (int i = 0;i<NUM_NODE*4;i++) {
+    Sink(allOUTS[4*i]);
+};

@@ -1,0 +1,21 @@
+// Issue #205
+// Bug in typing
+
+const type_t;
+
+union my_union_t {
+	option_1 : type_t;
+	option_2 : type_t;
+};
+
+struct my_struct_t {
+   field : my_union_t;
+};
+
+// This hits fatal 776 in MaDLTypeChecker
+function update_my_struct (p: my_struct_t) : my_struct_t {
+	switch p.field {
+		case option_1 : p;
+		case option_2 : p; 
+	};
+};

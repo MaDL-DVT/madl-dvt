@@ -1,0 +1,12 @@
+// trying implementing a match
+
+
+process Match (chan Ref, chan Test) => chan OK, chan NOK {
+
+	struct data {
+	      sample: [n-1:0];
+	};
+
+	// idea is on Ref 
+
+};

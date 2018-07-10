@@ -1,0 +1,18 @@
+// Test switching over bitvector fields
+
+param int LOG_SIZE = 2;
+param int SIZE = 4;
+
+struct pkt {
+	fld : [LOG_SIZE-1:0];
+};
+
+chan a, b := Switch(Source(pkt), pkt.fld == 0, otherwise);
+Sink(a); Sink(b);
+
+bus<SIZE> tmp0, tmp1;
+
+for (int idx = 0; idx < SIZE; idx++) {
+	let tmp0[idx], tmp1[idx] := Switch(Source(pkt), pkt.fld == idx, otherwise);
+	Sink(tmp0[idx]); Sink(tmp1[idx]);
+};

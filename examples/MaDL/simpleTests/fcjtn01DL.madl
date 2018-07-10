@@ -1,0 +1,17 @@
+const blue;
+const red;
+
+enum br {blue;red;};
+
+pred f (a: br, b: br) {
+	a == b
+};
+
+chan ina := Source(red);
+chan inb := Source(br); // change br to blue then no deadlock.
+
+chan up,down := Switch(Queue(2,FCtrlJoin(f,ina,inb)),red,otherwise);
+
+DeadSink(up);
+Sink(down);
+

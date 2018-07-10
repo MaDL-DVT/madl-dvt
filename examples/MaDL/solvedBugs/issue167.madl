@@ -1,0 +1,24 @@
+// Illustrate issue #167
+// Using macro parameters in if-statement
+// Type checker refuses it with the following messager:
+// Error in typecheckDataIntegerConstant: undeclared integer variable x
+
+const pkt;
+
+param int SIZE = 2;
+
+macro MyQueue(int x, chan input) => chan o {
+
+   if (x == 0) {
+     let o:= Queue(1,input);
+   }
+   else {
+      let o:= Queue(x,input);
+   };
+
+};
+
+chan src := Source(pkt);
+
+Sink(MyQueue(SIZE,src));
+

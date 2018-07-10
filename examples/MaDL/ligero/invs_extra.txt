@@ -1,0 +1,25 @@
+
+;; The next 16 invariants implement the rule that a packet is injected only when at least 2 places are free in each one of the BBB's.
+;; There are 6 places in each BBB. 
+(assert (<=  (+ (* 1 LigeroRouter4_BBB1_DFIFO1_Queue1) (* 1 LigeroRouter4_BBB1_DFIFO1_Queue2) (* 1 LigeroRouter4_BBB1_EJECTION1_Queue1)) 4)) 
+(assert (<=  (+ (* 1 LigeroRouter4_BBB2_DFIFO1_Queue1) (* 1 LigeroRouter4_BBB2_DFIFO1_Queue2) (* 1 LigeroRouter4_BBB2_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter4_BBB3_DFIFO1_Queue1) (* 1 LigeroRouter4_BBB3_DFIFO1_Queue2) (* 1 LigeroRouter4_BBB3_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter4_BBB4_DFIFO1_Queue1) (* 1 LigeroRouter4_BBB4_DFIFO1_Queue2) (* 1 LigeroRouter4_BBB4_EJECTION1_Queue1)) 4)) 
+
+
+(assert (<=  (+ (* 1 LigeroRouter3_BBB1_DFIFO1_Queue1) (* 1 LigeroRouter3_BBB1_DFIFO1_Queue2) (* 1 LigeroRouter3_BBB1_EJECTION1_Queue1)) 4)) 
+(assert (<=  (+ (* 1 LigeroRouter3_BBB2_DFIFO1_Queue1) (* 1 LigeroRouter3_BBB2_DFIFO1_Queue2) (* 1 LigeroRouter3_BBB2_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter3_BBB3_DFIFO1_Queue1) (* 1 LigeroRouter3_BBB3_DFIFO1_Queue2) (* 1 LigeroRouter3_BBB3_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter3_BBB4_DFIFO1_Queue1) (* 1 LigeroRouter3_BBB4_DFIFO1_Queue2) (* 1 LigeroRouter3_BBB4_EJECTION1_Queue1)) 4)) 
+
+
+(assert (<=  (+ (* 1 LigeroRouter2_BBB1_DFIFO1_Queue1) (* 1 LigeroRouter2_BBB1_DFIFO1_Queue2) (* 1 LigeroRouter2_BBB1_EJECTION1_Queue1)) 4)) 
+(assert (<=  (+ (* 1 LigeroRouter2_BBB2_DFIFO1_Queue1) (* 1 LigeroRouter2_BBB2_DFIFO1_Queue2) (* 1 LigeroRouter2_BBB2_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter2_BBB3_DFIFO1_Queue1) (* 1 LigeroRouter2_BBB3_DFIFO1_Queue2) (* 1 LigeroRouter2_BBB3_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter2_BBB4_DFIFO1_Queue1) (* 1 LigeroRouter2_BBB4_DFIFO1_Queue2) (* 1 LigeroRouter2_BBB4_EJECTION1_Queue1)) 4)) 
+
+
+(assert (<=  (+ (* 1 LigeroRouter1_BBB1_DFIFO1_Queue1) (* 1 LigeroRouter1_BBB1_DFIFO1_Queue2) (* 1 LigeroRouter1_BBB1_EJECTION1_Queue1)) 4)) 
+(assert (<=  (+ (* 1 LigeroRouter1_BBB2_DFIFO1_Queue1) (* 1 LigeroRouter1_BBB2_DFIFO1_Queue2) (* 1 LigeroRouter1_BBB2_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter1_BBB3_DFIFO1_Queue1) (* 1 LigeroRouter1_BBB3_DFIFO1_Queue2) (* 1 LigeroRouter1_BBB3_EJECTION1_Queue1)) 4))
+(assert (<=  (+ (* 1 LigeroRouter1_BBB4_DFIFO1_Queue1) (* 1 LigeroRouter1_BBB4_DFIFO1_Queue2) (* 1 LigeroRouter1_BBB4_EJECTION1_Queue1)) 4)) 

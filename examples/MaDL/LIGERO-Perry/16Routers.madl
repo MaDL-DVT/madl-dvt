@@ -1,0 +1,28 @@
+struct package {
+    cycles : [2:0];
+	dst_x : [2:0];
+	dst_y : [2:0];
+};
+
+uses CWRouter;
+uses CCWRouter;
+
+chan R0_N, R0_E, R0_S, R0_W :=  CWRouter(0, 0, 4, 4, 1, R12_S, R1_W, R4_N, R3_E)[R0];
+chan R1_N, R1_E, R1_S, R1_W := CCWRouter(1, 0, 4, 4, 1, R13_S, R2_W, R5_N, R0_E)[R1];
+chan R2_N, R2_E, R2_S, R2_W :=  CWRouter(2, 0, 4, 4, 1, R14_S, R3_W, R6_N, R1_E)[R2];
+chan R3_N, R3_E, R3_S, R3_W := CCWRouter(3, 0, 4, 4, 2, R15_S, R0_W, R7_N, R2_E)[R3];
+
+chan R4_N, R4_E, R4_S, R4_W := CCWRouter(0, 1, 4, 4, 0, R0_S, R5_W, R8_N, R7_E)[R4];
+chan R5_N, R5_E, R5_S, R5_W :=  CWRouter(1, 1, 4, 4, 3, R1_S, R6_W, R9_N, R4_E)[R5];
+chan R6_N, R6_E, R6_S, R6_W := CCWRouter(2, 1, 4, 4, 3, R2_S, R7_W, R10_N, R5_E)[R6];
+chan R7_N, R7_E, R7_S, R7_W :=  CWRouter(3, 1, 4, 4, 2, R3_S, R4_W, R11_N, R6_E)[R7];
+
+chan R8_N, R8_E, R8_S, R8_W :=      CWRouter(0, 2, 4, 4, 1, R4_S, R9_W, R12_N, R11_E)[R8];
+chan R9_N, R9_E, R9_S, R9_W :=     CCWRouter(1, 2, 4, 4, 1, R5_S, R10_W, R13_N, R8_E)[R9];
+chan R10_N, R10_E, R10_S, R10_W :=  CWRouter(2, 2, 4, 4, 0, R6_S, R11_W, R14_N, R9_E)[R10];
+chan R11_N, R11_E, R11_S, R11_W := CCWRouter(3, 2, 4, 4, 2, R7_S, R8_W, R15_N, R10_E)[R11];
+
+chan R12_N, R12_E, R12_S, R12_W := CCWRouter(0, 3, 4, 4, 0, R8_S, R13_W, R0_N, R15_E)[R12];
+chan R13_N, R13_E, R13_S, R13_W :=  CWRouter(1, 3, 4, 4, 3, R9_S, R14_W, R1_N, R12_E)[R13];
+chan R14_N, R14_E, R14_S, R14_W := CCWRouter(2, 3, 4, 4, 3, R10_S, R15_W, R2_N, R13_E)[R14];
+chan R15_N, R15_E, R15_S, R15_W :=  CWRouter(3, 3, 4, 4, 3, R11_S, R12_W, R3_N, R14_E)[R15];

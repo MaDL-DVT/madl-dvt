@@ -1,0 +1,28 @@
+// Fully parametric version of the generic XYRouter with 5 ports
+// Can be used to generate arbitrary sized 2D-mesh. 
+// Version with input queues + merge and then 1 routing logic and then switches.
+macro XYRouter5P (int xID, int yID, bus<5> ins) => bus<5> outs{
+// Router with input buffers
+// ins[0] : local in
+// ins[1] : west in
+// ins[2] : east in
+// ins[3] : north in
+// ins[4] : south in
+// outs[0] = local
+// outs[1] = West output
+// outs[2] = East output
+// outs[3] = North output
+// outs[4] = South output
+
+    // queue all inputs
+//    chan local_in := Queue(QSIZE,ins[0]);
+    chan west_in  := Queue(QSIZE,ins[1]);
+    chan east_in  := Queue(QSIZE,ins[2]);
+    chan north_in := Queue(QSIZE,ins[3]);
+    chan south_in := Queue(QSIZE,ins[4]);
+
+    chan toRouting := 
+    Merge(ins[0], Merge(west_in, Merge(east_in, Merge(north_in,south_in))));
+
+    let outs := XYRoutingLogic(xID,yID,toRouting);
+};

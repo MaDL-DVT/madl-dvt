@@ -1,0 +1,12 @@
+// testing otherwise within a component
+const type;
+
+chan inject := Source(type);
+
+macro mySwitch (chan input) => bus<2> out {
+  let out[0],out[1]:= Switch(input,otherwise,type);
+};
+
+bus<2> out := mySwitch(inject);
+Sink(out[0]);
+DeadSink(out[1]);

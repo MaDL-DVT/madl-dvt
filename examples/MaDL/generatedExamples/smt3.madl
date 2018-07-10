@@ -1,0 +1,29 @@
+const req;
+
+enum source_msg {
+    req;
+    rsp;
+};
+
+const rsp;
+
+macro Delay(chan input) => chan output {
+    chan fork_sink;
+    
+    let output, fork_sink := Fork(input);
+    Sink(fork_sink);
+};
+
+
+chan source_switch;
+chan switch_delay1;
+chan delay1_sink1;
+chan switch_delay2;
+chan delay2_sink2;
+
+let source_switch := Source(source_msg);
+let switch_delay1, switch_delay2 := Switch(source_switch, req, rsp);
+Sink(delay1_sink1);
+let delay1_sink1 := Delay(switch_delay1);
+Sink(delay2_sink2);
+let delay2_sink2 := Delay(switch_delay2);

@@ -1,0 +1,5 @@
+const tok;
+
+chan src := Source(tok);
+chan mrg_out := Merge(src,cyc);
+chan cyc := Queue(2,Queue(2,mrg_out));

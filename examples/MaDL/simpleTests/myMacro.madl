@@ -1,0 +1,6 @@
+
+uses lib.Macros;
+
+macro MyMacro (chan i) => chan o {
+    let o := Reg(i);
+};

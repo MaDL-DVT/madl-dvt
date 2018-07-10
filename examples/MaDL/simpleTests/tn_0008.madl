@@ -1,0 +1,12 @@
+// Test Network 0008
+// 1 source, 4 queues, 1 switch, 1 merge, 1 sink
+
+const r;
+const b;
+enum rb {r;b;};
+
+chan src := Queue(2,Source(rb));
+
+chan up,down := Switch(src,r,otherwise);
+
+Sink(Queue(2,Merge(Queue(2,up),Queue(2,down))));

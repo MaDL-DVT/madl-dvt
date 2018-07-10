@@ -1,0 +1,14 @@
+// can we have parameters in macros
+// create a line of queues
+// such that the size of the queue increases by 1 
+
+// macro that creates a queue of size n
+macro queueN (chan input, param int n = 2) => chan output {
+	let output := Queue(n,input);
+};
+
+for (int i = 0; i < bound; i++) {
+ 	let o[i+1] := foo(input,i);
+};
+
+

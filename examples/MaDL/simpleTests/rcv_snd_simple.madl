@@ -1,0 +1,41 @@
+// simple example to show the issue with ordering.
+// Two state machines:
+// 1 sending ab*
+// the other one receiving ab*
+
+const a;
+const b;
+
+process snd () => chan output {
+	state s0 (){
+		trans {
+			a -> output;
+			next s1();
+		};
+	};
+	state s1 () {
+		trans {
+			b -> output;
+			next s0();
+		};
+	};
+};
+
+process rcv (chan input) => chan output {
+	state s0 () {
+		trans {
+			a d<- input;
+			next s1(); 
+		};
+	};	
+	state s1 () {
+		trans {
+			b d<- input;
+			next s0();
+		};
+	};
+
+};
+
+
+Sink(rcv(Queue(2,snd())));

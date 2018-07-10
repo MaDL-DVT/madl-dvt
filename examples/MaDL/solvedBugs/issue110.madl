@@ -1,0 +1,28 @@
+// this file illustrates issue #110/113
+//
+// The following network is parsed successfully, but --check fails on an
+// invalid key.  Not creating channel x, but directly connecting the queue into
+// the ctrljoin works around this issue.
+
+const tok;
+
+chan in := Source(tok);
+chan out := Source (tok);
+
+bus<2> b1 := Switch(in, true, false);
+bus<2> b2 := Switch(out, true, false);
+
+for (int idx = 0; idx < 2; idx++) {
+    bus<2> b3 := Switch(b1[idx], true, false);
+    bus<2> b4 := Switch(b2[idx], true, false);
+
+    for (int jdx = 0; jdx < 2; jdx++) {
+
+        // valid:
+        // Sink(CtrlJoin(Queue(2, b3[jdx]), b4[jdx]));
+
+        // invalid:
+        chan x := Queue(2, b3[jdx]);
+        Sink(CtrlJoin(x, b4[jdx]));
+    };
+};

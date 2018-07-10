@@ -1,0 +1,37 @@
+const token_t; 
+
+const vc_0; 
+
+const vc_1; 
+
+enum vc_t{ 
+     vc_0; 
+     vc_1; 
+}; 
+
+struct w_trans_t{ 
+     vc : vc_t; 
+}; 
+
+param int vc_size = 2;
+uses CreditCounter;
+chan cjn_in_0__OUT := CtrlJoin(m_0__OUT, crd_q_0__OUT);
+chan cjn_in_1__OUT := CtrlJoin(m_1__OUT, crd_q_1__OUT);
+chan mrg__OUT := Merge(cjn_in_0__OUT, cjn_in_1__OUT)[mrg];
+pred vc_sel_p (p: vc_t) { 
+    p == vc_0; 
+// Set of enumeration values = {vc_0, vc_1} 
+}; 
+chan vc_sel__OUTA, vc_sel__OUTB := Switch(mrg__OUT, vc_sel_p, otherwise);
+chan q_1_out__OUT := Queue(vc_size, vc_sel__OUTB)[q_1_out];
+chan q_0_out__OUT := Queue(vc_size, vc_sel__OUTA)[q_0_out];
+chan frk_out_0__OUTA, frk_out_0__OUTB := Fork(q_0_out__OUT);
+chan frk_out_1__OUTA, frk_out_1__OUTB := Fork(q_1_out__OUT);
+chan crd_0__CrdOut := CreditCounter(vc_size, frk_out_0__OUTA)[crd_0];
+chan crd_q_0__OUT := Queue(vc_size, crd_0__CrdOut)[crd_q_0];
+chan cdr_1__CrdOut := CreditCounter(vc_size, frk_out_1__OUTB)[cdr_1];
+chan crd_q_1__OUT := Queue(vc_size, cdr_1__CrdOut)[crd_q_1];
+chan m_1__OUT := Source(vc_1);
+chan m_0__OUT := Source(vc_0);
+Sink(frk_out_1__OUTA);
+DeadSink(frk_out_0__OUTB);

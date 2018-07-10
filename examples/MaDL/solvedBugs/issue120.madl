@@ -1,0 +1,13 @@
+// issue 120
+// evaluation of arithmetic expression for indices
+
+const tok;
+
+bus<2> mybus; // declare a bus
+
+let mybus[2*1-1] := Source(tok); // assign bus[1]
+
+let mybus[0] := Source(tok); // assign bus[0]
+
+Sink(mybus[0]);
+Sink(mybus[1]);

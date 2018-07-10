@@ -1,0 +1,89 @@
+// Library of macros for the Spidergon examples
+
+// this macro should be in a general main lib (almost always imported). 
+macro Merge4 (bus<4> inPorts) => chan o {
+    let o:= Merge(inPorts[3], Merge(inPorts[2], Merge(inPorts[0],inPorts[1])));
+};
+
+macro SPRouterLogic (int Current, chan inPort) => bus<4> outPorts {
+    // Shortest path routing logic for Spidergon
+    // We implement across first
+    // outputs
+    // outPorts<0>: local out
+    // outPorts<1>: across out
+    // outPorts<2>: cw out
+    // outPorts<3>: ccw out
+
+    // first check for across move
+
+    // if dest = curr then stops
+    // else
+    // Routing algorithm
+    // IF (dest - curr) % 4*N <= N THEN Clockwise
+    // ELSE IF (dest - curr)  % 4*N >= 3*N THEN CounterClockwise
+    // ELSE across
+
+    pred SwitchP0 (p: SPRouter8pkt) {
+        p.destN == Current
+    };
+ 
+    pred SwitchP1 (p: SPRouter8pkt) {
+        ((p.destN-Current)%(4*NUM_NODE)) <= NUM_NODE
+    };
+
+    pred SwitchP2 (p: SPRouter8pkt) {
+        ((p.destN-Current)%(4*NUM_NODE)) >= (3*NUM_NODE)
+    };
+
+    chan notAtDest;
+    chan notCW;
+    let outPorts[0],notAtDest := Switch(inPort,SwitchP0,otherwise);
+    let outPorts[2], notCW := Switch(notAtDest,SwitchP1,otherwise);
+    let outPorts[3], outPorts[1] := Switch(notCW,SwitchP2,otherwise);
+
+}; // end SPRouterLogic
+
+
+macro SPRouter (int nodeID, bus<4> inPorts) => bus<4> outPorts {
+    // inputs
+    // inPorts[0]: from local in
+    // inPorts[1]: from across in
+    // inPorts[2]: from cw neighbour in
+    // inPorts[3]: from ccw neighbour in
+    // outputs
+    // outPorts[0]: local out
+    // outPorts[1]: to across out
+    // outPorts[2]: to cw out
+    // outPorts[3]: to ccw out
+
+    // Router has output queues
+    // Each input is routed independently
+
+
+    bus<4> routedINLocal,routedINACR, routedINCW,routedINCCW;
+
+    // we instantiate the routing logic for each input
+    let routedINLocal := SPRouterLogic(nodeID,inPorts[0]);
+    let routedINACR   := SPRouterLogic(nodeID,inPorts[1]);
+    let routedINCW    := SPRouterLogic(nodeID,inPorts[2]);
+    let routedINCCW   := SPRouterLogic(nodeID,inPorts[3]);
+
+    // we then merge all the outputs
+
+    for (int i = 0;i<4;i++){
+        let outPorts[i] :=
+        	Queue(QSIZE,Merge4(routedINLocal[i],routedINACR[i],routedINCW[i],routedINCCW[i]));
+    };
+
+}; // end SPRouter
+
+macro PacketFilter (int NodeID, chan input) => chan output {
+      // condition to ensure that a nodes doesn't send to itself
+      // and that a master only send to a master
+      pred FilterCondition (p: SPRouter8pkt) {
+           p.destN == NodeID || p.destN >= 4*NUM_NODE
+      };
+      chan toSink1;
+      let toSink1,output := Switch(input,FilterCondition,otherwise);
+      Sink(toSink1);
+};

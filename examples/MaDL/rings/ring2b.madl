@@ -1,0 +1,9 @@
+// Expected ring: No ring
+const red;
+
+chan src := Source(red);
+chan mrg_out := Merge(src, q2);
+chan q1 := Queue(2, mrg_out);
+chan LB_A, LB_B := Switch(q1, red, otherwise);
+Sink(LB_A);
+chan q2 := Queue(2, LB_B);

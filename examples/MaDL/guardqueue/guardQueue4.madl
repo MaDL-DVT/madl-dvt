@@ -1,0 +1,10 @@
+const red;
+const blue;
+
+chan src1 := Source(red);
+chan src2 := Source(blue);
+
+chan gq_out := GuardQueue(3, src1, src2);
+chan sw_a, sw_b := Switch(gq_out, red, otherwise);
+DeadSink(sw_a);
+Sink(sw_b);

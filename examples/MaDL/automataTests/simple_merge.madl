@@ -1,0 +1,8 @@
+const tok;
+
+chan s_f := Source(tok);
+chan f_q1,f_q2 := Fork(s_f);
+chan q1_m := Queue(2,f_q1);
+chan q2_m := Queue(2,f_q2);
+chan m_s := Merge(q1_m,q2_m);
+Sink(m_s);

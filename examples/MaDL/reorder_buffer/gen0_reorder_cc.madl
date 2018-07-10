@@ -1,0 +1,169 @@
+// models a simple version of a reorder buffer and tracker
+//
+// the RD packet tracker consists of NUM_AID queues, each of TRACKER_DEPTH
+// size.  at most TRACKER_DEPTH transactions can be outstanding per NUM_AID
+//
+// the reorder buffer receives NUM_AID inputs indicating which AID/TID pairs
+// may progress.  it can buffer at most REORDER_SIZE messages.
+//
+// the Network macro models a network that can reorder msgs with different
+// destinations.
+//
+// To eliminate the deadlock of gen0_reorder, we add a credit counter to ensure
+// that no more than REORDER_SIZE messages can be in transit at once. This way,
+// the reorder buffer always has enough size to store packets
+
+param int REORDER_SIZE = 2; // must be >= 2, because the loadbalancer needs at
+                            // least two outputs
+
+// deadlocks
+// param int TRACKER_DEPTH = 3;
+// param int CREDITS = REORDER_SIZE + 1;
+
+// no deadlock
+// param int TRACKER_DEPTH = 2;
+// param int CREDITS = REORDER_SIZE + 1;
+
+// deadlocks
+// param int TRACKER_DEPTH = 2;
+// param int CREDITS = REORDER_SIZE + 2;
+
+// no deadlock
+param int TRACKER_DEPTH = 2;
+param int CREDITS = REORDER_SIZE;
+
+
+
+param int LOG_NUM_AID = 2;
+param int NUM_AID = 4;  // must be >= 3
+
+param int LOG_NUM_TID = 2;
+param int NUM_TID = 4; // must be >= 3
+
+param int MAX_IN_TRANSIT_PER_TGT = 1;
+
+
+struct ARpkt {
+    aid : [LOG_NUM_AID-1:0]; // start small
+    tid : [LOG_NUM_TID-1:0];
+};
+
+macro Reg(chan i) => chan o {
+    let o := Queue(1, i);
+};
+
+const credit;
+
+macro CreditCounter(int cnt, chan i) => chan o {
+    chan q_in;
+    let q_in, o := Fork(PatientSource(credit));
+    Sink(CtrlJoin(Queue(cnt, q_in), i));
+};
+
+macro split_by_aid (chan i) => bus<NUM_AID> o {
+    bus<NUM_AID-2> tmp;
+
+    let o[0], tmp[0] := Switch(i, ARpkt.aid == 0, otherwise);
+
+    for (int idx = 0; idx < NUM_AID - 3; idx++) {
+        let o[idx+1], tmp[idx+1] := Switch(tmp[idx], ARpkt.aid == idx + 1, otherwise);
+    };
+
+    let o[NUM_AID-2], o[NUM_AID-1] :=
+        Switch(tmp[NUM_AID-3], ARpkt.aid == NUM_AID-2, otherwise);
+};
+
+macro split_by_tid (chan i) => bus<NUM_TID> o {
+    bus<NUM_TID-2> tmp;
+
+    let o[0], tmp[0] := Switch(i, ARpkt.tid == 0, otherwise);
+
+    for (int idx = 0; idx < NUM_TID - 3; idx++) {
+        let o[idx+1], tmp[idx+1] := Switch(tmp[idx], ARpkt.tid == idx + 1, otherwise);
+    };
+
+    let o[NUM_TID-2], o[NUM_TID-1] :=
+        Switch(tmp[NUM_TID-3], ARpkt.tid == NUM_TID-2, otherwise);
+};
+
+macro RD_tracker(chan i) => bus<NUM_AID> o {
+
+    bus<NUM_AID> by_aid := split_by_aid(i);
+
+    for (int idx = 0; idx < NUM_AID; idx++) {
+        let o[idx] := Queue(TRACKER_DEPTH, by_aid[idx]);
+    };
+};
+
+macro MultiMerge(bus<NUM_AID> i) => chan o {
+    bus<NUM_AID-2> tmp;
+    let tmp[0] := Merge(i[0], i[1]);
+    for (int idx = 0; idx < NUM_AID - 3; idx++) {
+        let tmp[idx+1] := Merge(tmp[idx], i[idx+2]);
+    };
+
+    let o := Merge(tmp[1], i[3]);
+};
+
+macro MultiMergeTID(bus<NUM_TID> i) => chan o {
+    bus<NUM_TID-2> tmp;
+    let tmp[0] := Merge(i[0], i[1]);
+    for (int idx = 0; idx < NUM_TID - 3; idx++) {
+        let tmp[idx+1] := Merge(tmp[idx], i[idx+2]);
+    };
+
+    let o := Merge(tmp[1], i[3]);
+};
+
+const tok;
+
+pred id ( a : ARpkt, b : ARpkt ) {
+    a.aid == b.aid && a.tid == b.tid
+};
+
+macro RD_reorder(chan i, bus<NUM_AID> nxt) => chan o {
+    bus<REORDER_SIZE> to_buffer := LoadBalancer(i);
+    bus<REORDER_SIZE> to_match;
+
+    for (int idx = 0; idx < REORDER_SIZE; idx++) {
+        let to_match[idx] := Reg(to_buffer[idx]);
+    };
+
+    bus<NUM_AID> to_merge := MultiMatch(id, nxt, to_match);
+
+    // insert registers to break a dependency in the idle equation
+    bus<NUM_AID> tmp2;
+    for (int idx = 0; idx < NUM_AID; idx++) {
+        let tmp2[idx] := Reg(to_merge[idx]);
+    };
+
+    let o := MultiMerge(tmp2);
+};
+
+chan cc;
+
+chan AR := CtrlJoin(Source(ARpkt), cc);
+
+macro Delay (chan i) => chan o {
+    let o := CtrlJoin(i, Source(tok));
+};
+
+macro Network (chan i) => chan o {
+    bus<NUM_TID> by_tid := split_by_tid(Reg(i));
+    bus<NUM_TID> pre_merge;
+    for (int idx = 0; idx < NUM_TID; idx++) {
+        let pre_merge[idx] := Queue(MAX_IN_TRANSIT_PER_TGT, by_tid[idx]);
+    };
+
+    let o := MultiMergeTID(pre_merge);
+};
+
+chan to_tracker, to_net := Fork(AR);
+chan from_net := Network(to_net);
+
+chan R, dealloc := Fork( RD_reorder(from_net, RD_tracker(to_tracker)) );
+Sink(R);
+
+let cc := CreditCounter (CREDITS, dealloc);
+
+

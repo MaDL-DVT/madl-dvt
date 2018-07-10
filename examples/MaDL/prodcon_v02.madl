@@ -1,0 +1,99 @@
+// v02
+// Clear separation between producer, consumer and checker
+// Checker that is actually deadlock-free if P and C behave.
+// Checker is not deadlock-free is P and C do not behave.
+
+// number of maximum requests in-flight
+param int NUM_OUTSTANDING_REQUESTS = 2;
+param int k = 2;
+
+// Credic counter macro
+macro CreditCounter(chan i) => chan o {
+	const tok;
+	chan q_in;
+	let q_in, o := Fork(PatientSource(tok));
+	Sink(CtrlJoin(Queue(1, q_in), i));
+};
+
+// Producer
+// --------
+macro Producer (chan inRsp) => bus<2> output {
+	// Producer sends request and data packets
+	const req; // request type
+	const data; // data type
+    // When it sends a request, it waits for the response
+    // to arrive before sending the data.
+	// first output is the request sent to the consumer
+	// chan reqNet,reqPending := Fork (Queue(2,Source(req)));
+	// let output0 := reqNet; <- Connecting channels is not yet supported
+	chan reqPending;
+	let output[0], reqPending := Fork (Queue(2,Source(req)));
+
+	chan cx := CtrlJoin(Queue(NUM_OUTSTANDING_REQUESTS,reqPending), Queue(NUM_OUTSTANDING_REQUESTS,inRsp));
+
+	let output[1] := CtrlJoin(Queue(NUM_OUTSTANDING_REQUESTS,PatientSource(data)),Queue(2,cx));
+};
+
+
+// Consumer
+// --------
+// input0 and input1 should be part of a bus
+macro Consumer (bus<2> input) => chan output {
+	// input[0] is the request coming from Producer
+	// input[1] is the data coming from Producer
+	// When a request comes in, Consumer sends response back
+	// all the time.
+	let output := Queue(2,input[0]); // response = request for now
+	// when data comes in, data is consumed.
+	Sink(input[1]);
+};
+
+
+macro ConsumerOK (bus<2> input) => chan output {
+	// input[0] is the request coming from Producer
+	// input[1] is the data coming from Producer
+	// When a request comes in, Consumer sends response back
+	// but wait that data is received before sending the next 
+	// response.
+	chan control := CreditCounter(input[1]); 
+	// 1 credit for response
+	// when data arrives credit is given back
+	let output := CtrlJoin(Queue(2,input[0]),control); // response = request for now
+};
+
+// Network or bus
+// --------------
+macro simpleNetwork (chan input) => chan output{
+	// N.B.: TODO make 2 a variable
+	// and add delay macro
+	let output := Queue(2, input);
+};
+
+
+// Producer-Consumer relation checker
+// -----------------------------------
+macro PC_Checker (bus<2> ins) => {
+	// ins[0] = rsp
+	// ins[1] = data
+	chan cin;
+	chan queueIn := Queue(2,ins[0]);
+	chan error, wait := LoadBalancer(queueIn);
+	chan wait2 := Queue(1,CtrlJoin(wait,CreditCounter(cin)));
+	chan ok,error2 := LoadBalancer(wait2);
+	DeadSink(Queue(1,CtrlJoin(error,error2)));
+	let cin := CtrlJoin(ok,ins[1]);
+};
+
+
+bus<2> inChecker;
+chan rspToProducer;
+bus<2> inConsumer;
+
+chan ProdData;
+
+PC_Checker(inChecker[0],inChecker[1]);
+let rspToProducer,inChecker[0] := Fork(Consumer(inConsumer[0],inConsumer[1]));
+let inConsumer[1], inChecker[1] := Fork(ProdData);
+let inConsumer[0], ProdData := Producer(rspToProducer);
+
+

@@ -1,0 +1,39 @@
+// issue 211 with type propagations
+
+
+struct pkt {
+	fieldA : enum {red;blue;};
+	fieldB : enum {green;yellow};
+};
+
+const red;
+const blue;
+const green;
+const yellow;
+
+macro filterA (chan input) => chan output {
+	pred filterA_p (p:pkt) {
+		p.fieldA == red && p.fieldB == green
+	};
+	chan xdump;
+	let output, xdump := Switch(input,filterA_p,otherwise);
+	Sink(xdump);
+};
+
+chan src_a := filterA(Source(pkt));
+
+macro filterB (chan input) => chan output {
+	pred filterB_p (p:pkt) {
+		p.fieldA == blue && p.fieldB == yellow
+	};
+	chan xdump;
+	let output, xdump := Switch(input,filterB_p,otherwise);
+	Sink(xdump);
+};
+
+chan src_b := filterB(Source(pkt));
+
+chan foo := Queue(2,Merge(src_a,src_b));
+
+Sink(foo);
+

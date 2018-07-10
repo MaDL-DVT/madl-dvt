@@ -1,0 +1,14 @@
+// test using bus declaration
+// together with chan at outputs
+
+const pkt;
+
+bus<3> outs;
+
+let outs[0],outs[1] := Fork(Source(pkt));
+
+let outs[2]:= Source(pkt);
+
+Sink(outs[0]);
+Sink(outs[1]);
+Sink(outs[2]);

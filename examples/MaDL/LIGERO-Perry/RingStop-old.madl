@@ -1,0 +1,33 @@
+macro RingStop(int NODE_X, int NODE_Y, int RS_DIR, int NUM_X, int NUM_Y, int ESCAPE, chan IN, chan LOOP_IN, chan INJ) => chan OUT, chan LOOP_OUT, chan CONS {
+	// Predicate that decides if package is at its destination
+	pred destPred(p: package) {	p.dst_x == NODE_X && p.dst_y == NODE_Y };
+
+	// Predicate that decides if package should be bypassed
+	pred bypassPred(p: package) { 
+		(RS_DIR == 0 && p.dst_y < NODE_Y)
+		||(RS_DIR == 1 && p.dst_x > NODE_X)
+		||(RS_DIR == 2 && p.dst_y > NODE_Y)
+		||(RS_DIR == 3 && p.dst_x < NODE_X)
+	};
+
+	// Reception stage
+	chan inBuf := Queue(1, IN)[InQ];
+	chan rec_cons, rec_bypass, rec_dfifo := Switch(inBuf, destPred, bypassPred, otherwise);
+	let CONS := Vars(rec_cons);
+
+	chan bypass, bypass_blocked := LoadBalancer(rec_bypass);
+	chan ring_in := Merge(rec_dfifo, bypass_blocked);
+
+	// DFIFO section
+	chan dfifo_in := GuardQueue(2, LOOP_IN, ring_in)[RecepGQ];
+	chan dfifo := Queue(3, dfifo_in);
+	chan dfifo_eject, dfifo_forward := Switch(dfifo, bypassPred, otherwise);
+	chan dfifo_lb_eject, dfifo_lb_forward := LoadBalancer(dfifo_eject);
+	chan forward_merge := Merge(dfifo_forward, dfifo_lb_forward);
+	let LOOP_OUT := Vars(forward_merge);
+
+	//EJECTION
+	chan ej_merge :=  Merge(INJ, bypass);
+	chan ej_stage := GuardQueue(2, dfifo_lb_eject, ej_merge)[EjGQ];
+	let OUT := Vars(ej_stage);
+};

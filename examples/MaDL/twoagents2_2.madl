@@ -1,0 +1,60 @@
+
+param int dx = 2;
+param int N = 2;
+param int counters = 2;
+
+const token;
+const req;
+const rsp;
+
+macro Delay (chan i) => chan o {
+   chan x, y := Fork(i);
+   let o := Vars(x);
+   Sink(y);
+};
+
+
+macro CreditCounter(chan i) => chan o {
+	chan q_in;
+	let q_in, o := Fork(PatientSource(token));
+	Sink(CtrlJoin(Queue(counters, q_in), i));
+};
+
+macro DualChannel(bus<2> i) => bus<2> o {
+	chan count_rsp, count_req;
+
+	chan data_in := Merge(CtrlJoin(i[0], count_req), CtrlJoin(i[1], count_rsp));
+	chan data_out := Queue(dx, data_in);
+
+
+	chan buffer_req_in, buffer_rsp_in := Switch(data_out, req, rsp);
+
+	chan buffer_req_out := Queue(N, buffer_req_in);
+	chan buffer_rsp_out := Queue(N, buffer_rsp_in);
+
+	chan req_out, rsp_out;
+	let o[0], req_out := Fork(buffer_req_out);
+	let o[1], rsp_out := Fork(buffer_rsp_out);
+
+	let count_rsp := Queue(N, Queue(dx, CreditCounter(rsp_out)));
+	let count_req := Queue(N, Queue(dx, CreditCounter(req_out)));
+};
+
+
+function reqToRsp (p: req) : rsp {
+     rsp;
+};
+
+
+macro Agent(bus<2> i) => bus<2> o {
+	let o[0] := Source(req);
+	Sink(i[1]);
+
+	let o[1] := Function(reqToRsp, Delay(i[0]));
+	//let o[1] := reqToRsp(Delay(i[0]));
+};
+
+bus<2> agent0_in;
+bus<2> agent0_out := Agent(agent0_in);
+bus<2> agent1_out := Agent(DualChannel(agent0_out));
+let agent0_in := DualChannel(agent1_out);

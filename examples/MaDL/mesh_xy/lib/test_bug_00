@@ -1,0 +1,24 @@
+// test of potential bugs
+
+const req;
+const rsp;
+
+uses lib.macros;
+
+function CreateRsp (p: req) : rsp {
+	rsp
+};
+
+macro Agent (int N, chan input) => chan output {
+	chan pkt1 := Source(req); // an agent sends request
+	chan pkt2 := CtrlJoin(pkt1, Queue(N,CreditCounter(N,rspIn))); 
+
+	// Sink requests and produce responses.
+    chan reqIn, rspIn := Switch(NodeIn, req , otherwise);
+	
+	let MasterOut := Merge(Queue(2,pkt2), Queue(2,Function(CreateRsp,reqIn)));
+};
+
+chan out_A1 := Agent(N,Queue(2,out_A2));
+chan out_A2 := Agent(N,Queue(2,out_A1));
+

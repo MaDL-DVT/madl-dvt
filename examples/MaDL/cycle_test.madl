@@ -1,0 +1,7 @@
+const val;
+
+chan one,two := Fork(Queue(2,Source(val)));
+
+chan final := CtrlJoin(one,two);
+
+Sink(final);

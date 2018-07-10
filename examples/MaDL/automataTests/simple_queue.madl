@@ -1,0 +1,5 @@
+const red;
+
+chan s_q := Source(red);
+chan q_s := Queue(2,s_q);
+Sink(q_s);

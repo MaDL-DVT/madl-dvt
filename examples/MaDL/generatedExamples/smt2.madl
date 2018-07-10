@@ -1,0 +1,19 @@
+const req;
+
+const rsp;
+
+macro mswitch(chan input) => chan output {
+    chan switch0_merge0;
+    chan switch1_merge1;
+    
+    let switch0_merge0, switch1_merge1 := Switch(input, req, rsp);
+    let output := Merge(switch0_merge0, switch1_merge1);
+};
+
+
+chan source_mswitch;
+chan mswitch_sink;
+
+let source_mswitch := Source(req);
+Sink(mswitch_sink);
+let mswitch_sink := mswitch(source_mswitch);

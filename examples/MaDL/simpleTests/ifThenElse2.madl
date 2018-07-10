@@ -1,0 +1,49 @@
+param int REORDER = 1;
+param int TO_REQ = 1;
+
+enum pkt {req; rsp};
+const req;
+const rsp;
+
+// predicate with if-then-else
+pred p (v:pkt) {
+    if (v == req) true else false
+};
+
+// alternative if-then-else syntax with curly brackets.
+// semi-colons after the then- and else-clauses are optional.
+pred q (v:pkt) {
+    if (v == req) {true;} else {false}
+};
+
+// function with if-then-else
+// syntax is equal to that of predicate
+function f (v:pkt) : pkt {
+    if (TO_REQ == 1) req; else rsp;
+};
+
+macro Delay (chan i) => chan o {
+    chan a;
+    let o, a := Fork(i);
+    Sink(a);
+};
+
+macro ReorderNet (chan i) => chan o {
+    chan a, b := Switch(i, req, rsp);
+    let o := Merge (Delay(Queue(2, a)), Delay(Queue(2, b)));
+};
+
+chan a := Source(pkt);
+
+// if-then-else syntax on top level.
+// Useful to parameterize the structure of the network.
+// In this case: param REORDER determines whether packets are reordered or not.
+// The curly brackets are mandatory here.
+if (REORDER == 0){
+    chan o := Queue(2, a);
+} else {
+    chan b := ReorderNet(a);
+    chan o := Queue(2, b);
+};
+
+Sink(Function(f, o));

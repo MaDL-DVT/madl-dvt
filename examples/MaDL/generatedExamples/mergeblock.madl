@@ -1,0 +1,19 @@
+union src0_msg {
+};
+
+const req;
+
+const rsp;
+
+chan src0_merge;
+chan src1_merge;
+chan merge_switch;
+chan switch_sink0;
+chan switch_sink1;
+
+let src0_merge := PatientSource(src0_msg);
+let src1_merge := Source(req);
+let merge_switch := Merge(src0_merge, src1_merge);
+let switch_sink0, switch_sink1 := Switch(merge_switch, req, rsp);
+Sink(switch_sink0);
+DeadSink(switch_sink1);

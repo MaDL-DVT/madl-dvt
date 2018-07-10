@@ -1,0 +1,79 @@
+// issueXXX.madl
+// bug in the generation of deadlock equations with automaton. 
+
+// 2D mesh with simple MI protocol based on Figure 2 of Freek's 2016 DATE paper.
+// Issue: we cannot prove it deadlock-free when queues are large enough (size >= 3)
+
+param int QSIZE = 2; // size of input buffers
+param int XDIM = 2;  // size of the x dimension
+param int YDIM = 2;  // size of the y dimension
+param int XBITS = 0; // #bits-1 to encode the XDIM
+param int YBITS = 0; // #bits-1 to encode the YDIM
+param int CSIZE = 2; // size of the credit counter (not needed in this file)
+param int XDIR = XDIM-1; // x-coordinate of the directory
+param int YDIR = YDIM-1; // y-coordinate of the directory
+
+
+// Type used by the MI caches and the directory
+struct CacheMessage {
+  x     : [XBITS:0]; // x-coordinate of the cache requesting the block (needed to store the block owner)
+  y     : [YBITS:0]; // y-coordinate of the cache requesting the block
+  color : [1:0];     // GetX = 00 (0), PutX == 01 (1) , WriteBackAck = 10 (2), Inv = 11 (3); 
+};
+
+// some functions creating messages for the MI caches.
+function MakePutX () : CacheMessage {
+  x = 0;
+  y = 0;
+  color = 1;
+};
+
+function MakeGetX () : CacheMessage {
+  x = 0;
+  y = 0;
+  color = 0;
+};
+
+
+const tok; // required by our macro library
+
+process MI (int xID, int yID, chan input, chan start) =>  chan output {
+
+  state I(){
+    trans {
+      tok d <- start;
+      MakeGetX() -> output;
+      next M();
+    };
+  };
+
+  state M(){
+    trans {
+      tok d <- start; // this should be Repl but we are missing the connection to a CPU. 
+	    MakePutX() -> output;
+	    next MI();
+    };
+    trans{
+      CacheMessage d <- input;
+	    guard d.color == 3 && d.x == xID && d.y == yID; // Inv
+	    MakePutX() -> output;
+	    next MI();
+    };
+  };
+
+  state MI (){
+    trans {
+      CacheMessage d <- input;
+      guard d.color == 3 && d.x == xID && d.y == yID; // Inv
+      next MI();
+    };
+    trans {
+      CacheMessage d <- input;
+      guard d.color == 2 && d.x == xID && d.y == yID; // WBA
+      next I();
+    };
+  };
+};
+
+Sink(Queue(2,MI(0,0,Source(CacheMessage),Source(tok)))); 
+

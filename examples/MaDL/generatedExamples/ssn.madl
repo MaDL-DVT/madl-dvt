@@ -1,0 +1,17 @@
+const req;
+
+enum source_msg {
+    req;
+    rsp;
+};
+
+const rsp;
+
+chan source_switch;
+chan switch_sink1;
+chan switch_sink2;
+
+let source_switch := Source(source_msg);
+Sink(switch_sink1);
+Sink(switch_sink2);
+let switch_sink1, switch_sink2 := Switch(source_switch, req, rsp);

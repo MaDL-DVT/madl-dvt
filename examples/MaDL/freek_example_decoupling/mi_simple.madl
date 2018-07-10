@@ -1,0 +1,95 @@
+// Trying to replay the MI-- example in Freek's paper
+// "Eliminating crosslayer deadlocks by decoupling the 
+// protocol from the network interconnect"
+
+// In this example, the directory will never invalidate 
+// a cache block.
+
+// PARAMETERS
+
+param int QSIZE = 2; // size of input buffers
+param int XDIM = 2;  // size of the x dimension
+param int YDIM = 2;  // size of the y dimension
+param int XBITS = 0; // #bits-1 to encode XDIM
+param int YBITS = 0; // #bits-1 to encode YDIM
+param int XDIR = XDIM-1; // x-coordinate of the directory
+param int YDIR = YDIM-1; // y-coordinate of the directory
+
+param int VBITS = 1; // number of bits representing the value of cache block
+
+const tok;
+
+const GetX;
+const PutX;
+const WBA;
+const DataX;
+
+enum msg_t {GetX; PutX;WBA;DataX;}
+
+// Packet types over the network
+struct pkt_t {
+	x 	  : [XBITS:0];
+	y     : [YBITS:0];
+  	x_src : [XBITS:0];
+  	y_src : [YBITS:0];
+  	val   : [VBITS-1:0]; // cache block value
+  	color : msg_t;
+};
+
+process L1 (int xid, int yid, chan input) => chan output {
+	state I() {
+	  	trans{
+			GetX -> output;
+			next IM();
+		};
+	};	
+
+	state IM() {
+		trans {
+			msg_t d <- input;
+			guard d == DataX;
+			next M();
+		};
+	};
+
+	state M() {
+		trans {
+			PutX -> output;
+			next MI ();
+		};
+	};
+
+	state MI() {
+		trans {
+			msg_t d <- input;
+			d == WBA;
+			next I();
+		};
+	};
+};
+
+struct dirState {
+  ownerx : [XBITS:0];
+  ownery : [YBITS:0];
+  val    : [VBITS-1:0];
+};
+
+
+process L2 (chan input) => chan output {
+	state I() {
+		trans {
+			DirMessage d <- input;
+			DataX -> output;
+			next M(upState(d));
+		};
+	};
+
+	state M(dirState c) {
+		trans {
+			pkt_l2_t d <- input;
+			WBA -> output;
+			next I();
+		};
+	};	
+};
+

@@ -1,0 +1,38 @@
+// Small example of a Master and a Slave.
+
+const req;
+const rsp;
+
+
+
+process Master (chan input) => chan output {
+
+  state s0 () {
+     trans {
+        req -> output;
+	      next s0();
+     };
+     trans {
+        rsp d <- input;
+	      next s0();
+     };
+  };
+
+};
+
+process Slave (chan input) => chan output{
+
+   state s0() {
+      trans {
+        req d <- input;
+        rsp -> output;
+	      next s0();
+      };    
+   };
+};
+
+chan ms;
+chan sm;
+
+let sm := Queue(2,Master(ms));
+let ms := Queue(2,Slave(sm));

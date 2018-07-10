@@ -1,0 +1,2 @@
+SimpleQueue 	simple_queue.madl 	simple_queue_expected.aut
+SimpleSwitch	simple_switch.madl	simple_switch_expected.aut

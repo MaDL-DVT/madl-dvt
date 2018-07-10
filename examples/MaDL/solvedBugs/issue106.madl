@@ -1,0 +1,37 @@
+// predicate with switch over heterogeneous union
+//
+// parse --check throws a fatal 44 in Utils.Either.
+//
+// If the bit vector inside the union is wrapped inside a (single-field) struct,
+// it happily goes through.
+//
+// See issue #106
+
+
+param int SIZE = 2;
+
+struct id_pkt {
+        id : [SIZE-1:0];
+};
+
+union pkt_t {
+        none : struct {};
+
+	pkt : [SIZE-1:0];
+        // pkt : id_pkt;
+};
+
+const tok_t;
+
+// match predicate: pred f (data, match)
+pred f (p : pkt_t, c : tok_t) {
+        switch p {
+        case none: true;
+        case pkt: p.pkt == 0;
+        // case pkt: p.pkt.id == 0;
+        }
+};
+
+// match instance: Match(f, match, data)
+chan a, b := Match(f, Source(tok_t), Source(pkt_t));
+Sink(a); Sink(b);

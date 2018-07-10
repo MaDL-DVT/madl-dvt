@@ -1,0 +1,49 @@
+// test of a process with a variable
+
+const tok;
+
+struct CNT {
+   val: [1:0];
+ };
+
+
+process CheckZero (chan inc, chan dec) => chan empty {
+
+    state s0() { // initial state. Just initialise val to 0
+    	trans { // write to output when val is 0. set empty to true
+	  tok -> empty;
+	  next s1(0);
+	};
+    };
+
+    state s1(CNT p) { // main state
+    	trans { // Either the value is 0 and we output empty
+	  tok -> empty;
+	  guard p.val == 0;
+	  next s1(p.val);
+    };
+
+	trans{ // inc action
+	  tok d <- inc;
+	  next s1(p.val + 1);
+	};
+
+	trans { // dec action
+	  tok d <- dec;
+	  guard p.val > 0;
+	  next s1(p.val - 1);
+       };
+    };
+
+};
+
+chan src := Source(tok);
+
+chan a,b := Fork(src);
+
+chan isEmpty := CheckZero(a,c);
+Sink(isEmpty);
+
+chan c,d := Fork(Queue(2,b));
+
+Sink(d);

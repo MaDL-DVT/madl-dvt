@@ -1,0 +1,5 @@
+const tok;
+
+chan s1_m := Source(tok);
+chan s2_m := Source(tok);
+Sink(Queue(2,Queue(2,Merge(s1_m,s2_m))));

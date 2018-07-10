@@ -1,0 +1,9 @@
+// Test Network 0001
+// 1 source, 1 fork, 2 queues, 1 sink
+
+const pkt;
+
+chan up, down := Fork(Source(pkt));
+
+Sink(Queue(2,up));
+Sink(Queue(2,down));

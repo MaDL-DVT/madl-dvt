@@ -1,0 +1,7 @@
+const r;
+const b;
+
+chan src_r := Queue(2,Source(r));
+chan src_b := Queue(2,Source(b));
+
+Sink(Queue(2,Merge(src_r,src_b)));

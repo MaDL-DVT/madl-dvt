@@ -1,0 +1,32 @@
+uses FilteredSource;
+macro InSwitch(int NODE_X, int NODE_Y, int NUM_X, int NUM_Y) => chan IN_N, chan IN_E, chan IN_S, chan IN_W {
+    chan inj := FilteredSource(NODE_X, NODE_Y, NUM_X, NUM_Y);
+
+    function resetCycles(p: package): package {
+        cycles = 0;
+        dst_x = p.dst_x;
+        dst_y = p.dst_y;
+    };
+
+    chan inj_reset := Function(resetCycles, inj);
+
+    pred predH(p: package) { p.dst_x == NODE_X };
+    pred predV(p: package) { p.dst_y == NODE_Y };
+    chan injV, injH, injEither := Switch(inj_reset, predH, predV, otherwise);
+
+    chan either_h, either_v := LoadBalancer(injEither);
+
+    chan merge_h := Merge(injH, Cut(either_h));
+    chan merge_v := Merge(injV, Cut(either_v));
+
+    pred injNSPred(p: package) { ((NODE_Y < p.dst_y) && (p.dst_y - NODE_Y >= NODE_Y - p.dst_y + NUM_Y)) || ((NODE_Y > p.dst_y) && (NODE_Y - p.dst_y <= p.dst_y - NODE_Y + NUM_Y)) };
+    chan inj_n, inj_s := Switch(merge_v, injNSPred, otherwise);
+
+    pred injWEPred(p: package) { ((NODE_X < p.dst_x) && (p.dst_x - NODE_X > NODE_X - p.dst_x + NUM_X)) || ((NODE_X > p.dst_x) && (NODE_X - p.dst_x <= p.dst_x - NODE_X + NUM_X)) };
+    chan inj_w, inj_e := Switch(merge_h, injWEPred, otherwise);
+
+    let IN_N := Vars(inj_n);
+    let IN_E := Vars(inj_e);
+    let IN_S := Vars(inj_s);
+    let IN_W := Vars(inj_w);
+};

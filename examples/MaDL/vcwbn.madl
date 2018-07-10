@@ -1,0 +1,43 @@
+// Virtual channel example with buffer
+
+param int BuffSize = 2;
+param int NumCredits = 2;
+
+//enum Pkt12 {in1T;in2T;tok;};
+
+const in1T;
+const in2T;
+const tok;
+
+// two input sources 
+chan in1 := Source(in1T);
+chan in2 := Source(in2T);
+
+// two token sources 
+chan B1in, B2in := Fork(Source(tok)); 
+chan B5in, B6in := Fork(Source(tok));
+
+// B1, B2, B5 and B6. 
+chan B1out := Queue(2,B1in);
+chan B2out := Queue(NumCredits,B2in);
+chan B5out := Queue(2,B5in);
+chan B6out := Queue(NumCredits,B6in);
+
+
+// Buffer output
+chan BuffOut := Queue(BuffSize, Merge(CtrlJoin(in2,B5out),CtrlJoin(in1,B1out)));
+//chan BuffOut := Merge(CtrlJoin(in2,B5out),CtrlJoin(in1,B1out));
+
+
+chan in1sw, in2sw := Switch(BuffOut,in1T,in2T);
+
+chan B4outup, B4outdown := Fork(Queue(2,in2sw));
+
+Sink(CtrlJoin(B6out,B4outdown));
+Sink(B4outup);
+
+chan B3outUp, B3outDown := Fork(Queue(2,in1sw));
+
+// Out of B3 to sinks
+Sink(B3outDown);
+Sink(CtrlJoin(B2out,B3outUp));

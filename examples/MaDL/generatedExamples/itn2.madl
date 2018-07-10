@@ -1,0 +1,25 @@
+enum q2_fun_output {
+    req;
+    rsp;
+};
+
+function q2_fun ( var0 : q2_fun_output ) : q2_fun_output {
+    var0
+};
+
+
+chan source_fork;
+chan fork_q1;
+chan fork_q2;
+chan q1_cjoin;
+chan q2_q3;
+chan q3_cjoin;
+chan cjoin_sink;
+
+let source_fork := Source(q2_fun_output);
+let fork_q1, fork_q2 := Fork(source_fork);
+let q1_cjoin := Queue(2, fork_q1);
+let q2_q3 := Function(q2_fun, fork_q2);
+let q3_cjoin := Queue(3, q2_q3);
+let cjoin_sink := CtrlJoin(q1_cjoin, q3_cjoin);
+Sink(cjoin_sink);

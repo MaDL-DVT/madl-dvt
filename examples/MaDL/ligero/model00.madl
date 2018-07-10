@@ -1,0 +1,252 @@
+// Initial model of the LIGERO router architecture
+// has been presented at HiPEAC 2013
+// A cute aspect is to use the same building block everywhere. 
+// topology is for now a 2x2 torus
+
+
+/*
+
+Invariants:
+0 = [-1 * "LigeroRouter4_BBB1_RECEPTION1_Queue1"] + [1 * "LigeroRouter4_BBB1_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter3_BBB2_Queue1"]
+0 = [1 * "LigeroRouter4_BBB1_Queue1"] + [1 * "LigeroRouter3_BBB2_RECEPTION1_Queue1"] + [-1 * "LigeroRouter3_BBB2_RECEPTION1_CreditCounter1_Queue1"]
+0 = [-1 * "LigeroRouter4_BBB2_RECEPTION1_Queue1"] + [1 * "LigeroRouter4_BBB2_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter3_BBB1_Queue1"]
+0 = [1 * "LigeroRouter4_BBB2_Queue1"] + [1 * "LigeroRouter3_BBB1_RECEPTION1_Queue1"] + [-1 * "LigeroRouter3_BBB1_RECEPTION1_CreditCounter1_Queue1"]
+0 = [-1 * "LigeroRouter4_BBB4_RECEPTION1_Queue1"] + [1 * "LigeroRouter4_BBB4_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter2_BBB4_Queue1"]
+0 = [-1 * "LigeroRouter4_BBB4_Queue1"] + [-1 * "LigeroRouter2_BBB4_RECEPTION1_Queue1"] + [1 * "LigeroRouter2_BBB4_RECEPTION1_CreditCounter1_Queue1"]
+0 = [-1 * "LigeroRouter4_BBB3_RECEPTION1_Queue1"] + [1 * "LigeroRouter4_BBB3_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter2_BBB3_Queue1"]
+0 = [1 * "LigeroRouter4_BBB3_Queue1"] + [1 * "LigeroRouter2_BBB3_RECEPTION1_Queue1"] + [-1 * "LigeroRouter2_BBB3_RECEPTION1_CreditCounter1_Queue1"]
+0 = [-1 * "LigeroRouter3_BBB4_RECEPTION1_Queue1"] + [1 * "LigeroRouter3_BBB4_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter1_BBB4_Queue1"]
+0 = [-1 * "LigeroRouter3_BBB4_Queue1"] + [-1 * "LigeroRouter1_BBB4_RECEPTION1_Queue1"] + [1 * "LigeroRouter1_BBB4_RECEPTION1_CreditCounter1_Queue1"]
+0 = [-1 * "LigeroRouter3_BBB3_RECEPTION1_Queue1"] + [1 * "LigeroRouter3_BBB3_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter1_BBB3_Queue1"]
+0 = [1 * "LigeroRouter3_BBB3_Queue1"] + [1 * "LigeroRouter1_BBB3_RECEPTION1_Queue1"] + [-1 * "LigeroRouter1_BBB3_RECEPTION1_CreditCounter1_Queue1"]
+0 = [-1 * "LigeroRouter2_BBB1_RECEPTION1_Queue1"] + [1 * "LigeroRouter2_BBB1_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter1_BBB2_Queue1"]
+0 = [1 * "LigeroRouter2_BBB1_Queue1"] + [1 * "LigeroRouter1_BBB2_RECEPTION1_Queue1"] + [-1 * "LigeroRouter1_BBB2_RECEPTION1_CreditCounter1_Queue1"]
+0 = [-1 * "LigeroRouter2_BBB2_RECEPTION1_Queue1"] + [1 * "LigeroRouter2_BBB2_RECEPTION1_CreditCounter1_Queue1"] + [-1 * "LigeroRouter1_BBB1_Queue1"]
+0 = [1 * "LigeroRouter2_BBB2_Queue1"] + [1 * "LigeroRouter1_BBB1_RECEPTION1_Queue1"] + [-1 * "LigeroRouter1_BBB1_RECEPTION1_CreditCounter1_Queue1"]
+
+*/
+
+param int DFIFO_SIZE = 2; // must be at least 2
+param int EJECT_QSIZE = 2;
+param int RQ_SIZE = 2;
+param int NUM_NODE=4;
+
+struct Pkt {
+    destx: [0:0];
+    desty: [0:0]; 
+};
+
+const token;
+
+macro Latch (chan input) => chan output {
+      let output := Queue(1,input);
+};
+
+macro CreditCounter(int counters, chan i) => chan o {
+	chan q_in;
+	let q_in, o := Fork(PatientSource(token));
+	Sink(CtrlJoin(Queue(counters, q_in), i));
+};
+
+macro DFIFO (int SIZE, bus<2> ins) => bus<2> outs{
+// FIFO with 2 input-output pairs
+// Ideally, priority is given to outs[1] that is going to
+// the ejection block
+// We also loadbalance at the inputs
+   chan toQueueUp1, toQueueDown1 := LoadBalancer(Latch(ins[0]));
+   chan toQueueUp2, toQueueDown2 := LoadBalancer(Latch(ins[1]));   
+   chan in0up,in0down := LoadBalancer(Queue(SIZE,Merge(Latch(toQueueUp1),Latch(toQueueUp2))));
+   chan in1up,in1down := LoadBalancer(Queue(SIZE,Merge(Latch(toQueueDown1),Latch(toQueueDown2))));  
+   let outs[0] := Merge(Latch(in0up),Latch(in1up));
+   let outs[1] := Merge(Latch(in0down),Latch(in1down));
+};
+
+macro RECEPTION (int xID, int yID, int MVT, int RQ_SIZE, chan input) => bus<4> outs{
+// CONS: outs[0]
+// BYPASS: outs[1]
+// DFIFO: outs[2]
+// CREDIT BACK: outs[3]
+// MVT gives the movement:
+// 0 = X-
+// 1 = X+
+// 2 = Y-
+// 3 = Y+
+
+   // RECEPTION input is buffered and gives credits back to the previous block
+   chan toRCP, creditBack := Fork(Queue(RQ_SIZE,input));
+   let outs[3] := CreditCounter(RQ_SIZE,creditBack);
+
+   pred ToCONS (p: Pkt) {
+   	p.destx == xID && p.desty == yID
+   };
+
+   chan noCONS;
+   // for Virtual Cut Through the input is buffered in a queue of size RQ_SIZE. 
+   let outs[0],noCONS := Switch(toRCP,ToCONS,otherwise);
+
+   pred toBYPASS (p: Pkt){
+   // a packet is routed to the BYPASS output if the following three conditions hold:
+   // 1. The packet destination is reachable following the same dimension and direction as the current packet movement.
+   // 2. There are no packets at the ejection stage waiting to use the output port (although packets can be at the DFIFO moving inside the loop).
+   //    This means that the queue in the reception stage is empty.
+   //    RECEPTION.queue.isempty -- our generated queues have an empty signal !
+   //    but this is a non-persistent signal, so we should replace it by an invariant.
+   //    Tx(chan) <--> IsEmpty(queue)
+   // 3. The neighbor router has room for at least one packet.
+   //    Given that the flow control applied in the router is Virtual Cut-through (VCT), the reception stage must be able to store at least one packet.
+   // For now, 2nd condition is ignored.
+      if (MVT==0) { // X- block
+   	   p.destx < xID || (xID == 0 && p.destx == 1) // the 0 and 1 here should be generalised to the dimension limits.
+      } else {
+         if (MVT==1) { // X+ block
+   	   p.destx > xID || (xID == 1 && p.destx == 0) 
+	 } else { 
+	   if (MVT==2) { // Y- block
+	      p.desty < yID || (yID == 0 && p.desty == 1)
+	   } else { // Y+ block
+	      p.desty > yID || (yID == 1 && p.desty == 0)
+	   };
+	 };
+      };      
+   };
+
+   // otherwise, the packet is sent to the DFIFO
+//   chan toBP;
+   let outs[1],outs[2] := Switch(noCONS,toBYPASS,otherwise);
+//   let outs[1] := CtrlJoin(toBP,credit); // send to bypass line only when credit available 
+};
+
+macro Merge3 (bus<3> ins) => chan output {
+      let output := Merge (ins[0], Merge(ins[1],ins[2]));
+};
+
+
+macro EJECTION (int qSIZE, bus<3> ins) => chan output {
+// ins[0] = INJ
+// ins[1] = BYPASS
+// ins[2] = DFIFO
+   let output := Merge3(Latch(ins[0]),Latch(ins[1]),Queue(qSIZE,ins[2]));
+
+};
+
+// BBB: Basic Building Block
+macro BBB (int xID, int yID, int DFIFO_SIZE, int EJECT_QSIZE, int MVT, int RQ_SIZE, bus<4> ins) => bus<4> outs {
+
+// INJECTION should only be possible if there are 2 spaces left in
+// the BBB. The BBB should maintain this invariant.
+// It would be nice to add an invariant to a macro block. 
+// lambda(DFIFO.in[0]) + lambda(DFIFO.in[1]) + lambda(RECEPTION.in[the good one])
+// - lambda(DFIFO.out[0]) + lambda(DFIFO.out[1]) + lambda(RECEPTION.out[...]) < 2*DIFO_SIZE + RQ_SIZE - 2
+
+
+
+// ins[0] = INJ
+// ins[1] = dimension input
+// ins[2] = loop input
+// ins[3] = credit input 
+// outs[0] = CONS
+// outs[1] = dimension output
+// outs[2] = loop output
+// outs[3] = credit back to previous node
+// outs[4] = enable signal. The BBB has enough free space to allow injection. 
+
+
+   // Remove injected packets with local destination
+   pred Good (p: Pkt){
+   	p.destx != xID && p.desty != yID
+   };
+   chan goodPkts,badPkts := Switch(ins[0],Good,otherwise);
+   Sink(badPkts);
+
+   chan bypassLine;
+   chan toDFIFO;   
+
+   let outs[0], bypassLine,toDFIFO,outs[3] := RECEPTION(xID,yID,MVT,RQ_SIZE,ins[1]);
+   chan toEjection;
+   let outs[2],toEjection := DFIFO(DFIFO_SIZE,toDFIFO,ins[2]);
+   // Dimension output is back-pressured with credits coming from the up-stream node. 
+   let outs[1] := CtrlJoin(EJECTION(EJECT_QSIZE,goodPkts,bypassLine,toEjection),Queue(RQ_SIZE,ins[3]));
+};
+
+
+// we now create a LIGERO router
+
+
+macro LigeroRouter (int xID, int yID, int DFIFO_SIZE, int EJECT_QSIZE, int RQ_SIZE,bus<9> ins) => bus<9> outs {
+// ins[0]: local injection
+// ins[1]: from X- (east in)
+// ins[2]: from X+ (west in)
+// ins[3]: from Y- (north in)
+// ins[4]: from Y+ (south in)
+// ins[5]: credit coming on X- output
+// ins[6]: credit coming on X+ output
+// ins[7]: credit coming on Y- output
+// ins[8]: credit coming on Y+ output
+// outs[0]: local ejection
+// outs[1]: to X- (west out)
+// outs[2]: to X+ (east out)
+// outs[3]: to Y- (south out)
+// outs[4]: to Y+ (north out)
+// outs[5]: credit back on X- input
+// outs[6]: credit back on X+ input
+// outs[7]: credit back on Y- input
+// outs[8]: credit back on Y+ input
+
+
+   // X- block
+   chan x_min_cons;
+   chan x_min_loop;
+//   bus<4> enables;   
+//   let x_min_cons, outs[1], x_min_loop, outs[5],enables[0] := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,0,RQ_SIZE,CtrlJoin(x_min_inj,Queue(1,enables[0])),ins[1],y_min_loop,ins[5]);
+   // not queueing the enables generate cycles in the hardware.
+   let x_min_cons, outs[1], x_min_loop, outs[5] := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,0,RQ_SIZE,Latch(x_min_inj),ins[1],y_min_loop,ins[5]);
+
+
+   // X+ block
+   chan x_plus_cons;
+   chan x_plus_loop;
+//   let x_plus_cons, outs[2], x_plus_loop, outs[6],enables[1] := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,1,RQ_SIZE,CtrlJoin(x_plus_inj,Queue(1,enables[1])),ins[2],y_plus_loop,ins[6]);
+   let x_plus_cons, outs[2], x_plus_loop, outs[6] := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,1,RQ_SIZE,Latch(x_plus_inj),ins[2],y_plus_loop,ins[6]);
+
+
+   // Y- block
+   chan y_min_cons;
+   chan y_min_loop;
+//   let y_min_cons, outs[3], y_min_loop, outs[7],enables[2] := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,2,RQ_SIZE,CtrlJoin(y_min_inj,Queue(1,enables[2])),ins[3],x_plus_loop,ins[7]);
+   let y_min_cons, outs[3], y_min_loop, outs[7] := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,2,RQ_SIZE,Latch(y_min_inj),ins[3],x_plus_loop,ins[7]);
+
+
+   // Y+ block
+   chan y_plus_cons;
+   chan y_plus_loop;
+//   let y_plus_cons, outs[4],y_plus_loop, outs[8],enables[3] := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,3,RQ_SIZE,CtrlJoin(y_plus_inj,Queue(1,enables[3])),ins[4],x_min_loop,ins[8]);
+   let y_plus_cons, outs[4],y_plus_loop, outs[8]  := BBB(xID,yID,DFIFO_SIZE,EJECT_QSIZE,3,RQ_SIZE,Latch(y_plus_inj),ins[4],x_min_loop,ins[8]);
+
+   // mux for the CONS outputs
+   let outs[0] := Merge(x_min_cons, Merge(x_plus_cons, Merge(y_min_cons,y_plus_cons)));
+
+   // demux local injection
+   chan x_min_inj, x_plus_inj,y_min_inj,y_plus_inj := LoadBalancer(Latch(ins[0])); 
+
+};
+
+// generate all local sources
+bus<NUM_NODE> locals;
+for (int i =0 ; i<NUM_NODE; i++) {
+  let locals[i] := Source(Pkt);
+};
+
+bus<9*NUM_NODE> wires;
+let wires[9*0], wires[9*0+1],wires[9*0+2],wires[9*0+3],wires[9*0+4],wires[9*0+5],wires[9*0+6],wires[9*0+7],wires[9*0+8]
+    := LigeroRouter(0,0,DFIFO_SIZE,EJECT_QSIZE,RQ_SIZE,locals[0],wires[9*1+2],wires[9*1+1],wires[9*2+3],wires[9*2+4],wires[9*1+6],wires[9*1+5],wires[9*2+7],wires[9*2+8]);
+let wires[9*1], wires[9*1+1],wires[9*1+2],wires[9*1+3],wires[9*1+4],wires[9*1+5],wires[9*1+6],wires[9*1+7],wires[9*1+8]
+    := LigeroRouter(1,0,DFIFO_SIZE,EJECT_QSIZE,RQ_SIZE,locals[1],wires[9*0+2],wires[9*0+1],wires[9*3+3],wires[9*3+4],wires[9*0+6],wires[9*0+5],wires[9*3+7],wires[9*3+8]);
+let wires[9*2], wires[9*2+1],wires[9*2+2],wires[9*2+3],wires[9*2+4],wires[9*2+5],wires[9*2+6],wires[9*2+7],wires[9*2+8]
+    := LigeroRouter(0,1,DFIFO_SIZE,EJECT_QSIZE,RQ_SIZE,locals[2],wires[9*3+2],wires[9*3+1],wires[9*0+3],wires[9*0+4],wires[9*3+6],wires[9*3+5],wires[9*0+7],wires[9*0+8]);
+let wires[9*3], wires[9*3+1],wires[9*3+2],wires[9*3+3],wires[9*3+4],wires[9*3+5],wires[9*3+6],wires[9*3+7],wires[9*3+8]
+    := LigeroRouter(1,1,DFIFO_SIZE,EJECT_QSIZE,RQ_SIZE,locals[3],wires[9*2+2],wires[9*2+1],wires[9*1+3],wires[9*1+4],wires[9*2+6],wires[9*2+5],wires[9*1+7],wires[9*1+8]);
+
+Sink(wires[9*0]);
+Sink(wires[9*1]);
+Sink(wires[9*2]);
+Sink(wires[9*3]);

@@ -1,0 +1,62 @@
+// DMA controller + bus + 1 peripheral
+// The peripheral emits a request
+// the DMA sends an acknowledge and the data.
+// The "ack" means data have arrived.
+// The peripheral must therefore wait that the data
+// have arrived before sending the next request.
+
+const req;
+const ack;
+const pkt;
+
+
+// Producer 
+process DMAC (chan request) => chan dataOut, chan ackOut {
+	state Idle () {
+		trans {
+			req d <- request;
+			next SndAck();
+		};
+	};
+	state SndAck () {
+		trans {
+			ack -> ackOut;
+			next SndData();
+		};
+	};	
+	state SndData() {
+		trans {
+			pkt -> dataOut;
+			next Idle();
+		};
+	};
+};
+
+// Consumer
+process Periph (chan dataIn, chan ackIn) => chan requestOut {
+	state Idle () {
+		trans {
+			req -> requestOut;
+			next WaitAck();
+		};
+	};
+	state WaitAck() {
+		trans {
+			ack d <- ackIn;
+			next WaitData();
+		};
+	};
+	state WaitData() {
+		trans {
+			pkt d <- dataIn;
+			next Idle();
+		};
+	};
+};
+
+macro Abus (chan input) => chan output {
+	let output := Queue(2,input);
+};
+
+chan pe := Periph(Abus(da),Abus(ac));
+chan da, ac := DMAC(Abus(pe));

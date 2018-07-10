@@ -1,0 +1,93 @@
+const req;
+
+const tok;
+
+const rsp;
+
+function function_fun ( var0 : req ) : rsp {
+    rsp {  }
+};
+
+
+macro credit_counter_10(chan input) => chan output {
+    chan source_fork;
+    chan fork_queue;
+    chan queue_cjoin;
+    chan cjoin_sink;
+    
+    let source_fork := PatientSource(tok);
+    let output, fork_queue := Fork(source_fork);
+    let queue_cjoin := Queue(10, fork_queue);
+    let cjoin_sink := CtrlJoin(input, queue_cjoin);
+    Sink(cjoin_sink);
+};
+
+macro Fabric(chan i0, chan i1, chan i2, chan i3, chan i4, chan i5) => chan o0, chan o1, chan o2, chan o3, chan o4, chan o5 {
+    
+    let o0 := Queue(2, i0);
+    let o1 := Queue(2, i1);
+    let o2 := Queue(2, i2);
+    let o3 := Queue(2, i3);
+    let o4 := Queue(2, i4);
+    let o5 := Queue(2, i5);
+};
+
+macro Delay(chan input) => chan output {
+    chan fork_sink;
+    
+    let output, fork_sink := Fork(input);
+    Sink(fork_sink);
+};
+
+macro Agent(chan i0, chan i1, chan i2) => chan o0, chan o1, chan o2 {
+    chan source_cjoin1;
+    chan cq1_cjoin_1;
+    chan cjoin1_merge;
+    chan function_cjoin2;
+    chan cq2_cjoin2;
+    chan cjoin2_merge;
+    chan delay_function;
+    chan switch_dq1;
+    chan dq1_fork1;
+    chan fork1_cc1;
+    chan fork1_delay;
+    chan switch_dq2;
+    chan dq2_fork2;
+    chan fork2_cc2;
+    chan fork2_sink;
+    
+    let cq1_cjoin_1 := Queue(8, i1);
+    let cq2_cjoin2 := Queue(8, i2);
+    let dq1_fork1 := Queue(8, switch_dq1);
+    let dq2_fork2 := Queue(8, switch_dq2);
+    let function_cjoin2 := Function(function_fun, delay_function);
+    let source_cjoin1 := Source(req);
+    Sink(fork2_sink);
+    let fork1_delay, fork1_cc1 := Fork(dq1_fork1);
+    let fork2_sink, fork2_cc2 := Fork(dq2_fork2);
+    let cjoin1_merge := CtrlJoin(source_cjoin1, cq1_cjoin_1);
+    let cjoin2_merge := CtrlJoin(function_cjoin2, cq2_cjoin2);
+    let switch_dq1, switch_dq2 := Switch(i0, req, rsp);
+    let o0 := Merge(cjoin1_merge, cjoin2_merge);
+    let delay_function := Delay(fork1_delay);
+    let o1 := credit_counter_10(fork1_cc1);
+    let o2 := credit_counter_10(fork2_cc2);
+};
+
+
+chan agentP_o0_fabric_i0;
+chan agentP_o1_fabric_i4;
+chan agentP_o2_fabric_i5;
+chan agentQ_o0_fabric_i3;
+chan agentQ_o1_fabric_i1;
+chan agentQ_o2_fabric_i2;
+chan fabric_o0_agentQ_i0;
+chan fabric_o1_agentP_i1;
+chan fabric_o2_agentP_i2;
+chan fabric_o3_agentP_i0;
+chan fabric_o4_agentQ_i1;
+chan fabric_o5_agentQ_i2;
+
+let agentP_o0_fabric_i0, agentP_o1_fabric_i4, agentP_o2_fabric_i5 := Agent(fabric_o3_agentP_i0, fabric_o1_agentP_i1, fabric_o2_agentP_i2);
+let agentQ_o0_fabric_i3, agentQ_o1_fabric_i1, agentQ_o2_fabric_i2 := Agent(fabric_o0_agentQ_i0, fabric_o4_agentQ_i1, fabric_o5_agentQ_i2);
+let fabric_o0_agentQ_i0, fabric_o1_agentP_i1, fabric_o2_agentP_i2, fabric_o3_agentP_i0, fabric_o4_agentQ_i1, fabric_o5_agentQ_i2 := Fabric(agentP_o0_fabric_i0, agentQ_o1_fabric_i1, agentQ_o2_fabric_i2, agentQ_o0_fabric_i3, agentP_o1_fabric_i4, agentP_o2_fabric_i5);

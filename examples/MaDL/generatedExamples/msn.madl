@@ -1,0 +1,54 @@
+const req;
+
+const tok;
+
+const rsp;
+
+macro credit_counter_2(chan input) => chan output {
+    chan source_fork;
+    chan fork_queue;
+    chan queue_cjoin;
+    chan cjoin_sink;
+    
+    let source_fork := PatientSource(tok);
+    let output, fork_queue := Fork(source_fork);
+    let queue_cjoin := Queue(2, fork_queue);
+    let cjoin_sink := CtrlJoin(input, queue_cjoin);
+    Sink(cjoin_sink);
+};
+
+
+chan source0_queue0;
+chan queue0_cjoin0;
+chan cc0_cjoin0;
+chan cjoin0_merge;
+chan switch_secQueue0;
+chan secQueue0_fork0;
+chan fork0_cc0;
+chan fork0_sink0;
+chan source1_queue1;
+chan queue1_cjoin1;
+chan cc1_cjoin1;
+chan cjoin1_merge;
+chan switch_secQueue1;
+chan secQueue1_fork1;
+chan fork1_cc1;
+chan fork1_sink1;
+chan merge_switch;
+
+let source1_queue1 := Source(rsp);
+let queue0_cjoin0 := Queue(2, source0_queue0);
+let cc0_cjoin0 := credit_counter_2(fork0_cc0);
+let cjoin0_merge := CtrlJoin(queue0_cjoin0, cc0_cjoin0);
+let secQueue0_fork0 := Queue(2, switch_secQueue0);
+let fork0_cc0, fork0_sink0 := Fork(secQueue0_fork0);
+DeadSink(fork0_sink0);
+let source0_queue0 := Source(req);
+let queue1_cjoin1 := Queue(2, source1_queue1);
+let cc1_cjoin1 := credit_counter_2(fork1_cc1);
+let cjoin1_merge := CtrlJoin(queue1_cjoin1, cc1_cjoin1);
+let secQueue1_fork1 := Queue(2, switch_secQueue1);
+let fork1_cc1, fork1_sink1 := Fork(secQueue1_fork1);
+Sink(fork1_sink1);
+let merge_switch := Merge(cjoin0_merge, cjoin1_merge);
+let switch_secQueue0, switch_secQueue1 := Switch(merge_switch, req, rsp);

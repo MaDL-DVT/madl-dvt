@@ -1,0 +1,36 @@
+sort T = struct t;
+     S = struct free | next_t;
+
+
+
+act  idle,inject,reject,consume;
+
+proc P(s: S, q: List(T)) =
+       (!(#q < 2) && !(#q > 0) && (s == free)) 
+       	    ->   ((idle|reject + idle|consume).P(s,q)
+	       + (inject|reject + inject|consume).P(next_t,q))
+     + (!(#q < 2) && !(#q > 0) && !(s == free))
+       	    ->   (inject|reject + inject|consume).P(next_t,q)
+     + ((#q < 2) && !(#q > 0) && (s == free))
+       	    ->   ((idle|reject + idle|consume).P(s,q) + (inject|reject
+	       + inject|consume).P(s,[t]++q))
+     + ((#q < 2) && !(#q > 0) && !(s == free)) 
+       	    -> (inject|reject + inject|consume).P(free,[t]++q)
+     + (!(#q < 2) && (#q > 0) && (s == free))
+       	    ->   (idle|reject.P(s,q)
+	       + idle|consume.P(s,rtail(q))
+	       + inject|reject.P(next_t,q)
+	       + inject|consume.P(next_t,rtail(q)))
+     + (!(#q < 2) && (#q > 0) && !(s == free)) 
+       	    ->   (inject|reject.P(next_t,q)
+	       + inject|consume.P(next_t,rtail(q)))
+     + ((#q < 2) && (#q > 0) && (s == free)) %(1,1)
+       	    ->   (idle|reject.P(s,q)
+	       + idle|consume.P(s,rtail(q))
+	       + inject|reject.P(s,[t]++q)
+	       + inject|consume.P(s,[t]++rtail(q)))
+     + ((#q < 2) && (#q > 0) && !(s == free))
+       	    ->   (inject|reject.P(free,[t]++q)
+	       + inject|consume.P(free,[t]++rtail(q)));
+
+init P(free, []);

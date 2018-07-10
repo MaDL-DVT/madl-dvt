@@ -1,0 +1,84 @@
+// small process examples with function writing on the output
+// Master sends request which are transformed into responses by the slave.
+// When the master sends a request, it waits for the response to come back.
+// The slave waits for the master to produce a request.
+
+// I would really like to use enum here.
+
+const req;
+const rsp;
+
+/*
+struct Pkt {
+   type : [0:0]; // 0 == rsp, 1 == req
+};
+
+
+function MakeReq () : Pkt {
+    type = 1;
+};
+
+
+function MakeRsp (p: Pkt) : Pkt {
+    type = 0;
+};
+*/
+
+
+process Master (chan input) => chan output {
+
+  state s0 () {
+     trans {
+        req -> output;
+	next s0();
+     };
+     trans {
+        rsp d <- input;
+	next s0();
+     };
+  };
+
+
+/*
+  state s0() { // create request
+     trans {
+       next s1(MakeReq()); // this works because we generate only one packet here and not a set of packets. 	
+     };
+  };
+
+  state s1(Pkt MyPkt) { // wait for the response
+    trans {
+      MyPkt -> output; // send request
+      next s2();
+    };
+  };
+
+  state s2() { // wait for response
+     trans {
+       Pkt d <- input;
+       guard d.type == 0; // enum {req;rsp;}; const req; const rsp; guard d.type == req;
+       next s0();
+     };
+  };
+*/
+
+};
+
+process Slave (chan input) => chan output{
+
+   state s0() {
+      trans {
+        req d <- input;
+//	guard d.type == 1; // should receive request
+//	MakeRsp(d) -> output;
+        rsp -> output;
+	next s0();
+      };    
+   };
+};
+
+chan ms;
+chan sm;
+
+let sm := Queue(2,Master(ms));
+let ms := Queue(2,Slave(sm));

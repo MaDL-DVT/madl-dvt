@@ -1,0 +1,338 @@
+// 2D mesh with simple MI protocol based on Figure 2 of Freek's 2016 DATE paper.
+// Issue: we cannot prove it deadlock-free when queues are large enough (size >= 3)
+
+param int QSIZE = 2; // size of input buffers
+param int XDIM = 2;  // size of the x dimension
+param int YDIM = 2;  // size of the y dimension
+param int XBITS = 0; // #bits-1 to encode the XDIM
+param int YBITS = 0; // #bits-1 to encode the YDIM
+param int CSIZE = 2; // size of the credit counter (not needed in this file)
+param int XDIR = XDIM-1; // x-coordinate of the directory
+param int YDIR = YDIM-1; // y-coordinate of the directory
+
+
+// exp results
+//         Invs         smt-only
+// (2,2)                   11.2
+// (3,3)   0.8             
+// (4,3)   4.5 
+// (4,4)  30   
+// (5,5)  49   
+// (6,6)  82   
+// (7,7) 130 (2'10'')
+// (8,8) > 30 minutes (the number of colors explode) only for cache messages 8*8*4 = 256 colors, at least as many Pkt's 
+
+param int WITH_LOCAL_QUEUE = 1; // 1 local queue at injection points, 0 no local queues
+
+const GetX;
+const PutX;
+const WBA;
+const Inv;
+
+// Type used by the MI caches and the directory
+struct CacheMessage {
+  x     : [XBITS:0]; // x-coordinate of the cache requesting the block (needed to store the block owner)
+  y     : [YBITS:0]; // y-coordinate of the cache requesting the block
+  color : enum {
+        GetX;
+        PutX;
+        WBA;
+        Inv;
+  };
+};
+
+// some functions creating messages for the MI caches.
+function MakePutX () : CacheMessage {
+  x = 0;
+  y = 0;
+  color = PutX;
+};
+
+function MakeGetX () : CacheMessage {
+  x = 0;
+  y = 0;
+  color = GetX;
+};
+
+// Type used by the network to transport the cache coherence messages.
+struct Pkt {
+  destx : [XBITS:0]; // x-coordinate of the destination
+  desty : [YBITS:0]; // y-coordinate of the destination
+  srcx  : [XBITS:0]; // x-coordinate of the source
+  srcy  : [YBITS:0]; // y-coordinate of the soruce
+  type  : enum {
+        GetX;
+        PutX;
+        WBA;
+        Inv;
+  };
+};
+
+const tok; // required by our macro library
+
+uses lib.main; 
+uses lib.paramrouter; // _single_routing_logic;
+
+process MI (int xID, int yID, chan input, chan start) =>  chan output {
+
+  state I(){
+    trans {
+      tok d <- start;
+      MakeGetX() -> output;
+      next M();
+    };
+  };
+
+  state M(){
+    trans {
+      tok d <- start; // this should be Repl but we are missing the connection to a CPU. 
+	    MakePutX() -> output;
+	    next MI();
+    };
+    trans{
+      CacheMessage d <- input;
+	    guard d.color == Inv && d.x == xID && d.y == yID; // Inv
+	    MakePutX() -> output;
+	    next MI();
+    };
+  };
+
+  state MI (){
+    trans {
+      CacheMessage d <- input;
+      guard d.color == Inv && d.x == xID && d.y == yID; // Inv
+      next MI();
+    };
+    trans {
+      CacheMessage d <- input;
+      guard d.color == WBA && d.x == xID && d.y == yID; // WBA
+      next I();
+    };
+  };
+};
+
+macro cacheNode (int xID, int yID, chan input) => chan output {
+
+  function MakePacket (p: CacheMessage) : Pkt {
+    destx = XDIR;
+    desty = YDIR;
+    srcx  = xID;
+    srcy  = yID;
+    type  = p.color; 
+  };
+      
+  function MakeCMessage (p: Pkt) : CacheMessage {
+    x = p.destx;
+    y = p.desty;
+    color = p.type;
+  };
+
+  chan cpu := Source(tok); // abstraction of the CPU to simply sending token to activate the protocol.
+  chan tmp := MI(xID, yID, Function(MakeCMessage,input),cpu);
+  let output := Function(MakePacket,tmp);
+};
+
+struct dirState {
+  ownerx : [XBITS:0];
+  ownery : [YBITS:0];
+};
+
+function MakeWBA (p: dirState) : CacheMessage {
+  x = p.ownerx;
+  y = p.ownery;
+  color = WBA;
+};
+
+function MakeInv (p: dirState) : CacheMessage {
+  x = p.ownerx;
+  y = p.ownery;
+  color = Inv;
+};
+
+function setOwner (p: CacheMessage) : dirState {
+  ownerx = p.x;
+  ownery = p.y;
+};
+
+process DIR (chan input) => chan output {
+
+  state I() {
+    trans {
+      CacheMessage d <- input;
+	    guard d.color == GetX && (d.x != XDIR || d.y != YDIR); // GetX and not for the Directory
+	    next M(setOwner(d));
+    };
+  };
+
+  state M(dirState c) {
+    trans {
+      CacheMessage d <- input;
+	    guard d.color == PutX && d.x == c.ownerx && d.y == c.ownery ; // PutX from the cache owner.
+	    MakeWBA(c) -> output;
+	    next I();
+    };
+    trans {
+      MakeInv(c) -> output;
+	    next MI(c);
+    };
+  };
+
+  state MI(dirState c) {
+    trans {
+      CacheMessage d <- input;
+	    guard d.color == PutX && d.x == c.ownerx && d.y == c.ownery; // PutX
+	    MakeWBA(c) -> output;
+	    next I();
+    };
+  };
+};
+
+function MakeCacheMessage (p: Pkt) : CacheMessage {
+  x = p.srcx;
+  y = p.srcy;
+  color = p.type;
+};
+
+function MakePacketDIR (p:CacheMessage) : Pkt {
+  destx = p.x;
+  desty = p.y;
+  srcx  = XDIR;
+  srcy  = YDIR;
+  type  = p.color; 
+};
+
+pred DIR_OUT_OK_P (p: Pkt) {
+  (p.destx != XDIR || p.desty != YDIR)
+};
+
+
+macro directoryNode (chan input) => chan output {
+  chan dirOUT := DIR(Function(MakeCacheMessage,input));  
+  chan NOKDO;
+  let output,NOKDO := Switch(Function(MakePacketDIR,dirOUT),DIR_OUT_OK_P,otherwise);
+  Sink(NOKDO);
+};
+
+// Generate the local nodes
+
+bus<XDIM*YDIM> srcs; // bus containing the local inputs
+for (int y = 0; y<YDIM;y++) {
+  for (int x = 0; x < XDIM; x++) {
+    if (x == XDIR && y == YDIR) {
+	  // create the directory
+      let srcs[x+y*XDIM] := directoryNode(allOUTS[x*5+y*XDIM*5])[dir];
+	  }
+	  else {
+      let srcs[x+y*XDIM] := cacheNode(x,y,allOUTS[x*5+y*XDIM*5]);
+	  };
+  };
+};
+
+// Generate all routers
+
+bus<5*XDIM*YDIM> allOUTS; // bus containing all channels
+for (int y = 0; y < YDIM; y++) {
+    for (int x = 0; x < XDIM ; x++) {
+       if (y == 0) {
+         if (x == 0) {
+	    let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+	    XYRouter5P(x,y,srcs[x+y*XDIM],deadSource(), allOUTS[y*XDIM*5+(x+1)*5+1],allOUTS[(y+1)*XDIM*5+x*5+4], deadSource());
+	 }
+	 else {
+	      if (x == XDIM - 1) {
+	      let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+              XYRouter5P(x,y,srcs[x+y*XDIM],allOUTS[y*XDIM*5+(x-1)*5+2],deadSource(),allOUTS[(y+1)*XDIM*5+x*5+4],deadSource());
+	    }
+	    else { // y== 0 and 0 < x < XDIM-1
+	      let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+              XYRouter5P(x,y,srcs[x+y*XDIM],allOUTS[y*XDIM*5+(x-1)*5+2],allOUTS[y*XDIM*5+(x+1)*5+1],allOUTS[(y+1)*XDIM*5+x*5+4],deadSource());
+	    };
+	 };
+       }
+       else {
+          if (y == YDIM - 1) {
+	     if (x == 0) {
+	        let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+                XYRouter5P(x,y,srcs[x+y*XDIM],deadSource(),allOUTS[y*XDIM*5+(x+1)*5+1],deadSource(),allOUTS[(y-1)*XDIM*5+x*5+3]);
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+                   XYRouter5P(x,y,srcs[x+y*XDIM],allOUTS[y*XDIM*5+(x-1)*5+2],deadSource(),deadSource(),allOUTS[(y-1)*XDIM*5+x*5+3]);
+		}
+		else { // y = YDIM-1 and x is arbitrary
+		   let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+                   XYRouter5P(x,y,srcs[x+y*XDIM],allOUTS[y*XDIM*5+(x-1)*5+2],allOUTS[y*XDIM*5+(x+1)*5+1],deadSource(),allOUTS[(y-1)*XDIM*5+x*5+3]);
+		};
+	     };
+	  }
+	  else { // y is arbitrary
+	     if (x == 0) {
+	      let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+              XYRouter5P(x,y,srcs[x+y*XDIM],deadSource(),allOUTS[y*XDIM*5+(x+1)*5+1],allOUTS[(y+1)*XDIM*5+x*5+4],allOUTS[(y-1)*XDIM*5+x*5+3]);	      
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+                   XYRouter5P(x,y,srcs[x+y*XDIM],allOUTS[y*XDIM*5+(x-1)*5+2], deadSource(),allOUTS[(y+1)*XDIM*5+x*5+4],allOUTS[(y-1)*XDIM*5+x*5+3]);	      
+		}
+		else {
+		   let allOUTS[y*XDIM*5+x*5],allOUTS[y*XDIM*5+x*5+1],allOUTS[y*XDIM*5+x*5+2],allOUTS[y*XDIM*5+x*5+3],allOUTS[y*XDIM*5+x*5+4] :=
+                   XYRouter5P(x,y,srcs[x+y*XDIM],allOUTS[y*XDIM*5+(x-1)*5+2],allOUTS[y*XDIM*5+(x+1)*5+1],allOUTS[(y+1)*XDIM*5+x*5+4],allOUTS[(y-1)*XDIM*5+x*5+3]);	      
+		};
+	     };
+	  };
+       };
+    };
+};
+
+// We sink all outputs at the border.
+// (they should never receive anything. So, we make them dead to find errors)
+for (int y = 0; y < YDIM ; y++) {
+   for (int x = 0; x < XDIM ; x++){
+       if (y == 0) {
+          if (x == 0) {	
+             DeadSink(allOUTS[y*XDIM*5+x*5+1]);
+	     DeadSink(allOUTS[y*XDIM*5+x*5+4]);
+	  }
+	  else {
+	     if (x == XDIM-1) { 
+	        DeadSink(allOUTS[y*XDIM*5+x*5+2]);
+		DeadSink(allOUTS[y*XDIM*5+x*5+4]);
+	     }
+	     else { // y = 0 but x is in the middle
+	        DeadSink(allOUTS[y*XDIM*5+x*5+4]);		
+            };
+	  };
+       }
+       else {
+          if (y == YDIM - 1) {
+	     if (x == 0) {
+	        DeadSink(allOUTS[y*XDIM*5+x*5+1]);
+		DeadSink(allOUTS[y*XDIM*5+x*5+3]);		
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   DeadSink(allOUTS[y*XDIM*5+x*5+2]);
+		   DeadSink(allOUTS[y*XDIM*5+x*5+3]);
+		}
+		else { // y == YDIM - 1 but x is in the middle
+		   DeadSink(allOUTS[y*XDIM*5+x*5+3]);
+		};
+	     };
+	  }
+	  else { // y is in the middle
+	     if (x == 0) {
+	        DeadSink(allOUTS[y*XDIM*5+x*5+1]);
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   DeadSink(allOUTS[y*XDIM*5+x*5+2]);
+		}
+		else {
+		};
+	     };
+	  };       
+       };
+   };
+};

@@ -1,0 +1,59 @@
+const token_t; 
+
+struct package{ 
+     dst : [1:0]; 
+}; 
+
+param int NODE_ID = 0;
+param int RING_SIZE = 1;
+param int switch_mode_a = 0;
+param int switch_mode_b = 0;
+param int switch_mode_c = 0;
+param int switch_mode_d = 0;
+param int switch_mode_e = 0;
+param int switch_mode_f = 0;
+param int switch_mode_i = 0;
+uses RingStation;
+uses XYSwitch;
+macro GridRouter(int NODE_ID, int RING_SIZE, int switch_mode_a, int switch_mode_b, int switch_mode_c, int switch_mode_d, int switch_mode_e, int switch_mode_f, int switch_mode_i, chan IN_W__OUT, chan IN_E__OUT, chan IN_N__OUT, chan IN_S__OUT) => chan OUT_E, chan OUT_W, chan OUT_S, chan OUT_N { 
+chan RS_W__ejc, RS_W__OUT := RingStation(NODE_ID, RING_SIZE, switch_mode_c, q14__OUT, IN_E__OUT)[RS_W];
+let OUT_E := Vars(RS_E__OUT);
+let OUT_W := Vars(RS_W__OUT);
+chan RS_E__ejc, RS_E__OUT := RingStation(NODE_ID, RING_SIZE, switch_mode_d, switch_a__OUTA, IN_W__OUT)[RS_E];
+chan RS_N__ejc, RS_N__OUT := RingStation(NODE_ID, RING_SIZE, switch_mode_f, switch_b__OUTA, IN_S__OUT)[RS_N];
+chan RS_S__ejc, RS_S__OUT := RingStation(NODE_ID, RING_SIZE, switch_mode_e, q13__OUT, IN_N__OUT)[RS_S];
+let OUT_S := Vars(RS_S__OUT);
+let OUT_N := Vars(RS_N__OUT);
+chan q13__OUT := Queue(2, switch_b__OUTB)[q13];
+chan q14__OUT := Queue(2, switch_a__OUTB)[q14];
+pred switch_b_p (p: package) { 
+    (switch_mode_b == 0 && NODE_ID % RING_SIZE == p.dst % RING_SIZE) ||
+    (switch_mode_b == 1 && NODE_ID % RING_SIZE != p.dst % RING_SIZE) ||
+    (switch_mode_b == 2 && p.dst % 2 == 0) ||
+    (switch_mode_b == 3 && p.dst % 2 == 1) ||
+    (switch_mode_b == 4)
+
+}; 
+chan switch_b__OUTA, switch_b__OUTB := Switch(X2Y__out, switch_b_p, otherwise);
+pred switch_a_p (p: package) { 
+    (switch_mode_a == 0 && NODE_ID % RING_SIZE == p.dst % RING_SIZE) ||
+    (switch_mode_a == 1 && NODE_ID % RING_SIZE != p.dst % RING_SIZE) ||
+    (switch_mode_a == 2 && p.dst % 2 == 0) ||
+    (switch_mode_a == 3 && p.dst % 2 == 1) ||
+    (switch_mode_a == 4)
+}; 
+chan switch_a__OUTA, switch_a__OUTB := Switch(Y2X__out, switch_a_p, otherwise);
+chan src1__OUT := Source(package);
+pred sw2_p (p: package) { 
+    (switch_mode_i == 0 && NODE_ID % RING_SIZE == p.dst % RING_SIZE) ||
+    (switch_mode_i == 1 && NODE_ID % RING_SIZE != p.dst % RING_SIZE) ||
+    (switch_mode_i == 2 && p.dst % 2 == 0) ||
+    (switch_mode_i == 3 && p.dst % 2 == 1) ||
+    (switch_mode_i == 4)
+
+}; 
+chan sw2__OUTA, sw2__OUTB := Switch(src1__OUT, sw2_p, otherwise);
+chan X2Y__out := XYSwitch(0, 1, RS_W__ejc, RS_E__ejc, sw2__OUTB)[X2Y];
+chan Y2X__out := XYSwitch(0, 1, RS_S__ejc, RS_N__ejc, sw2__OUTA)[Y2X];
+
+ }; 

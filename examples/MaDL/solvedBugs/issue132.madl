@@ -1,0 +1,33 @@
+
+struct A {
+    id : [ 1 : 0];
+};
+
+struct B {
+    tag : enum {X; Y;};
+    id : [ 1 : 0];
+};
+const X;
+
+function tag_X (p : A) : B {
+    tag = X;
+    id = p.id;
+};
+
+pred eq ( p : B, q : A ) {
+    p.id == q.id
+};
+
+
+macro Reg(chan i) => chan o {
+    let o := Queue(1, i);
+};
+
+chan cycle;
+
+chan tmp0, tmp1 := Fork(Source(A));
+Sink(CtrlJoin(Reg(tmp1), Reg(cycle)));
+
+let cycle :=
+    MultiMatch(eq, Reg(tmp0), Function(tag_X, Source(A)), Source(B));
+

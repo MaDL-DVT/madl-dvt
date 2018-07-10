@@ -1,0 +1,15 @@
+// network that has a deadlock with queues but not with buffers
+
+
+enum xo {x;o;};
+
+const x;
+const o;
+
+
+chan up, down := Switch(Buffer(2,Source(xo)),x,o);
+
+Sink(CtrlJoin(down,Queue(2,Source(o)))); // o are sunk and not dead.
+
+DeadSink(up); // x are blocked
+

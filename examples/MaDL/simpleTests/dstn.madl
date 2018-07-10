@@ -1,0 +1,2 @@
+const val;
+DeadSink(Queue(2,Source(val)));

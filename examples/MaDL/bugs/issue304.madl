@@ -1,0 +1,43 @@
+const token_t; 
+const A; 
+const B; 
+const green; 
+const red; 
+const blue; 
+const yellow; 
+enum id_t{ 
+     A; 
+     B; 
+}; 
+enum color_t{ 
+     green; 
+     red; 
+     blue; 
+     yellow; 
+}; 
+struct pkt_t{ 
+     name : id_t; 
+     color : color_t; 
+}; 
+
+chan q3__OUT := Queue(2, mix__OUT)[q3];
+Sink(q3__OUT);
+chan B_red__OUT := Source(token_t);
+chan A_green__OUT := Source(pkt_t);
+function mk_AGreen_f (p: pkt_t) : pkt_t { 
+     name = A; // field type: id_t
+     color = green; // field type: color_t
+};
+ chan mk_AGreen__OUT := Function(mk_AGreen_f, A_green__OUT);
+function mk_B_red_f (p: pkt_t) : pkt_t { 
+     name = B; // field type: id_t
+     color = red; // field type: color_t
+};
+ chan mk_B_red__OUT := Function(mk_B_red_f, B_red__OUT);
+chan mrg11__OUT := Merge(mk_AGreen__OUT, mk_B_red__OUT)[mrg11];
+function mix_f (p: pkt_t) : pkt_t { 
+     name = p.name; // field type: id_t
+     color = if (p.color == green) {blue;} else {yellow;}; // field type: color_t
+};
+ chan mix__OUT := Function(mix_f, mrg11__OUT);
+

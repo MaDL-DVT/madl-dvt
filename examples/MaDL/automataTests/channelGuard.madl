@@ -1,0 +1,51 @@
+const token;
+struct pkt {
+	dst : [0:0];
+};
+
+process Automaton (chan counter1, chan counter2) => chan guard_out {
+	state s0() {
+	    trans {
+	        pkt d <- counter1;
+	        next s1();
+	    };
+
+	    trans {
+	        token -> guard_out;
+	        next s0(); 
+	    };
+	};
+
+	state s1() {
+		trans {
+			pkt d <- counter1;
+			next s2();
+		};
+
+		trans {
+			pkt d <- counter2;
+			next s0();
+		};
+	};
+
+	state s2() {
+		trans {
+			pkt d <- counter2;
+			next s1();
+		};
+	};
+};
+
+chan src := Source(pkt);
+chan frk1_A, frk1_B := Fork(src);
+
+chan p_out := Automaton(frk1_A, frk2_A);
+
+chan q_out := Queue(2, frk1_B);
+
+chan frk2_A, frk2_B := Fork(q_out);
+Sink(frk2_B);
+
+chan src2 := Source(token);
+chan join := CtrlJoin(src2, p_out);
+Sink(join);

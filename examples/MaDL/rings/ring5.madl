@@ -1,0 +1,11 @@
+// Expected rings: ({token},{mrg_out,q1,LB_A,q3},{src,q2},{LB_B})
+//				   ({token},{mrg_out,q1,LB_B,q2},{src,q3},{LB_A})
+const token;
+
+chan src := Source(token);
+chan mrg2 := Merge(q2, q3);
+chan mrg_out := Merge(src, mrg2);
+chan q1 := Queue(2, mrg_out);
+chan LB_A, LB_B := LoadBalancer(q1);
+chan q2 := Queue(2, LB_B);
+chan q3 := Queue(2, LB_A);

@@ -1,0 +1,68 @@
+// Modelling a generic XY routing 2D mesh
+// Author: Julien Schmaltz
+// 2D mesh where all nodes are both masters and slaves
+// Has a deadlock
+// v00: 03.05.2016 (restricted to 2x2)
+
+param int QSIZE = 2; // size of input buffers
+param int XDIM = 2;  // size of the x dimension
+param int YDIM = 2;  // size of the y dimension
+
+struct Pkt {
+  destx : [0:0]; // x-coordinate of the destination
+  desty : [0:0]; // y-coordinate of the destination
+  srcx  : [0:0]; // x-coordinate of the source
+  srcy  : [0:0]; // y-coordinate of the source
+  type  : [0:0]; // 0 = response, 1 = request
+};
+
+const tok; // required by our macro library
+
+uses lib.main;
+uses lib.masterslave;
+
+// Generate all local nodes
+
+bus<XDIM*YDIM> srcs; // bus containing the local inputs
+for (int y = 0; y<YDIM;y++) {
+    for (int x = 0; x < XDIM; x++) {
+    	let srcs[x+y*XDIM] := MasterSlaveNode(x,y,allOUTS[x*5+y*XDIM*5]);
+    };
+};
+
+// Generate all routers
+
+bus<5*XDIM*YDIM> allOUTS; // bus containing all channels
+
+// we generate a 2x2 mesh for now
+// we assume NUM_NODE=4
+
+// Node00
+let allOUTS[0*5+0*5],allOUTS[0*5+0*5+1],allOUTS[0*5+0*5+2],allOUTS[0*5+0*5+3],allOUTS[0*5+0*5+4] // 0,1,2,3,4
+      := XYRouter5(0,0,srcs[0],ChannelKill(PatientSource(Pkt)),allOUTS[0*5+(0+1)*5+1],allOUTS[0*5+XDIM*5+4],ChannelKill(PatientSource(Pkt)));
+      // None, 6,14,None
+
+// Node10
+let allOUTS[0*5+1*5],allOUTS[0*5+1*5+1],allOUTS[0*5+1*5+2],allOUTS[0*5+1*5+3],allOUTS[0*5+1*5+4] // 5,6,7,8,9
+      := XYRouter5(1,0,srcs[1],allOUTS[0*5+(1-1)*5+2],ChannelKill(PatientSource(Pkt)),allOUTS[(0+1)*5+XDIM*5+4],ChannelKill(PatientSource(Pkt)));
+      // 2, None, 19, None
+
+// Node 01
+let allOUTS[XDIM*5+0*5],allOUTS[XDIM*5+0*5+1],allOUTS[XDIM*5+0*5+2],allOUTS[XDIM*5+0*5+3],allOUTS[XDIM*5+0*5+4] // 10,11,12,13,14
+      := XYRouter5(0,1,srcs[2],ChannelKill(PatientSource(Pkt)),allOUTS[XDIM*5+(0+1)*5+1],ChannelKill(PatientSource(Pkt)),allOUTS[(1-1)*5+0*5+3]);
+      // None, 16, None, 3
+
+// Node 11
+let allOUTS[XDIM*5+1*5],allOUTS[XDIM*5+1*5+1],allOUTS[XDIM*5+1*5+2],allOUTS[XDIM*5+1*5+3],allOUTS[XDIM*5+1*5+4] // 15,16,17,18,19
+      := XYRouter5(1,1,srcs[3],allOUTS[XDIM*5+(1-1)*5+2],ChannelKill(PatientSource(Pkt)),ChannelKill(PatientSource(Pkt)),allOUTS[(1-1)*5+1*5+3]);
+      // 12, None, None, 8
+
+// We sink all outputs at the border.
+DeadSink(allOUTS[0*5+0*5+1]); // Node 00 west out
+DeadSink(allOUTS[0*5+0*5+4]); // Node 00 south out
+DeadSink(allOUTS[0*5+1*5+2]); // Node 10 east out
+DeadSink(allOUTS[0*5+1*5+4]); // Node 10 south out
+DeadSink(allOUTS[XDIM*5+0*5+1]); // Node 01 west out
+DeadSink(allOUTS[XDIM*5+0*5+3]); // Node 01 north out
+DeadSink(allOUTS[XDIM*5+1*5+2]); // Node 11 east out
+DeadSink(allOUTS[XDIM*5+1*5+3]); // Node 11 north out

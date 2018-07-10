@@ -1,0 +1,45 @@
+// small example of simple processes.
+// two state machines connected by two buffers.
+
+const tok;
+
+process M0 (chan ack) => chan req {
+
+    state s0() {
+       	trans {
+	   tok -> req;
+	   next s1();
+	};
+    };
+
+    state s1() {
+       trans {
+       	   tok d <- ack;
+	   next s0();
+       };
+    };
+};
+
+
+process M1 (chan req) => chan ack {
+
+   state t0() {
+       trans {
+       	   tok d <- req;
+	   next t1();
+       };
+   };
+
+   state t1() {
+   	trans {
+	    tok -> ack;
+	    next t0();
+	};
+   };
+};
+
+chan M1req, M0ack;
+
+let M1req := Buffer(2,M0(M0ack));
+let M0ack := Buffer(2,M1(M1req));
+

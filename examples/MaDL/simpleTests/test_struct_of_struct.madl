@@ -1,0 +1,70 @@
+// Test of struct of struct
+
+param int N     = 2;
+param int QSIZE = 2;
+param int WITH_DEADLOCK = 1; // 0 no deadlock, 1 deadlock
+
+struct position_t {
+     x: [N-1:0];
+     y: [N-1:0];
+     z: [N-1:0];
+};
+
+struct main_t {
+    pos : position_t;
+};
+
+
+function copyPosition (p: position_t) : position_t {
+     x = p.x;
+     y = p.y;
+     z = p.z;
+};
+
+
+function initAllToZero (p: position_t) : position_t {
+     x = 0;
+     y = 0;
+     z = 0;
+};
+
+function initX1 (p: position_t) : position_t {
+     x = 1;
+     y = 0;
+     z = 0;
+};
+
+function initMain (p: main_t) : main_t {
+     pos = initAllToZero(p.pos);
+};
+
+function initMainX1 (p: main_t) : main_t {
+     pos = initX1(p.pos);
+};
+
+function copyPos (p: main_t) : main_t {
+     pos = copyPosition(p.pos);
+};
+
+pred allZeroPos (p: position_t) {
+    p.x == 0 && p.y == 0 && p.z == 0
+
+};
+
+pred allZero (p: main_t) {
+    allZeroPos(p.pos)
+};
+
+// simple network with a source, a function, a queue, and a sink. 
+
+chan src_o     := Source(main_t)[SRC];
+if (WITH_DEADLOCK == 0)  {
+     chan fct_o := Function(initMain,src_o)[FUN_INIT];
+} else {
+     chan fct_o := Function(initMainX1,src_o)[FUN_INIT]; 
+};
+chan q_o       := Queue(QSIZE,fct_o)[QUEUE];
+chan f_q_o     := Function(copyPos,q_o)[FUN_COPY];
+chan good, bad := Switch(f_q_o, allZero, otherwise)[SWITCH]; 
+Sink(good)[SNK];
+DeadSink(bad)[DEADSNK]; 

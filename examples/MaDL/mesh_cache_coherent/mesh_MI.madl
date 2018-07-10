@@ -1,0 +1,146 @@
+// Modelling Mesh MI small example in Freek's 2016 DATE paper
+
+param int XDIM = 4;
+param int YDIM = 4;
+
+param int XBITS = 0;
+param int YBITS = 0;
+
+param int DIRX = 3;
+param int DIRY = 3;
+
+param int QSIZE = 24;
+
+param int NUM_OF_CACHES = XDIM*YDIM-1;
+param int DIR_NUMBER = DIRX + XDIM * DIRY;
+
+struct CacheMessage {
+    x : [XBITS:0];
+    y : [YBITS:0];
+    color : [1:0]; // GetX = 00 (0), PutX == 01 (1) , WriteBackAck = 10 (2), Inv = 11 (3); 
+};
+
+
+function MakePutX () : CacheMessage {
+    x = 0;
+    y = 0;
+    color = 1;
+};
+
+
+
+
+function MakeGetX () : CacheMessage {
+    x = 0;
+    y = 0;
+    color = 0;
+};
+
+
+
+
+
+function MakeWBA () : CacheMessage {
+    x = 0;
+    y = 0;
+    color = 2;
+};
+
+
+
+function MakeInv () : CacheMessage {
+    x = 0;
+    y = 0;
+    color = 3;
+};
+
+const tok;
+
+process MI (chan input, chan start) =>  chan output {
+
+   state I(){
+     trans {
+       tok d <- start;
+       MakeGetX() -> output;
+       next M();
+     };
+   };
+
+   state M(){
+      trans {
+        tok d <- start; // this should be Repl but we are missing the connection to a CPU. 
+	MakePutX() -> output;
+	next MI();
+      };
+      trans{
+        CacheMessage d <- input;
+	guard d.color == 3; // Inv
+	MakePutX() -> output;
+	next MI();
+      };
+   };
+
+   state MI (){
+     trans {
+       CacheMessage d <- input;
+       guard d.color == 3; // Inv
+       next MI();
+     };
+     trans {
+       CacheMessage d <- input;
+       guard d.color == 2; // WriteBackAck
+       next I();
+     };
+   };
+};
+
+struct dirState {
+   ownerx : [XBITS:0];
+   ownery : [YBITS:0];
+};
+
+function setOwner (p: CacheMessage) : dirState {
+    ownerx = p.x;
+    ownery = p.y;
+};
+
+function Identity (p: dirState) : dirState {
+      ownerx = p.ownerx;
+      ownery = p.ownery;
+};
+
+process DIR (chan input) => chan output {
+
+   state I() {
+      trans {
+        CacheMessage d <- input;
+	guard d.color == 0; // GetX == 0
+	next M(setOwner(d));
+      };
+   };
+
+   state M(dirState c) {
+      trans {
+        CacheMessage d <- input;
+	guard d.color == 1; // PutX
+	MakeWBA() -> output; 
+	next I();
+      };
+      trans {
+        MakeInv() -> output;
+	next MI(Identity(c));
+      };
+   };
+
+   state MI(dirState c) {
+      trans {
+        CacheMessage d <- input;
+	guard d.color == 1; // PutX
+	MakeWBA() -> output;
+	next I();
+      };
+   };
+};
+
+chan DIR_out := DIR(Queue(1,MI_out));
+chan MI_out  := MI(Queue(1,DIR_out), PatientSource(tok));

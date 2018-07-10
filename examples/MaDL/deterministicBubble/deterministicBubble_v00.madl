@@ -1,0 +1,293 @@
+// Modelling of the deterministic bubble control flow.
+// Basically it is Dimension Ordering Routing (DOR) with extra restriction on
+// queue capacitities.
+// We implement packet switching
+// We will implement Cut-through (CT), Store-and-forward (SF) and the deterministic bubble one (DB)
+
+param int QSIZE = 2; 
+param int XDIM = 2; // size of the x dimension
+param int YDIM = 2; // size of the y dimension
+
+struct Pkt {
+  dx : [0:0]; // x-coordinate of the destination
+  dy : [0:0]; // y-coordinate of the destination
+};
+
+const tok;
+
+macro Latch (chan input) => chan output {
+      let output := Queue(1,input);
+};
+
+macro CreditCounter(int counters, chan i) => chan o {
+	chan q_in;
+	let q_in, o := Fork(PatientSource(tok));
+	Sink(CtrlJoin(Queue(counters, q_in), i));
+};
+
+
+macro ChannelKill (chan input) => chan o {
+      chan toDeadSink;
+      let o,toDeadSink := Fork(input);
+      DeadSink(toDeadSink);
+
+};
+
+// implement dimension order routing for 2D
+// we start with XY in a 2D mesh
+macro XYRoutingLogic (int xID, int yID, chan inPort) => bus<5> outPorts {
+// outPorts[0] = local
+// outPorts[1] = West output
+// outPorts[2] = East output
+// outPorts[3] = North output
+// outports[4] = South output
+
+
+   chan eqx,notEqx;
+   let eqx, notEqx := Switch(inPort,Pkt.dx == xID,otherwise);
+   chan notEqy;
+   let outPorts[0],notEqy := Switch(eqx,Pkt.dy == yID, otherwise);
+   // route in the same dimension
+   let outPorts[2],outPorts[1] := Switch(notEqx,Pkt.dx< xID,otherwise);
+
+   // change dimension
+   let outPorts[4],outPorts[3] := Switch (notEqy, Pkt.dy < yID, otherwise);
+
+
+};
+
+
+macro Merge5 (bus<5> inPorts) => chan o {
+    let o:= Merge(inPorts[4],Merge(inPorts[3], Merge(inPorts[2], Merge(inPorts[0],inPorts[1]))));
+};
+
+macro XYRouter00 (bus<3> ins) => bus<3> outs{
+   // Router 00 has only a local, a north and an east port
+   // ins/outs[0] = local
+   // ins/outs[1] = east
+   // ins/outs[2] = north
+   bus<5> routedInLocal, routedInEast, routedInNorth;
+
+   let routedInLocal  := XYRoutingLogic(0,0,Queue(QSIZE,ins[0]));
+   let routedInEast   := XYRoutingLogic(0,0,Queue(QSIZE,ins[1]));
+   let routedInNorth  := XYRoutingLogic(0,0,Queue(QSIZE,ins[2]));
+
+   Sink(routedInLocal[1]);
+   Sink(routedInLocal[4]);
+   Sink(routedInEast[1]);
+   Sink(routedInEast[4]);
+   Sink(routedInNorth[1]);
+   Sink(routedInNorth[4]);
+
+   let outs[0] := Merge(routedInLocal[0],Merge(routedInEast[0],routedInNorth[0]));
+   let outs[1] := Merge(routedInLocal[2],Merge(routedInEast[2],routedInNorth[2]));
+   let outs[2] := Merge(routedInLocal[3],Merge(routedInEast[3],routedInNorth[3]));
+
+};
+
+macro XYRouter11 (bus<3> ins) => bus<3> outs{
+   // Router 11 has only a local, a west and a south port
+   // ins/outs[0] = local
+   // ins/outs[1] = west
+   // ins/outs[2] = south
+   bus<5> routedInLocal, routedInWest, routedInSouth;
+
+   let routedInLocal  := XYRoutingLogic(1,1,Queue(QSIZE,ins[0]));
+   let routedInWest   := XYRoutingLogic(1,1,Queue(QSIZE,ins[1]));
+   let routedInSouth  := XYRoutingLogic(1,1,Queue(QSIZE,ins[2]));
+
+   Sink(routedInLocal[2]);
+   Sink(routedInLocal[3]);
+   Sink(routedInWest[2]);
+   Sink(routedInWest[3]);
+   Sink(routedInNorth[2]);
+   Sink(routedInNorth[3]);
+
+   let outs[0] := Merge(routedInLocal[0],Merge(routedInWest[0],routedInSouth[0]));
+   let outs[1] := Merge(routedInLocal[1],Merge(routedInWest[1],routedInSouth[1]));
+   let outs[2] := Merge(routedInLocal[4],Merge(routedInWest[4],routedInSouth[4]));
+
+};
+
+macro XYRouter10 (bus<3> ins) => bus<3> outs{
+   // Router 10 has only a local, a west and a north port
+   // ins/outs[0] = local
+   // ins/outs[1] = west
+   // ins/outs[2] = north
+   bus<5> routedInLocal, routedInWest, routedInNorth;
+
+   let routedInLocal  := XYRoutingLogic(1,0,Queue(QSIZE,ins[0]));
+   let routedInWest   := XYRoutingLogic(1,0,Queue(QSIZE,ins[1]));
+   let routedInNorth  := XYRoutingLogic(1,0,Queue(QSIZE,ins[2]));
+
+   Sink(routedInLocal[2]);
+   Sink(routedInLocal[4]);
+   Sink(routedInWest[2]);
+   Sink(routedInWest[4]);
+   Sink(routedInNorth[2]);
+   Sink(routedInNorth[4]);
+
+   let outs[0] := Merge(routedInLocal[0],Merge(routedInWest[0],routedInNorth[0]));
+   let outs[1] := Merge(routedInLocal[1],Merge(routedInWest[1],routedInNorth[1]));
+   let outs[2] := Merge(routedInLocal[3],Merge(routedInWest[3],routedInNorth[3]));
+
+};
+
+macro XYRouter01 (bus<3> ins) => bus<3> outs{
+   // Router 01 has only a local, an east and a south port
+   // ins/outs[0] = local
+   // ins/outs[1] = east
+   // ins/outs[2] = south
+   bus<5> routedInLocal, routedInEast, routedInNorth;
+
+   let routedInLocal  := XYRoutingLogic(0,1,Queue(QSIZE,ins[0]));
+   let routedInEast   := XYRoutingLogic(0,1,Queue(QSIZE,ins[1]));
+   let routedInSouth  := XYRoutingLogic(0,1,Queue(QSIZE,ins[2]));
+
+   Sink(routedInLocal[1]);
+   Sink(routedInLocal[3]);
+   Sink(routedInEast[1]);
+   Sink(routedInEast[3]);
+   Sink(routedInSouth[1]);
+   Sink(routedInSouth[3]);
+
+   let outs[0] := Merge(routedInLocal[0],Merge(routedInEast[0],routedInSouth[0]));
+   let outs[1] := Merge(routedInLocal[2],Merge(routedInEast[2],routedInSouth[2]));
+   let outs[2] := Merge(routedInLocal[4],Merge(routedInEast[4],routedInSouth[4]));
+
+};
+
+macro XYRouter (int xID, int yID, bus<5> ins) => bus<5> outs{
+// Router with input buffers
+// ins[0] : local in
+// ins[1] : west in
+// ins[2] : east in
+// ins[3] : north in
+// ins[4] : south in
+
+   bus<5> routedInLocal, routedInWest, routedInEast,routedInNorth,routedInSouth;
+   let routedInLocal  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[0]));
+   let routedInWest   := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[1]));
+   let routedInEast   := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[2]));
+   let routedInNorth  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[3]));
+   let routedInSouth  := XYRoutingLogic(xID,yID,Queue(QSIZE,ins[4]));
+
+   for (int i = 0;i<5;i++) {
+       let outs[i] := Merge5(routedInLocal[i],routedInWest[i],routedInEast[i],routedInNorth[i],routedInSouth[i]);
+   };
+};
+
+
+bus<XDIM*YDIM> srcs; // bus containing the local inputs
+// we generate sources
+macro Filter (int xID, int yID, chan input) => chan o {
+    pred BadPackets (p: Pkt) {
+    	 p.dx == xID && p.dy == yID
+    };
+    
+    chan toSink;
+    let toSink,o := Switch(input,BadPackets,otherwise);
+    Sink(toSink);
+};
+
+
+//let srcs[0] := Filter(0,0,Source(Pkt));
+//let srcs[1] := Filter(1,0,Source(Pkt));
+//let srcs[2] := Filter(0,1,Source(Pkt));
+//let srcs[3] := Filter(1,1,Source(Pkt));
+
+
+
+for (int i = 0; i<YDIM;i++) {
+    for (int j = 0; j < XDIM; j++) {
+    	let srcs[j+i*XDIM] := Filter(j,i,Source(Pkt));
+    };
+};
+
+
+
+//bus<3*XDIM*YDIM> allOUTS;
+
+bus<XDIM*YDIM*5> allOUTS;
+
+// we generate a 2x2 mesh for now
+// we assume NUM_NODE=4
+
+// Node00
+let allOUTS[0*5+0*5],allOUTS[0*5+0*5+1],allOUTS[0*5+0*5+2],allOUTS[0*5+0*5+3],allOUTS[0*5+0*5+4] // 0,1,2,3,4
+      := XYRouter(0,0,srcs[0],ChannelKill(PatientSource(tok)),allOUTS[0*5+(0+1)*5+1],allOUTS[0*5+XDIM*5+4],ChannelKill(PatientSource(tok)));
+      // None, 6,14,None
+
+//let allOUTS[0*5+0*5],allOUTS[0*5+0*5+1],allOUTS[0*5+0*5+2],allOUTS[0*5+0*5+3],allOUTS[0*5+0*5+4] // 0,1,2,3,4
+//    := XYRouter00(srcs[0], eastIn, NorthIn);
+
+// Node 01
+let allOUTS[XDIM*5+0*5],allOUTS[XDIM*5+0*5+1],allOUTS[XDIM*5+0*5+2],allOUTS[XDIM*5+0*5+3],allOUTS[XDIM*5+0*5+4] // 10,11,12,13,14
+      := XYRouter(0,1,srcs[1],ChannelKill(PatientSource(tok)),allOUTS[XDIM*5+(0+1)*5+1],ChannelKill(PatientSource(tok)),allOUTS[(1-1)*5+0*5+3]);
+      // None, 16, None, 3
+
+//let allOUTS[XDIM*5+0*5],allOUTS[XDIM*5+0*5+1],allOUTS[XDIM*5+0*5+2],allOUTS[XDIM*5+0*5+3],allOUTS[XDIM*5+0*5+4] // 10,11,12,13,14
+//      := XYRouter01(srcs[1],ChannelKill(PatientSource(tok)),allOUTS[XDIM*5+(0+1)*5+1],ChannelKill(PatientSource(tok)),allOUTS[(1-1)*5+0*5+3]);
+      // None, 16, None, 3
+
+
+// Node10
+let allOUTS[0*5+1*5],allOUTS[0*5+1*5+1],allOUTS[0*5+1*5+2],allOUTS[0*5+1*5+3],allOUTS[0*5+1*5+4] // 5,6,7,8,9
+      := XYRouter(1,0,srcs[2],allOUTS[0*5+(1-1)*5+2],ChannelKill(PatientSource(tok)),allOUTS[(0+1)*5+XDIM*5+4],ChannelKill(PatientSource(tok)));
+      // 2, None, 19, None
+
+//let allOUTS[0*5+1*5],allOUTS[0*5+1*5+1],allOUTS[0*5+1*5+2],allOUTS[0*5+1*5+3],allOUTS[0*5+1*5+4] // 5,6,7,8,9
+//      := XYRouter10(srcs[1],eastIn,southIn);
+//      // 2, None, 19, None
+
+
+// Node 11
+let allOUTS[XDIM*5+1*5],allOUTS[XDIM*5+1*5+1],allOUTS[XDIM*5+1*5+2],allOUTS[XDIM*5+1*5+3],allOUTS[XDIM*5+1*5+4] // 15,16,17,18,19
+      := XYRouter(1,1,srcs[3],allOUTS[XDIM*5+(1-1)*5+2],ChannelKill(PatientSource(tok)),ChannelKill(PatientSource(tok)),allOUTS[(1-1)*5+1*5+3]);
+      // 12, None, None, 8
+
+// We need to Sink all local outs
+for (int i = 0; i < XDIM*YDIM;i++) {
+    Sink(allOUTS[i*5]);
+};
+
+
+/*
+// Finally we sink the outputs of the border nodes
+Sink(allOUTS[0*5+0*5+1]); // Node 00 west out
+Sink(allOUTS[0*5+0*5+4]); // Node 00 south out
+Sink(allOUTS[0*5+1*5+2]); // Node 10 east out
+Sink(allOUTS[0*5+1*5+4]); // Node 10 south out
+Sink(allOUTS[XDIM*5+0*5+1]); // Node 01 west out
+Sink(allOUTS[XDIM*5+0*5+3]); // Node 01 north out
+Sink(allOUTS[XDIM*5+1*5+2]); // Node 11 east out
+Sink(allOUTS[XDIM*5+1*5+3]); // Node 11 north out
+*/
+
+// double for loops ?
+    for (int i = 0; i<YDIM;i++){
+    // for each Y dimension
+    // generate a row of XDIM routers
+    for (int j = 0; j < XDIM;j++){
+    // we need to consider the corner cases: x = 0, x = XDIM-1, y = 0 and y = YDIM-1 and their combination. 
+    if (j == 0) // XDIM == 0
+       {
+	if (i == 0) // Node 00
+	   {
+	   let allOUTS[i*5+j*5],allOUTS[i*5+j*5+1],allOUTS[i*5+j*5+2],allOUTS[i*5+j*5+3],allOUTS[i*5+j*5+4]
+            := XYRouter(j,i,srcs[i*j],ChannelKill(PatientSource(tok)),allOUTS[i*5+(j+1)*5+1],allOUTS[(i+1)*5+j*5+4],ChannelKill(PatientSource(tok)));
+	   }
+	else
+	   {};
+
+       }
+    else
+       {};
+
+let allOUTS[i*5+j*5],allOUTS[i*5+j*5+1],allOUTS[i*5+j*5+2],allOUTS[i*5+j*5+3],allOUTS[i*5+j*5+4]
+      := XYRouter(j,i,srcs[i*j],allOUTS[i*5+(j-1)*5+2],allOUTS[i*5+(j+1)*5+1],allOUTS[(i+1)*5+j*5+4],allOUTS[(i-1)*5+j*5+4]);
+ }; 
+
+
+};
+

@@ -1,0 +1,40 @@
+/*
+enum rqsData {
+	rqs;
+	data;
+};
+*/
+
+const rqs;
+const data;
+
+
+macro CreditCounter(chan i) => chan o {
+	const tok;
+	chan q_in;
+	let q_in, o := Fork(Source(tok));
+	Sink(CtrlJoin(Queue(1, q_in), i));
+};
+
+chan c0 := Queue(2,Queue(2,Source(rqs)));
+chan c1,c2 := Fork(c0);
+chan c3,c4 := Fork(c1);
+chan c5 := Queue(2,CtrlJoin(Queue(2,Source(data)),Queue(2,c3)));
+chan c6,c7 := Fork(c5);
+chan c8,c9 := LoadBalancer(c6);
+Sink(c9);
+
+DeadSink(Queue(2,CtrlJoin(c8,c10)));
+Sink(CtrlJoin(Queue(1,c2),CreditCounter(c11)));
+chan c12,c13 := LoadBalancer(c4);
+chan c16,c17 := LoadBalancer(c7);
+
+Sink(c17);
+chan c15 := CtrlJoin(Queue(1,CtrlJoin(c14,c12)),c16);
+chan c18,c19 := Fork(c15);
+chan c14,c10 := LoadBalancer(CreditCounter(c18));
+chan c11 := Merge(c19,c13);
+
+
+
+

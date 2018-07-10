@@ -1,0 +1,55 @@
+macro RingStop(int NODE_X, int NODE_Y, int RS_DIR, int NUM_X, int NUM_Y, int ESCAPE, chan IN, chan LOOP_IN, chan INJ) => chan OUT, chan LOOP_OUT, chan CONS {
+	// Predicate that decides if package is at its destination
+	pred destPred(p: package) {	p.dst_x == NODE_X && p.dst_y == NODE_Y };
+
+	// Predicate that decides if package should be bypassed
+	pred bypassPred(p: package) {
+			(p.cycles < 3) && (
+		   (RS_DIR == 0 && (
+		   		((NODE_Y < p.dst_y) && (p.dst_y - NODE_Y >= NODE_Y - p.dst_y + NUM_Y)) || ((NODE_Y > p.dst_y) && (NODE_Y - p.dst_y <= p.dst_y - NODE_Y + NUM_Y))
+		   	))
+		|| (RS_DIR == 1 &&  (
+				((NODE_X < p.dst_x) && (p.dst_x - NODE_X <= NODE_X - p.dst_x + NUM_X)) || ((NODE_X > p.dst_x) && (NODE_X - p.dst_x >= p.dst_x - NODE_X + NUM_X))
+			))
+		|| (RS_DIR == 2 && (
+				((NODE_Y < p.dst_y) && (p.dst_y - NODE_Y <= NODE_Y - p.dst_y + NUM_Y)) || ((NODE_Y > p.dst_y) && (NODE_Y - p.dst_y >= p.dst_y - NODE_Y + NUM_Y))
+			))
+		|| (RS_DIR == 3 && (
+				((NODE_X < p.dst_x) && (p.dst_x - NODE_X >= NODE_X - p.dst_x + NUM_X)) || ((NODE_X > p.dst_x) && (NODE_X - p.dst_x <= p.dst_x - NODE_X + NUM_X))
+			))
+		)
+	};
+
+	pred escapePred(p: package) {
+		(p.cycles > 2) && (RS_DIR == ESCAPE)
+	};
+
+	// Reception stage
+	chan inBuf := Queue(1, IN)[InQ];
+	// Decide if packet should be consumed
+	chan rec_cons, rec_no_cons := Switch(inBuf, destPred, otherwise);
+
+	// Check if non-escaping packet should bypass or not
+	chan rec_escape, rec_normal := Switch(rec_no_cons, escapePred, otherwise);
+	chan rec_bypass, rec_dfifo := Switch(rec_normal, bypassPred, otherwise);
+	let CONS := Vars(rec_cons);
+
+	chan bypass, bypass_blocked := LoadBalancer(rec_bypass);
+	chan ring_in := Merge(rec_dfifo, Cut(bypass_blocked));
+
+	// DFIFO section
+	// Decide if dfifo package should escape
+	chan must_escape, ignore_escape := Switch(LOOP_IN, escapePred, otherwise);
+
+	chan dfifo_in := GuardQueue(1, ignore_escape, ring_in)[RecepGQ];
+	chan dfifo := Queue(3, dfifo_in);
+	chan dfifo_eject, dfifo_forward := Switch(dfifo, bypassPred, otherwise);
+	chan dfifo_lb_eject, dfifo_lb_forward := LoadBalancer(dfifo_eject);
+	chan forward_merge := Merge(dfifo_forward, Cut(dfifo_lb_forward));
+	let LOOP_OUT := Vars(forward_merge);
+
+	//EJECTION
+	chan ej_merge :=  Merge(INJ, Merge(Merge(rec_escape, must_escape), Cut(bypass)));
+	chan ej_stage := GuardQueue(2, dfifo_lb_eject, ej_merge)[EjGQ];
+	let OUT := Vars(ej_stage);
+};

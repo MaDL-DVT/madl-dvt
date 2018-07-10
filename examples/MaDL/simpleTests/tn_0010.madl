@@ -1,0 +1,19 @@
+// Test Network 0010
+// 1 source, 4 queues, 1 switch, 1 multi-match, 1 sink
+// Deadlock !
+
+const r;
+const b;
+enum rb {r;b;};
+
+pred f (p: rb, q: rb) {
+	true
+};
+
+chan src := Queue(2,Source(rb));
+
+chan up,down := Switch(src,r,otherwise);
+
+chan m_out := MultiMatch(f,Queue(2,up), Queue(2,down));
+
+Sink(Queue(2,m_out));

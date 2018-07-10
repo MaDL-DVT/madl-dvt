@@ -1,0 +1,49 @@
+// testing credit flow control on a loop
+
+const pkt; // packets
+const tok; // tokens
+
+struct Pkt {
+    destN : [0:0];
+    type  : [0:0];
+};
+
+macro MasterSlaveNode (int ID, chan NodeIn) => chan MasterOut {
+
+      // function creating a response
+      function CreateRsp (p: Pkt) : Pkt {
+          destN = 1 - p.destN; // we just toggle to the other node
+	  type  = 0     ; // type = response
+      };
+
+      // Request sending
+      pred Filter (p: Pkt) {
+         p.type == 1 && p.destN != ID
+      };
+      chan pkt1,toSink := Switch(Source(Pkt), Filter,otherwise);
+      Sink(toSink);
+      // masters only send requests.
+
+      // Sink requests and produce responses.
+      chan reqIn, rspIn := Switch(NodeIn, Pkt.type == 1, otherwise);
+      Sink(rspIn);
+
+      let MasterOut := Merge(Queue(2,pkt1), Queue(2,Function(CreateRsp,reqIn)));
+};
+
+macro CreditCounter(int counters, chan i) => chan o {
+// Our standard credit counter
+   chan q_in;
+   let q_in, o := Fork(PatientSource(tok));
+   Sink(CtrlJoin(Queue(counters, q_in), i));
+};
+
+macro CCC (chan input) => chan output {
+ // credit controlled channel
+ chan toCredit;
+ let output,toCredit
+    := Fork(Queue(3,CtrlJoin(input,CreditCounter(2,Queue(2,toCredit)))));
+};
+
+chan m0_out := MasterSlaveNode(0,CCC(m1_out));
+chan m1_out := MasterSlaveNode(1,CCC(m0_out));

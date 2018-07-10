@@ -1,0 +1,23 @@
+// Example Fig. 15 of the TCAD review
+
+const pkt;
+
+chan q0 := Queue(2, Merge(Source(pkt),c00));
+
+chan c01,c02 := Fork(q0);
+
+chan c00, c03 := Fork(Queue(2,c01));
+
+Sink(c03);
+
+// go to the next agent
+
+chan c04 := Queue(2,Queue(2, c02));
+
+chan c05 := Merge(Queue(2,Source(pkt)),c06);
+
+chan c07 := Queue(2, CtrlJoin(c04,Queue(2,c05)));
+
+chan c06,c08 := Fork(c07); // seems to be a switch in the paper.
+
+Sink(c08);

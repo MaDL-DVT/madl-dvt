@@ -1,0 +1,23 @@
+union match_pred_param1 {
+};
+
+enum match_pred_param0 {
+    req;
+    rsp;
+};
+
+pred match_pred(var0 : match_pred_param0, var1 : match_pred_param1) {
+    var0 == var1
+};
+
+
+chan source1_match;
+chan source2_match;
+chan match_sink1;
+chan match_sink2;
+
+let source1_match := Source(match_pred_param1);
+let source2_match := Source(match_pred_param0);
+Sink(match_sink1);
+Sink(match_sink2);
+let match_sink1, match_sink2 := Match(match_pred, source1_match, source2_match);

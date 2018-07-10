@@ -1,0 +1,124 @@
+// v01 
+// Clear separation between producer, consumer and checker
+
+// number of maximum requests in-flight
+param int NUM_OUTSTANDING_REQUESTS = 2;
+param int k = 2;
+
+// Credic counter macro
+macro CreditCounter(chan i) => chan o {
+	const tok;
+	chan q_in;
+	let q_in, o := Fork(PatientSource(tok));
+	Sink(CtrlJoin(Queue(1, q_in), i));
+};
+
+// Producer
+// --------
+macro Producer (chan inRsp) => bus<2> output {
+	// Producer sends request and data packets
+	const req; // request type
+	const data; // data type
+    // When it sends a request, it waits for the response
+    // to arrive before sending the data.
+	// first output is the request sent to the consumer
+	// chan reqNet,reqPending := Fork (Queue(2,Source(req)));
+	// let output0 := reqNet; <- Connecting channels is not yet supported
+	chan reqPending;
+	let output[0], reqPending := Fork (Queue(2,Source(req)));
+
+	chan cx := CtrlJoin(Queue(NUM_OUTSTANDING_REQUESTS,reqPending), Queue(NUM_OUTSTANDING_REQUESTS,inRsp));
+
+	let output[1] := CtrlJoin(Queue(NUM_OUTSTANDING_REQUESTS,PatientSource(data)),Queue(2,cx));
+};
+
+
+// Consumer
+// --------
+// input0 and input1 should be part of a bus
+macro Consumer (bus<2> input) => chan output {
+	// input[0] is the request coming from Producer
+	// input[1] is the data coming from Producer
+	// When a request comes in, Consumer sends response back
+	// all the time.
+	let output := Queue(2,input[0]); // response = request for now
+	// when data comes in, data is consumed.
+	Sink(input[1]);
+};
+
+
+// Network or bus
+// --------------
+macro simpleNetwork (chan input) => chan output{
+	// N.B.: TODO make 2 a variable
+	// and add delay macro
+	let output := Queue(2, input);
+};
+
+
+// Procucer-Consumer checker
+macro PC_Checker3 (bus<2> ins) => chan output {
+	// ins[0] = rsp
+	// ins[1] = data
+	chan error, wait := LoadBalancer(ins[0]);
+	DeadSink(error);
+	let output := CtrlJoin(Queue(1,wait),ins[1]);
+};
+
+
+
+// Producer-Consumer relation checker
+// -----------------------------------
+// Remember that LoadBalancers are non-deterministic.
+// Because there is a path to create a deadlock,
+// it will always have a possible deadlock. 
+// This checker cannot recognize a well behaving 
+// producer-consumer pair.  
+macro PC_Checker (bus<2> ins) => chan output {
+	// inputs are
+	// ins[0]: response from Consumer
+	// ins[1]: data from Producer
+	// outputs are
+	// output[0]: response to Producer
+
+	// Goal is to create a possible deadlock
+	// if wrong ordering.
+	// without blocking traffic.
+
+	chan c2,c4 := Fork(ins[0]);
+	chan c6,c7 := Fork(ins[1]);
+	// chan c8,c9 := LoadBalancer(c6);
+	// let output := c9; <- Connecting channels is not yet supported.
+	chan c8;
+	let c8, output := LoadBalancer(c6);
+
+	DeadSink(Queue(2,CtrlJoin(c8,c10)));
+	Sink(CtrlJoin(Queue(1,c2),CreditCounter(c11)));
+
+	chan c12,c13 := LoadBalancer(c4);
+	chan c16,c17 := LoadBalancer(c7);
+
+	Sink(c17);
+	chan c15 := CtrlJoin(Queue(1,CtrlJoin(c14,c12)),c16);
+
+	chan c18,c19 := Fork(c15);
+	chan c14,c10 := LoadBalancer(CreditCounter(c18));
+	chan c11 := Merge(c19,c13);
+};
+
+macro Fixme (bus<2> ins) => chan output {
+	// ins[0]: rsp in
+	// ins[1]: data in
+	// output is the data
+	// Fix only let the data flow if there is a response pending. 
+	let output := CtrlJoin(Queue(k,ins[1]), Queue(k,ins[0]));	
+};
+
+bus<2> inChecker;
+chan rspToProducer;
+bus<2> inConsumer;
+
+
+let inConsumer[1] := PC_Checker3(inChecker[0],inChecker[1]);
+let rspToProducer,inChecker[0] := Fork(Consumer(inConsumer[0],inConsumer[1]));
+let inConsumer[0],inChecker[1] := Producer(rspToProducer);

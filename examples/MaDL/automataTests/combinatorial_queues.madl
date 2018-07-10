@@ -1,0 +1,11 @@
+const red;
+
+chan s_f := Source(red);
+
+chan f_q1,f_q3 := Fork(s_f);
+chan q1_q2 := Queue(2,f_q1);
+chan q3_j := Queue(2,f_q3);
+chan q2_j := Queue(2,q1_q2);
+chan j_s := CtrlJoin(q2_j,q3_j);
+
+Sink(j_s);

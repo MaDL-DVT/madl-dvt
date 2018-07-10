@@ -1,0 +1,34 @@
+sort T = struct t;
+     S = struct free | next_t;
+
+act  idle_reject,idle_consume,inject_reject,inject_consume;
+
+proc P(s: S, q: List(T)) =
+       (!(#q < 2) && !(#q > 0) && (s == free)) 
+       	    ->   ((idle_reject + idle_consume).P(s,q)
+	       + (inject_reject + inject_consume).P(next_t,q))
+     + (!(#q < 2) && !(#q > 0) && !(s == free))
+       	    ->   (inject_reject + inject_consume).P(next_t,q)
+     + ((#q < 2) && !(#q > 0) && (s == free))
+       	    ->   ((idle_reject + idle_consume).P(s,q) + (inject_reject
+	       + inject_consume).P(s,[t]++q))
+     + ((#q < 2) && !(#q > 0) && !(s == free)) 
+       	    -> (inject_reject + inject_consume).P(free,[t]++q)
+     + (!(#q < 2) && (#q > 0) && (s == free))
+       	    ->   (idle_reject.P(s,q)
+	       + idle_consume.P(s,rtail(q))
+	       + inject_reject.P(next_t,q)
+	       + inject_consume.P(next_t,rtail(q)))
+     + (!(#q < 2) && (#q > 0) && !(s == free)) 
+       	    ->   (inject_reject.P(next_t,q)
+	       + inject_consume.P(next_t,rtail(q)))
+     + ((#q < 2) && (#q > 0) && (s == free)) %(1,1)
+       	    ->   (idle_reject.P(s,q)
+	       + idle_consume.P(s,rtail(q))
+	       + inject_reject.P(s,[t]++q)
+	       + inject_consume.P(s,[t]++rtail(q)))
+     + ((#q < 2) && (#q > 0) && !(s == free))
+       	    ->   (inject_reject.P(free,[t]++q)
+	       + inject_consume.P(free,[t]++rtail(q)));
+
+init P(free, []);

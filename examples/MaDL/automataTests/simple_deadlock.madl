@@ -1,0 +1,12 @@
+const r;
+
+
+chan src_r := Source(r);
+
+chan u,d := Switch(src_r,r,otherwise);
+
+Sink(Queue(2,u));
+
+chan src_r_bis := Source(r);
+
+Sink(CtrlJoin(Queue(2,d),Queue(2,src_r_bis)));

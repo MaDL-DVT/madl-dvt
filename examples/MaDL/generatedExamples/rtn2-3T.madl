@@ -1,0 +1,162 @@
+const req;
+
+enum network_switch_pred1_param0 {
+    req;
+    rsp;
+};
+
+const slot0;
+
+enum reorderBuffer_ROB_switch_pred2_param0 {
+    slot0;
+    slot1;
+    slot2;
+};
+
+const slot1;
+
+const slot2;
+
+const rsp;
+
+function reorderBuffer_idTracker_fun0_fun ( var0 : network_switch_pred1_param0 ) : slot0 {
+    slot0 {  }
+};
+
+function reorderBuffer_idTracker_fun1_fun ( var0 : network_switch_pred1_param0 ) : slot1 {
+    slot1 {  }
+};
+
+function reorderBuffer_idTracker_fun2_fun ( var0 : network_switch_pred1_param0 ) : slot2 {
+    slot2 {  }
+};
+
+
+pred network_switch_pred0(var0 : network_switch_pred1_param0) {
+    req == var0
+};
+
+pred network_switch_pred1(var0 : network_switch_pred1_param0) {
+    rsp == var0
+};
+
+pred reorderBuffer_ROB_switch_pred0(var0 : reorderBuffer_ROB_switch_pred2_param0) {
+    slot0 == var0
+};
+
+pred reorderBuffer_ROB_switch_pred1(var0 : reorderBuffer_ROB_switch_pred2_param0) {
+    slot1 == var0
+};
+
+pred reorderBuffer_ROB_switch_pred2(var0 : reorderBuffer_ROB_switch_pred2_param0) {
+    slot2 == var0
+};
+
+pred reorderBuffer_match_pred(var0 : network_switch_pred1_param0, var1 : network_switch_pred1_param0) {
+    var0 == var1
+};
+
+
+macro idTracker3(chan idIn) => chan trackOut, chan idOut0, chan idOut1, chan idOut2 {
+    chan lb_fork0;
+    chan lb_fork1;
+    chan lb_fork2;
+    chan fork0_reg0;
+    chan fork1_reg1;
+    chan fork2_reg2;
+    chan fork0_fun0;
+    chan fork1_fun1;
+    chan fork2_fun2;
+    chan fun0_merge;
+    chan fun1_merge;
+    chan fun2_merge;
+    
+    let lb_fork0, lb_fork1, lb_fork2 := LoadBalancer(idIn);
+    let trackOut := Merge(fun0_merge, fun1_merge, fun2_merge);
+    let idOut0 := Queue(1, fork0_reg0);
+    let idOut1 := Queue(1, fork1_reg1);
+    let idOut2 := Queue(1, fork2_reg2);
+    let fork0_reg0, fork0_fun0 := Fork(lb_fork0);
+    let fork1_reg1, fork1_fun1 := Fork(lb_fork1);
+    let fork2_reg2, fork2_fun2 := Fork(lb_fork2);
+    let fun0_merge := Function(reorderBuffer_idTracker_fun0_fun, fork0_fun0);
+    let fun1_merge := Function(reorderBuffer_idTracker_fun1_fun, fork1_fun1);
+    let fun2_merge := Function(reorderBuffer_idTracker_fun2_fun, fork2_fun2);
+};
+
+macro Delay(chan input) => chan output {
+    chan fork_sink;
+    
+    let output, fork_sink := Fork(input);
+    Sink(fork_sink);
+};
+
+macro rob3(chan trackIn, chan dataIn0, chan dataIn1, chan dataIn2) => chan dataOut {
+    chan reg0_cjoin0;
+    chan reg1_cjoin1;
+    chan reg2_cjoin2;
+    chan switch_cjoin0;
+    chan switch_cjoin1;
+    chan switch_cjoin2;
+    chan cjoin0_merge;
+    chan cjoin1_merge;
+    chan cjoin2_merge;
+    
+    let switch_cjoin0, switch_cjoin1, switch_cjoin2 := Switch(trackIn, reorderBuffer_ROB_switch_pred0, reorderBuffer_ROB_switch_pred1, reorderBuffer_ROB_switch_pred2);
+    let dataOut := Merge(cjoin0_merge, cjoin1_merge, cjoin2_merge);
+    let reg0_cjoin0 := Queue(1, dataIn0);
+    let reg1_cjoin1 := Queue(1, dataIn1);
+    let reg2_cjoin2 := Queue(1, dataIn2);
+    let cjoin0_merge := CtrlJoin(reg0_cjoin0, switch_cjoin0);
+    let cjoin1_merge := CtrlJoin(reg1_cjoin1, switch_cjoin1);
+    let cjoin2_merge := CtrlJoin(reg2_cjoin2, switch_cjoin2);
+};
+
+macro network(chan dataIn) => chan dataOut {
+    chan switch_requestQueue;
+    chan requestQueue_requestDelay;
+    chan requestDelay_merge;
+    chan switch_responseQueue;
+    chan responseQueue_responseDelay;
+    chan responseDelay_merge;
+    
+    let switch_requestQueue, switch_responseQueue := Switch(dataIn, network_switch_pred0, network_switch_pred1);
+    let requestQueue_requestDelay := Queue(2, switch_requestQueue);
+    let requestDelay_merge := Delay(requestQueue_requestDelay);
+    let responseQueue_responseDelay := Queue(2, switch_responseQueue);
+    let responseDelay_merge := Delay(responseQueue_responseDelay);
+    let dataOut := Merge(requestDelay_merge, responseDelay_merge);
+};
+
+macro reorder_buffer2_3(chan dataIn, chan idIn, chan fromNetwork) => chan toNetwork, chan dataOut {
+    chan idTracker_tracker;
+    chan tracker_ROB;
+    chan returnBuffer_match;
+    chan idTracker0_match0;
+    chan idTracker1_match1;
+    chan idTracker2_match2;
+    chan match0_ROB0;
+    chan match1_ROB1;
+    chan match2_ROB2;
+    
+    let toNetwork := Queue(3, dataIn);
+    let returnBuffer_match := Queue(1, fromNetwork);
+    let tracker_ROB := Queue(3, idTracker_tracker);
+    let match0_ROB0, match1_ROB1, match2_ROB2 := MultiMatch(reorderBuffer_match_pred, idTracker0_match0, idTracker1_match1, idTracker2_match2, returnBuffer_match);
+    let idTracker_tracker, idTracker0_match0, idTracker1_match1, idTracker2_match2 := idTracker3(idIn);
+    let dataOut := rob3(tracker_ROB, match0_ROB0, match1_ROB1, match2_ROB2);
+};
+
+
+chan source_fork;
+chan fork_dataIn;
+chan fork_idIn;
+chan reorderBuffer_network;
+chan network_reorderBuffer;
+chan reorderBuffer_sink;
+
+let reorderBuffer_network, reorderBuffer_sink := reorder_buffer2_3(fork_dataIn, fork_idIn, network_reorderBuffer);
+let source_fork := Source(network_switch_pred1_param0);
+let fork_dataIn, fork_idIn := Fork(source_fork);
+Sink(reorderBuffer_sink);
+let network_reorderBuffer := network(reorderBuffer_network);

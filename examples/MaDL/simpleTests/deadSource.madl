@@ -1,0 +1,13 @@
+// Making a dead source
+
+const tok;
+
+macro deadSource () => chan o {
+ enum empty {};
+ let o := Source(empty);
+
+};
+
+chan idle := Queue(2,deadSource());
+
+Sink(CtrlJoin(idle,Source(tok)));

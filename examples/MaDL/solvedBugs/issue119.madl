@@ -1,0 +1,29 @@
+// 
+// nuXmv generation fails with
+//
+// dlockdetect: Fatal 173 in Madl.Deadlock.Nuxmv:
+//    function argument lacks a value expression
+//
+
+struct A {
+    id : [1 : 0];
+};
+
+struct B {
+    pkt : A;
+};
+
+function tag (p : A) : B {
+    pkt.id = p.id;
+};
+
+pred eq ( p : B, q : A ) {
+    p.pkt.id == q.id
+};
+
+macro Reg(chan i) => chan o {
+    let o := Queue(1, i);
+};
+
+chan tmp := MultiMatch(eq, Source(A), Function(tag, Source(A)), Function(tag, Source(A)));
+Sink(Reg(tmp));

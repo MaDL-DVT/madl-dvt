@@ -1,0 +1,31 @@
+const req;
+
+enum src0_msg {
+    req;
+    rsp;
+};
+
+const rsp;
+
+chan src0_fork;
+chan fork_queue0;
+chan fork_merge0;
+chan src1_merge0;
+chan merge0_queue1;
+chan queue0_join;
+chan queue1_switch;
+chan switch_join;
+chan join_merge1;
+chan switch_merge1;
+chan merge1_sink;
+
+let src0_fork := Source(src0_msg);
+let src1_merge0 := Source(req);
+let fork_queue0, fork_merge0 := Fork(Vars(src0_fork));
+let merge0_queue1 := Merge(Vars(fork_merge0), Vars(src1_merge0));
+let queue0_join := Queue(2, Vars(fork_queue0));
+let queue1_switch := Queue(2, Vars(merge0_queue1));
+let switch_join, switch_merge1 := Switch(Vars(queue1_switch), rsp, req);
+let join_merge1 := CtrlJoin(Vars(queue0_join), Vars(switch_join));
+let merge1_sink := Merge(Vars(join_merge1), Vars(switch_merge1));
+Sink(Vars(merge1_sink));

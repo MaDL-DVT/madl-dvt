@@ -1,0 +1,20 @@
+// Test Network 0011
+// 1 source, 5w queues, 1 switch, 1 match, 2 sink
+// Deadlock !
+
+const r;
+const b;
+enum rb {r;b;};
+
+pred f (p: rb, q: rb) {
+	true
+};
+
+chan src := Queue(2,Source(rb));
+
+chan up,down := Switch(src,r,otherwise);
+
+bus<2> m_out := Match(f,Queue(2,up), Queue(2,down));
+
+Sink(Queue(2,m_out[0]));
+Sink(Queue(2,m_out[1]));

@@ -1,0 +1,48 @@
+// Modelling a shorest path Spidergon
+// (Across first algorithm)
+// 4*n-node Spidergon
+// Distributed routing version
+// Extension with request and reponses (agents)
+// NUM_NODE + 1 master
+// rests are slaves
+// Deadlock-free up to 8 nodes
+
+param int QSIZE = 2;
+param int SIZE = 3; // #bits to encode the number of nodes.
+param int NUM_NODE = 2; // number of nodes in a quadrant
+
+param int NUM_MASTER = NUM_NODE+2;
+
+struct SPRouter8pkt {
+    destN : [SIZE-1:0]; // destination node
+    srcN  : [SIZE-1:0]; // source node
+    type  : [0:0]     ; // type req = 1, rsp = 0;
+};
+
+uses lib.spidergon;
+uses lib.spidergon_ms;
+
+// we now create the Spidergon
+
+bus<4*NUM_NODE*4> allOUTS; // bus with all output channels for the entire network
+
+// we finally connect the master/slave nodes
+bus<NUM_NODE*4> srcs;
+// first quadrant are masters
+for (int i = 0; i<NUM_MASTER;i++) {
+    let srcs[i] := MasterNode(i,allOUTS[4*i]); // slave -> master
+};
+
+// then masters
+for (int i = NUM_MASTER; i<NUM_NODE*4;i++) {
+    let srcs[i] := SlaveNode(i,allOUTS[4*i]); // master -> slave
+};
+
+for (int i = 0;i<NUM_NODE*4;i++) {
+    let allOUTS[4*i], allOUTS[4*i+1], allOUTS[4*i+2], allOUTS[4*i+3]
+    := SPRouter(i,srcs[i]
+      ,allOUTS[4*((i+2*NUM_NODE)%(4*NUM_NODE))+1] // ACR in
+      ,allOUTS[4*((i-1)%(4*NUM_NODE))+2] // CW IN
+      ,allOUTS[4*((i+1)%(4*NUM_NODE))+3]); // CCW in
+};
+

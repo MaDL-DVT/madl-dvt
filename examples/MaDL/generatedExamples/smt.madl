@@ -1,0 +1,16 @@
+const req;
+
+macro delay(chan input) => chan output {
+    chan fork_sink;
+    
+    let output, fork_sink := Fork(input);
+    Sink(fork_sink);
+};
+
+
+chan source_delay;
+chan delay_snk;
+
+let source_delay := Source(req);
+Sink(delay_snk);
+let delay_snk := delay(source_delay);

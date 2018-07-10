@@ -1,0 +1,134 @@
+// Modelling a shorest path Spidergon
+// (Across first algorithm)
+// 4*n-node Spidergon
+// DO NOT MODIFY - INCLUDED IN TEST SUITE
+
+param int QSIZE = 2;
+param int NUM_NODE = 2; // number of nodes in a quadrant
+param int NUM_MOVES = 2; // #bits to encode max number of moves in the CW or CCW directions. 
+
+struct SPRouter8pkt {
+// encoding of a shortest path route
+  numACR: [0:0]; // maximum 1 across move
+  dir   : [0:0]; // direction 0 is CW, 1 is CCW
+  moves : [NUM_MOVES-1:0]; // number of moves in the direction
+};
+
+macro Merge4 (bus<4> inPorts) => chan o {
+    let o:= Merge(inPorts[3], Merge(inPorts[2], Merge(inPorts[0],inPorts[1])));
+};
+
+function decACR (p: SPRouter8pkt) : SPRouter8pkt {
+    numACR = p.numACR - 1;
+    dir = p.dir;
+    moves = p.moves;
+};
+
+function decMoves  (p: SPRouter8pkt) : SPRouter8pkt {
+    numACR = p.numACR;
+    dir = p.dir;
+    moves = p.moves - 1;
+};
+
+macro SPRouterLogic (chan inPort) => bus<4> outPorts {
+// Shortest path routing logic for Spidergon
+// We implement across first
+// outputs
+// outPorts<0>: local out
+// outPorts<1>: across out
+// outPorts<2>: cw out
+// outPorts<3>: ccw out
+
+// the following switch should have a more complex condition
+
+// first check for across move
+
+chan no_across, go_acr := Switch(inPort,SPRouter8pkt.numACR==0,otherwise);
+let outPorts[1] := Function(decACR,go_acr);
+
+
+// check if moves in some direction
+
+chan no_stop;
+
+let outPorts[0],no_stop := Switch (no_across,SPRouter8pkt.moves==0, otherwise);
+
+
+chan go_cw, go_ccw := Switch(no_stop, SPRouter8pkt.dir==0, otherwise);
+
+let outPorts[2] := Function(decMoves, go_cw);
+let outPorts[3] := Function(decMoves, go_ccw);
+
+
+}; // end SPRouter8Logic
+
+
+macro SPRouter (int nodeID, bus<4> inPorts) => bus<4> outPorts {
+// inputs
+// inPorts[0]: from local in
+// inPorts[1]: from across in
+// inPorts[2]: from cw neighbour in
+// inPorts[3]: from ccw neighbour in
+// outputs
+// outPorts[0]: local out
+// outPorts[1]: to across out
+// outPorts[2]: to cw out
+// outPorts[3]: to ccw out
+
+// Router has output queues
+// Each input is routed independently
+
+
+bus<4> routedINLocal,routedINACR, routedINCW,routedINCCW;
+
+// we instantiate the routing logic for each input
+let routedINLocal := SPRouterLogic(inPorts[0]);
+let routedINACR   := SPRouterLogic(inPorts[1]);
+let routedINCW    := SPRouterLogic(inPorts[2]);
+let routedINCCW   := SPRouterLogic(inPorts[3]);
+
+// we then merge all the outputs
+for (int i = 0;i<4;i++){
+    let outPorts[i] :=
+    	Queue(QSIZE,Merge4(routedINLocal[i],routedINACR[i],routedINCW[i],routedINCCW[i]));
+};
+
+}; // end SPRouter
+
+// we now create the Spidergon
+
+macro PacketFilter (chan input) => chan o {
+// this filtering makes everything smaller
+// it is only useful if the parameters are such
+// that invalid routes can be generated.
+// Otherwise, it is unnecessary. It filters nothing. 
+      chan noacrm, acrm := Switch(input,SPRouter8pkt.numACR==0,otherwise);
+      chan ok1, nok1 := Switch(noacrm,SPRouter8pkt.moves<=NUM_NODE,otherwise);
+      Sink(nok1);
+      chan ok2, nok2 := Switch(acrm,SPRouter8pkt.moves<=(NUM_NODE-1),otherwise);
+      Sink(nok2);
+      let o:= Merge(ok1,ok2);
+};
+
+// we create NUM_NODE * 4 sources
+bus<NUM_NODE*4> srcs;
+for (int i = 0; i<4*NUM_NODE;i++) {
+    let srcs[i] := PacketFilter(Source(SPRouter8pkt));
+    
+};
+
+bus<4*NUM_NODE*4> allOUTS; // bus with all output channels for the entire network
+
+// we generate the border cases
+for (int i = 0;i<NUM_NODE*4;i++) {
+   let allOUTS[4*i], allOUTS[4*i+1], allOUTS[4*i+2], allOUTS[4*i+3]
+   := SPRouter(i,srcs[i]
+		 ,allOUTS[4*((i+2*NUM_NODE)%(4*NUM_NODE))+1] // ACR in
+		 ,allOUTS[4*((i-1)%(4*NUM_NODE))+2] // CW IN
+		 ,allOUTS[4*((i+1)%(4*NUM_NODE))+3]); // CCW in
+};
+
+// we sink all local outputs
+for (int i = 0;i<NUM_NODE*4;i++) {
+   Sink(allOUTS[4*i]);
+};

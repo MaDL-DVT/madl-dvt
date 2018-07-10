@@ -1,0 +1,4 @@
+const val;
+chan high,low := LoadBalancer(Source(val));
+Sink(Queue(2,high));
+Sink(Queue(2,low));

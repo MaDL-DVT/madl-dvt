@@ -1,0 +1,13 @@
+// Test Network 0009
+// 1 source, 4 queues, 1 switch, 1 control join, 1 sink
+// Deadlock !
+
+const r;
+const b;
+enum rb {r;b;};
+
+chan src := Queue(2,Source(rb));
+
+chan up,down := Switch(src,r,otherwise);
+
+Sink(Queue(2,CtrlJoin(Queue(2,up),Queue(2,down))));

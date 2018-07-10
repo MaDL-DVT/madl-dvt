@@ -1,0 +1,33 @@
+/* 
+Test cases
+
+The idea is that 2 sources are filling queues 
+connected to a Match primitive. If this Match 
+always matches on the same input, then the other 
+source should fill its queue entirely and be blocked.
+
+DEADLOCK 
+
+(reachable)
+
+A source injects only red packets.
+
+*/
+
+// we define an enum
+// but the types are not type identifiers.
+enum gr {green;red;};
+// so we define red again.
+const red;
+
+pred f (a: gr, b: red) {
+	a == b
+};
+
+chan ina := Queue(2,Source(gr));
+chan inb := Queue(2,Source(red)); 
+
+chan gpkt,rpkt := Match(f,ina,inb);
+
+Sink(gpkt);
+Sink(rpkt);

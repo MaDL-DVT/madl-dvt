@@ -1,0 +1,35 @@
+// illustrate issue #127
+//
+// fails with fatal 466 in DeadlockDetection
+//      Illegal call to irdy: invalid colorset.
+struct A {
+    id : [1 : 0];
+};
+
+struct B {
+    tag : enum {X; Y;};
+    id : [1 : 0];
+};
+const X;
+const Y;
+
+function tag_Y (p : A) : B {
+    tag = Y;
+    id = p.id;
+};
+
+function tag_X (p : A) : B {
+    tag = X;
+    id = p.id;
+};
+
+pred eq ( p : B, q : A ) {
+    p.id == q.id
+};
+
+bus<2> tmp :=
+    MultiMatch(eq, Source(A), Source(A),
+                    Function(tag_X, Source(A)),
+                    Function(tag_Y, Source(A)));
+
+Sink(Merge(tmp[0], tmp[1]));

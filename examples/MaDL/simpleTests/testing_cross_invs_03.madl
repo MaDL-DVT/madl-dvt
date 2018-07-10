@@ -1,0 +1,63 @@
+// testing generation of cross layer invariants
+
+const ireq;
+const tack;
+const tx;
+const done;
+
+process p0 (chan input) => chan output {
+	state s0() {
+		trans {
+			ireq -> output;
+			next s1();
+		};
+	};
+	state s1() {
+		trans {
+			tack d <- input;
+			next s2();
+		};
+	};
+	state s2(){
+		trans {
+			tx -> output;
+			next s3();
+		};
+	};
+	state s3(){
+		trans {
+			done d <- input;
+			next s0();
+		};
+	};
+};
+
+process p1 (chan input) => chan output {
+	state s0 () {
+		trans {
+			ireq d <- input;
+			next s1();
+		};
+	};
+	state s1() {
+		trans {
+			tack -> output;
+			next s2();
+		};
+	};
+	state s2() {
+		trans {
+			tx d <- input;
+			next s3();
+		};
+	};
+	state s3() {
+		trans {
+			done -> output;
+			next s0();
+		};
+	};
+};
+
+chan P0_out := Queue(2, p0(P1_out));
+chan P1_out := Queue(2, p1(P0_out));

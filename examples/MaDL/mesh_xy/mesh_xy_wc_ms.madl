@@ -1,0 +1,219 @@
+// Modelling a generic XY routing 2D mesh
+// with master and slave and with credits
+// NoDeadlock
+// Note that the version without credits has a deadlock.
+// current tests
+// XDIM YDIM XBITS YBITS 
+//  2    2     0    0       seconds
+//  3    2     1    0       seconds
+//  3    3     1    1       seconds
+//  2    3     0    1       seconds
+//  4    3     2    1       seconds
+//  4    4     2    2     
+//  5    4     2    2     
+//  5    5     2    2     
+//  6    6     2    2     
+// ---------------------
+
+param int QSIZE = 2; // size of input buffers
+param int XDIM = 2;  // size of the x dimension
+param int YDIM = 2;  // size of the y dimension
+// WARNING: XDIM > 1 and YDIM > 1
+// values of the size of the bit-vectors representing
+// sources and destinations
+param int XBITS = 0;
+param int YBITS = 0;
+param int CSIZE = 2; // size of credit counters
+
+param int WITH_BUFFER = 0; // 1 Buffer in routers, 0 queues in routers. 
+param int WITH_LOCAL_QUEUE = 1; // 1 local queue at injection points, 0 no local queues
+
+
+struct Pkt {
+  destx : [XBITS:0]; // x-coordinate of the destination
+  desty : [YBITS:0]; // y-coordinate of the destination
+  srcx  : [XBITS:0]; // x-coordinate of the source
+  srcy  : [YBITS:0]; // y-coordinate of the soruce
+  type  : [0:0]; // 1 = request, 0 = response
+};
+
+const tok; // required by our macro library
+
+uses lib.main;
+uses lib.paramrouter;
+uses lib.masterslave;
+
+// Generate the local sources
+bus<XDIM*YDIM> srcs; // bus containing the local inputs
+for (int y = 0; y<YDIM;y++) {
+    for (int x = 0; x < XDIM; x++) {
+    	let srcs[x+y*XDIM] := MasterSlaveNode(x,y,allOUTS[x*5+y*XDIM*5]);
+    };
+};
+
+// Generate all routers
+bus<5*XDIM*YDIM> allOUTS; // bus containing all channels
+bus<5*XDIM*YDIM> allcOUTS; // bus with all credits
+for (int y = 0; y < YDIM; y++) {
+    for (int x = 0; x < XDIM ; x++) {
+       if (y == 0) {
+         if (x == 0) {
+	    let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	        allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+	    XYRouter5PC(x,y,
+	                CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+			deadSource(), allOUTS[y*XDIM*5+(x+1)*5+1], allOUTS[(y+1)*XDIM*5+x*5+4],deadSource(),
+			PatientSource(tok),
+			deadSource(),allcOUTS[y*XDIM*5+(x+1)*5+1],allcOUTS[(y+1)*XDIM*5+x*5+4],deadSource());
+	 }
+	 else {
+	      if (x == XDIM - 1) {
+	      let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	          allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+              XYRouter5PC(x,y,
+	                  CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+	                  allOUTS[y*XDIM*5+(x-1)*5+2],  deadSource(), allOUTS[(y+1)*XDIM*5+x*5+4],deadSource(),
+			  PatientSource(tok),
+			  allcOUTS[y*XDIM*5+(x-1)*5+2], deadSource(),allcOUTS[(y+1)*XDIM*5+x*5+4],deadSource());
+	    }
+	    else { // y== 0 and 0 < x < XDIM-1
+	      let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	          allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+              XYRouter5PC(x,y,
+	                  CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+	                  allOUTS[y*XDIM*5+(x-1)*5+2],  allOUTS[y*XDIM*5+(x+1)*5+1], allOUTS[(y+1)*XDIM*5+x*5+4],deadSource(),
+			  PatientSource(tok),
+			  allcOUTS[y*XDIM*5+(x-1)*5+2],allcOUTS[y*XDIM*5+(x+1)*5+1],allcOUTS[(y+1)*XDIM*5+x*5+4],deadSource());
+	    };
+	 };
+       }
+       else {
+          if (y == YDIM - 1) {
+	     if (x == 0) {
+	        let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	            allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+                XYRouter5PC(x,y,
+		            CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+			    deadSource(), allOUTS[y*XDIM*5+(x+1)*5+1],deadSource(), allOUTS[(y-1)*XDIM*5+x*5+3],
+			    PatientSource(tok),
+			    deadSource(),allcOUTS[y*XDIM*5+(x+1)*5+1],deadSource(), allcOUTS[(y-1)*XDIM*5+x*5+3]);
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	               allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+                   XYRouter5PC(x,y,
+		               CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+			        allOUTS[y*XDIM*5+(x-1)*5+2],deadSource(),deadSource(), allOUTS[(y-1)*XDIM*5+x*5+3],
+			       PatientSource(tok),
+			       allcOUTS[y*XDIM*5+(x-1)*5+2],deadSource(),deadSource(),allcOUTS[(y-1)*XDIM*5+x*5+3]);
+		}
+		else { // y = YDIM-1 and x is arbitrary
+		   let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	               allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+                   XYRouter5PC(x,y,
+		               CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+			        allOUTS[y*XDIM*5+(x-1)*5+2], allOUTS[y*XDIM*5+(x+1)*5+1],deadSource(), allOUTS[(y-1)*XDIM*5+x*5+3],
+			       PatientSource(tok),
+			       allcOUTS[y*XDIM*5+(x-1)*5+2],allcOUTS[y*XDIM*5+(x+1)*5+1],deadSource(),allcOUTS[(y-1)*XDIM*5+x*5+3]);
+		};
+	     };
+	  }
+	  else { // y is arbitrary
+	     if (x == 0) {
+	      let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	          allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+              XYRouter5PC(x,y,
+	                  CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+			  deadSource(), allOUTS[y*XDIM*5+(x+1)*5+1], allOUTS[(y+1)*XDIM*5+x*5+4], allOUTS[(y-1)*XDIM*5+x*5+3],
+			  PatientSource(tok),
+			  deadSource(),allcOUTS[y*XDIM*5+(x+1)*5+1],allcOUTS[(y+1)*XDIM*5+x*5+4],allcOUTS[(y-1)*XDIM*5+x*5+3]);
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	               allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+                   XYRouter5PC(x,y,
+		               CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+			        allOUTS[y*XDIM*5+(x-1)*5+2], deadSource(), allOUTS[(y+1)*XDIM*5+x*5+4], allOUTS[(y-1)*XDIM*5+x*5+3],
+			       PatientSource(tok),
+			       allcOUTS[y*XDIM*5+(x-1)*5+2], deadSource(),allcOUTS[(y+1)*XDIM*5+x*5+4],allcOUTS[(y-1)*XDIM*5+x*5+3]);
+		}
+		else {
+		   let  allOUTS[y*XDIM*5+x*5], allOUTS[y*XDIM*5+x*5+1], allOUTS[y*XDIM*5+x*5+2], allOUTS[y*XDIM*5+x*5+3], allOUTS[y*XDIM*5+x*5+4],
+	               allcOUTS[y*XDIM*5+x*5],allcOUTS[y*XDIM*5+x*5+1],allcOUTS[y*XDIM*5+x*5+2],allcOUTS[y*XDIM*5+x*5+3],allcOUTS[y*XDIM*5+x*5+4]:=
+                   XYRouter5PC(x,y,
+		               CtrlJoin(srcs[x+y*XDIM],Queue(QSIZE,allcOUTS[x*5+y*XDIM*5])),
+			        allOUTS[y*XDIM*5+(x-1)*5+2], allOUTS[y*XDIM*5+(x+1)*5+1], allOUTS[(y+1)*XDIM*5+x*5+4], allOUTS[(y-1)*XDIM*5+x*5+3],
+			       PatientSource(tok),
+			       allcOUTS[y*XDIM*5+(x-1)*5+2],allcOUTS[y*XDIM*5+(x+1)*5+1],allcOUTS[(y+1)*XDIM*5+x*5+4],allcOUTS[(y-1)*XDIM*5+x*5+3]);
+		};
+	     };
+	  };
+       };
+    };
+};
+
+// We sink all outputs at the border.
+// (they should never receive anything. So, we make them dead to find errors)
+for (int y = 0; y < YDIM ; y++) {
+   for (int x = 0; x < XDIM ; x++){
+       if (y == 0) {
+          if (x == 0) {	
+             DeadSink( allOUTS[y*XDIM*5+x*5+1]);
+	     DeadSink( allOUTS[y*XDIM*5+x*5+4]);
+	     DeadSink(allcOUTS[y*XDIM*5+x*5+1]);
+	     DeadSink(allcOUTS[y*XDIM*5+x*5+4]);
+	  }
+	  else {
+	     if (x == XDIM-1) { 
+	        DeadSink( allOUTS[y*XDIM*5+x*5+2]);
+		DeadSink( allOUTS[y*XDIM*5+x*5+4]);
+		DeadSink(allcOUTS[y*XDIM*5+x*5+2]);
+		DeadSink(allcOUTS[y*XDIM*5+x*5+4]);
+	     }
+	     else { // y = 0 but x is in the middle
+	        DeadSink( allOUTS[y*XDIM*5+x*5+4]);
+		DeadSink(allcOUTS[y*XDIM*5+x*5+4]);
+            };
+	  };
+       }
+       else {
+          if (y == YDIM - 1) {
+	     if (x == 0) {
+	        DeadSink( allOUTS[y*XDIM*5+x*5+1]);
+		DeadSink( allOUTS[y*XDIM*5+x*5+3]);
+		DeadSink(allcOUTS[y*XDIM*5+x*5+1]);
+		DeadSink(allcOUTS[y*XDIM*5+x*5+3]);
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   DeadSink( allOUTS[y*XDIM*5+x*5+2]);
+		   DeadSink( allOUTS[y*XDIM*5+x*5+3]);
+		   DeadSink(allcOUTS[y*XDIM*5+x*5+2]);
+		   DeadSink(allcOUTS[y*XDIM*5+x*5+3]);
+		}
+		else { // y == YDIM - 1 but x is in the middle
+		   DeadSink( allOUTS[y*XDIM*5+x*5+3]);
+		   DeadSink(allcOUTS[y*XDIM*5+x*5+3]);
+		};
+	     };
+	  }
+	  else { // y is in the middle
+	     if (x == 0) {
+	        DeadSink( allOUTS[y*XDIM*5+x*5+1]);
+		DeadSink(allcOUTS[y*XDIM*5+x*5+1]);
+	     }
+	     else {
+	        if (x == XDIM - 1) {
+		   DeadSink( allOUTS[y*XDIM*5+x*5+2]);
+		   DeadSink(allcOUTS[y*XDIM*5+x*5+2]);
+		}
+		else {
+		};
+	     };
+	  };       
+       };
+   };
+};
+

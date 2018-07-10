@@ -1,0 +1,26 @@
+const req;
+
+const rsp;
+
+chan src0_fork;
+chan fork_queue0;
+chan fork_merge0;
+chan src1_merge0;
+chan merge0_queue1;
+chan queue0_join;
+chan queue1_switch;
+chan switch_join;
+chan join_merge1;
+chan switch_merge1;
+chan merge1_sink;
+
+let src0_fork := Source(rsp);
+let src1_merge0 := Source(req);
+let fork_queue0, fork_merge0 := Fork(src0_fork);
+let merge0_queue1 := Merge(fork_merge0, src1_merge0);
+let queue0_join := Queue(2, fork_queue0);
+let queue1_switch := Queue(2, merge0_queue1);
+let switch_join, switch_merge1 := Switch(queue1_switch, rsp, req);
+let join_merge1 := CtrlJoin(queue0_join, switch_join);
+let merge1_sink := Merge(join_merge1, switch_merge1);
+Sink(merge1_sink);

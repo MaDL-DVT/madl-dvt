@@ -1,0 +1,70 @@
+// macros for the master slave extensions of the spidergon
+
+macro MasterSlaveNode (int NodeID, chan NodeIn) => chan MasterOut {
+
+      // function creating a response
+      function CreateRsp (p: SPRouter8pkt) : SPRouter8pkt {
+               destN = p.srcN; // destination is the source
+      	       srcN  = NodeID; // source is current node
+	       type  = 0     ; // type = response
+      };
+
+
+      pred Filter0 (p: SPRouter8pkt) {
+	p.destN < 4*NUM_NODE && p.srcN == NodeID && p.type == 1
+      };
+
+      // Request sending
+      chan pkt1 := PacketFilter(NodeID,Source(SPRouter8pkt));
+      // masters only send requests.
+      chan toMasterOut1, toSink1 := Switch(pkt1,Filter0,otherwise);
+      Sink(toSink1);
+
+      chan reqIn, rspIn := Switch(NodeIn, SPRouter8pkt.type == 1, otherwise);
+      Sink(rspIn);
+
+      let MasterOut := Merge(Queue(2,toMasterOut1), Queue(2,Function(CreateRsp,reqIn)));
+
+};
+
+macro MasterNode (int NodeID, chan NodeIn) => chan MasterOut {
+      
+      pred Filter0 (p: SPRouter8pkt) {
+	 p.destN >= NUM_MASTER && // if 1/4 master
+	 p.srcN == NodeID && p.type == 1
+      };
+
+      // Request sending
+      chan pkt1 := PacketFilter(NodeID,Source(SPRouter8pkt));
+      // masters only send requests.
+      chan toSink1,toMasterOut1;
+      let toMasterOut1, toSink1 := Switch(pkt1,Filter0,otherwise);
+      let MasterOut := Queue(2,toMasterOut1);
+      Sink(toSink1);
+
+      Sink(NodeIn);
+
+      /*
+      pred CorrectlyReceived (p: SPRouter8pkt) {
+           p.destN == NodeID && p.type == 0
+      };
+      chan atdestination,misrouted := Switch(NodeIn,CorrectlyReceived,otherwise);
+      DeadSink(Queue(2,misrouted)); // This should never be reached
+      // Note that the queue is needed otherwise a deadlock is found. 
+      Sink(atdestination); // all incoming messages are sunk
+      */
+      
+};
+
+macro SlaveNode (int NodeID, chan NodeIn) => chan SlaveOut{
+
+       // function creating a response
+      function CreateRsp (p: SPRouter8pkt) : SPRouter8pkt {
+               destN = p.srcN; // destination is the source
+      	       srcN  = NodeID; // source is current node
+	       type  = 0     ; // type = response
+      };
+
+      let SlaveOut := Function(CreateRsp,NodeIn);
+
+};

@@ -1,0 +1,14 @@
+// JS. Test macros with parameters
+
+param int NUM = 3;
+
+const tok;
+
+
+// generating a queue of size n
+macro nQueue (int n, chan input) => chan o {
+      let o:= Queue(n,input);
+};
+
+Sink(nQueue(NUM,Source(tok)));
+

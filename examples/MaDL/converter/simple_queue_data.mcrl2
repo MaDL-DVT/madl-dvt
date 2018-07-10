@@ -1,0 +1,39 @@
+sort T = struct red|blue|green|yellow;
+     S = struct free | next_t;
+
+
+
+act  idle;
+     inject:T;
+     reject;
+     consume:T;
+
+proc P(s: S, q: List(T)) =
+       (!(#q < 2) && !(#q > 0) && (s == free)) 
+       	    ->   ((idle|reject + sum x:T.idle|consume(x)).P(s,q)
+	       + (sum x:T.inject(x)|reject + sum x:T.inject(x)|consume(x)).P(next_t,q))
+     + (!(#q < 2) && !(#q > 0) && !(s == free))
+       	    ->   (sum x:T.inject(x)|reject + sum x:T.inject(x)|consume(x)).P(next_t,q)
+     + ((#q < 2) && !(#q > 0) && (s == free))
+       	    ->   ((idle|reject + sum x:T.idle|consume(x)).P(s,q) + (sum x:T.inject(x)|reject.P(s,[x] ++ q)
+	       + sum x:T.inject(x)|consume(x).P(s,[x] ++ q)))
+     + ((#q < 2) && !(#q > 0) && !(s == free)) 
+       	    -> (sum x:T.inject(x)|reject.P(free,[x]++q) + sum x:T.inject(x)|consume(x).P(free,[x]++q))
+     + (!(#q < 2) && (#q > 0) && (s == free))
+       	    ->   (idle|reject.P(s,q)
+	       + sum x:T.idle|consume(x).P(s,rtail(q))
+	       + sum x:T.inject(x)|reject.P(next_t,q)
+	       + sum x:T.inject(x)|consume(x).P(next_t,rtail(q)))
+     + (!(#q < 2) && (#q > 0) && !(s == free)) 
+       	    ->   (sum x:T.inject(x)|reject.P(next_t,q)
+	       + sum x:T.inject(x)|consume(x).P(next_t,rtail(q)))
+     + ((#q < 2) && (#q > 0) && (s == free)) %(1,1)
+       	    ->   (idle|reject.P(s,q)
+	       + sum x:T.idle|consume(x).P(s,rtail(q))
+	       + sum x:T.inject(x)|reject.P(s,[x]++q)
+	       + sum x:T.inject(x)|consume(x).P(s,[x]++rtail(q)))
+     + ((#q < 2) && (#q > 0) && !(s == free))
+       	    ->   (sum x:T.inject(x)|reject.P(free,[x]++q)
+	       + sum x:T.inject(x)|consume(x).P(free,[x]++rtail(q)));
+
+init P(free, []);

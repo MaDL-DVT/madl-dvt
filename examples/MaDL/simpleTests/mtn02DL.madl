@@ -1,0 +1,26 @@
+/*
+Test cases
+
+test data handling for matches
+
+*/
+
+enum bly {blue;yellow;};
+const blue;
+const yellow;
+
+enum grr {green;red};
+const green;
+const red;
+
+pred fun (b: bly, a: grr) {
+	a == green && b == blue
+};
+
+chan ina := Queue(2,Source(grr));
+chan inb := Queue(2,Source(bly));
+
+chan gpkt,rpkt := Match(fun,ina,inb);
+
+Sink(gpkt);
+Sink(rpkt);

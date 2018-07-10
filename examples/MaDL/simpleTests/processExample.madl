@@ -1,0 +1,82 @@
+// small example of simple processes.
+// two state machines connected by two queues.
+
+const tok;
+
+
+/*
+Component syntax:
+
+component CM0 (chan ack) => chan req {
+  // ack.irdy, input
+  // ack.data, input
+  // ack.trdy, output
+  // req.irdy, output
+  // req.trdy, input
+  // req.data, output
+
+  int state = 0;
+
+  ack.trdy = (state == 1);
+  req.irdy = (state == 0);
+  req.data = tok;
+
+  state = if (state == 0 && req.irdy && req.trdy) 1 else
+  	  if (state == 1 && ack.irdy && ack.trdy) 0 else state;
+};
+
+component CM1 (chan req) => chan ack{
+
+   int state = 0;
+
+   req.trdy = (state == 0);
+   ack.irdy = (state == 1);
+   ack.data = tok;
+
+   state = if (state == 0 && req.irdy && req.trdy) 1 else
+           if (state == 1 && ack.itdy && ack.trdy) 0 else state;
+
+};
+
+*/
+
+process M0 (chan ack) => chan req {
+
+    state s0() {
+       	trans {
+	   tok -> req;
+	   next s1();
+	};
+    };
+
+    state s1() {
+       trans {
+       	   tok d <- ack;
+	   next s0();
+       };
+    };
+};
+
+
+process M1 (chan req) => chan ack {
+
+   state t0() {
+       trans {
+       	   tok d <- req;
+	   next t1();
+       };
+   };
+
+   state t1() {
+   	trans {
+	    tok -> ack;
+	    next t0();
+	};
+   };
+};
+
+chan M1req, M0ack;
+
+let M1req := Queue(2,M0(M0ack));
+let M0ack := Queue(2,M1(M1req));
+

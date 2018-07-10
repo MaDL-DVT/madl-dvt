@@ -1,0 +1,20 @@
+// we define two packet structures.
+struct pkt1 {
+    header1 : enum {req1;req2;}; // req/rsp header
+    payload1 : [3:0]; // 8 bits payload
+};
+
+struct pkt2 {
+    header2 : enum {rsp1;rsp2;}; // req/rsp header
+    payload2 : [7:0]; // 8 bits payload
+};
+
+// we can now take the union of these two packet types
+union pkt12 {
+     p1Type : pkt1;
+     p2Type : pkt2;
+
+};
+
+chan src := Queue(2,Source(pkt12));
+Sink(src);

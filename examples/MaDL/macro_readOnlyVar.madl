@@ -1,0 +1,11 @@
+const val;
+
+macro readOnlyVar (chan rd) => chan o {
+	chan qout := Queue(2,Merge(Source(val),rdval));
+	chan rdval, out := Fork(CtrlJoin(qout,rd));
+	let o := Vars(out); 
+};
+
+chan foo := Source(val);
+
+Sink(readOnlyVar(foo));

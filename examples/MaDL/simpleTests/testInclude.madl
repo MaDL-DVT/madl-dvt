@@ -1,0 +1,5 @@
+uses myMacro;
+uses lib.Macros;
+
+const tok;
+Sink(Reg(MyMacro(Source(tok))));

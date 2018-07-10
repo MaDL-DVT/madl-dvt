@@ -1,0 +1,16 @@
+param int NODE_ID = 0;
+
+macro XYSwitch(int NODE_ID, chan inj, chan in_1, chan in_2) => chan out {
+
+	pred destPred(p:package) {
+		p.dst == NODE_ID
+	};
+
+	chan inSw1_A, inSw1_B := Switch(in_1, destPred, otherwise);
+	Sink(inSw1_A);
+
+	chan inSw2_A, inSw2_B := Switch(in_2, destPred, otherwise);
+	Sink(inSw2_A);
+
+	let out := Merge(inSw1_B, Merge(inSw2_B, inj));
+ }; 

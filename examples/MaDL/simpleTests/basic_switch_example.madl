@@ -1,0 +1,8 @@
+// basic switch example
+enum pkt {red;blue;};
+const red;
+const blue;
+
+chan up, down := Switch(Source(pkt), red, blue);
+Sink(up);
+Sink(down);

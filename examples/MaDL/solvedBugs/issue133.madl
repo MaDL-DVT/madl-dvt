@@ -1,0 +1,11 @@
+// issue in parsing integer expression with parentheses
+
+param int N = 2;
+
+const val;
+
+bus<1*1*(N-1)> src;
+
+let src := Source(val);
+
+Sink(src[1*1*(N-2)]);

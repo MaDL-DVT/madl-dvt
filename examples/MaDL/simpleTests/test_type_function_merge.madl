@@ -1,0 +1,31 @@
+// issue 211 with type propagations
+
+
+struct pkt {
+	fieldA : enum {red;blue;};
+	fieldB : enum {green;yellow};
+};
+
+const red;
+const blue;
+const green;
+const yellow;
+
+function make_a_type (p: pkt) : pkt {
+	fieldA = red;
+	fieldB = green;
+};
+
+function make_b_type (p: pkt) : pkt {
+	fieldA = blue;
+	fieldB = yellow;
+};
+
+chan src_a := Function(make_a_type,Source(pkt));
+
+chan src_b := Function(make_b_type,Source(pkt));
+
+chan foo := Queue(2,Merge(src_a,src_b));
+
+Sink(foo);
+

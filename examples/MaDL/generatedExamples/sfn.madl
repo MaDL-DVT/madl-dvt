@@ -1,0 +1,37 @@
+union function_fun_param0 {
+    a : struct {
+            adress : [1:0];
+            data : [0:0];
+        };
+    req : struct {
+            adress : [1:0];
+            data : [0:0];
+        };
+    rsp : struct {
+            adress : [1:0];
+            data : [0:0];
+        };
+};
+
+union function_fun_output {
+    req : struct {
+            adress : [1:0];
+            data : [0:0];
+        };
+    rsp : struct {
+            adress : [1:0];
+            data : [0:0];
+        };
+};
+
+function function_fun ( var0 : function_fun_param0 ) : function_fun_output {
+    switch var0 { case a : req { var0.a } ;case req : var0 ;case rsp : var0 ; }
+};
+
+
+chan source_function;
+chan function_sink;
+
+let source_function := Source(function_fun_param0);
+Sink(function_sink);
+let function_sink := Function(function_fun, source_function);

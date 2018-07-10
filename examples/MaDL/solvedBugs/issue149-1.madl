@@ -1,0 +1,39 @@
+// The ColorSet datatype is limited in expressing conditions.
+// As a result a reachable deadlock is found in this network, while it is deadlockfree.
+// Adding a queue results in an unreachable deadlock being found.
+// Incorrect type propagation may also result in idle channels not being detected as idle. This makes us unsound :(
+//
+// issue #149
+
+param int MODE = 1;
+// MODE = 0: A reachable deadlock is found in a deadlock-free network.
+// MODE = 1: An unreachable deadlock is found in a deadlock-free network.
+// MODE = 2: A reachable deadlock is not found.
+
+struct pkt {
+    fld1 : [0:0];
+    fld2 : [0:0];
+};
+
+pred goodPackets (p : pkt) {
+    p.fld1 == 1 || p.fld2 == 1 //This predicate is problematic, since our ColorSet type can't handle disjunctive conditions over fields of a struct.
+};
+
+chan good, bad := Switch(Source(pkt), goodPackets, otherwise); // Here, we expect the good channel to only contain good packets.
+// However, since the ColorSet type cannot handle the predicate, after unifying all the good packets into a ColorSet, this ColorSet will also represent bad packets.
+Sink(bad);
+
+chan good2, bad2 := Switch(good, goodPackets, otherwise); // Here the user expects that all incoming packets are good, so channel bad2 should be empty.
+// However, due to this limitation of the ColorSet datatype, internally there are also bad incoming packets, and as a result a deadlock is found.
+Sink(good2);
+
+if (MODE == 0) {
+    DeadSink(bad2); // Since channel bad2 is empty, this deadsink should not cause a deadlock.
+} else {
+if (MODE == 1) {
+    DeadSink(Queue(2, bad2));
+    //         ^ Adding a queue before the deadsink results in an unreachable deadlock.
+    // This works since the queue needs to be full in order to find a deadlock. When taking reachability into account this queue will never be full.
+} else { //MODE == 2
+    Sink(CtrlJoin(Source(pkt), bad2)); // Since channel bad2 is empty, this source should be blocked.
+};};

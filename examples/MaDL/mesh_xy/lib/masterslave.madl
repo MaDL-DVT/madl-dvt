@@ -1,0 +1,83 @@
+
+
+
+macro FilterXYMS (int xID, int yID, chan input) => chan o {
+// Filters packets produced by a source.
+// This filters removes packets sent to the local node.
+// It also enforces that the source information in packets is the source node.
+    pred BadPackets (p: Pkt) {
+    	 (p.destx == xID && p.desty == yID) || p.destx >= XDIM || p.desty >= YDIM ||
+	 p.srcx != xID || p.srcy != yID
+    };
+    chan toSink;
+    let toSink,o := Switch(input,BadPackets,otherwise);
+    Sink(toSink);
+};
+
+
+
+macro FilterXYMS2 (int xID, int yID, chan input) => chan o {
+// Filters packets produced by a source.
+// This filters removes packets sent to the local node.
+// It also enforces that the source information in packets is the source node.
+    pred GoodPackets (p: Pkt) {
+    	 (p.destx != xID || p.desty != yID) && p.destx < XDIM && p.desty < YDIM &&
+	 p.srcx == xID && p.srcy == yID && p.type == 1
+    };
+    chan toSink;
+    let o,toSink := Switch(input,GoodPackets,otherwise);
+    Sink(toSink);
+};
+
+
+macro MasterSlaveNode (int xID, int yID, chan NodeIn) => chan MasterOut {
+
+      // function creating a response
+      function CreateRsp (p: Pkt) : Pkt {
+          destx = p.srcx;
+	  desty = p.srcy;
+	  srcx  = p.srcx;
+	  srcy  = p.srcy;
+	  type  = 0     ; // type = response
+      };
+
+      // Request sending
+      chan pkt1 := FilterXYMS2(xID,yID,Source(Pkt));
+      // masters only send requests.
+
+      // Sink requests and produce responses.
+      chan reqIn, rspIn := Switch(NodeIn, Pkt.type == 1, otherwise);
+      Sink(rspIn);
+
+      let MasterOut := Merge(Queue(2,pkt1), Queue(2,Function(CreateRsp,reqIn)));
+
+};
+
+
+macro MasterSlaveNodeN (int xID, int yID, int N, chan NodeIn) => chan MasterOut {
+// This node only sends the next request when it has received N responses.
+// It practically limit the number of Outstanding Transactions to N.
+
+    // function creating a response
+    function CreateRsp (p: Pkt) : Pkt {
+        destx = p.srcx;
+        desty = p.srcy;
+        srcx  = p.srcx;
+        srcy  = p.srcy;
+        type  = 0     ; // type = response
+        };
+
+    // Request sending
+    chan pkt1 := FilterXYMS2(xID,yID,Source(Pkt));
+    // masters only send requests.
+
+    chan pkt2 := CtrlJoin(pkt1, CreditCounter(N,rspIn)); 
+    // incoming responses give credits back
+
+
+    // Sink requests and produce responses.
+    chan reqIn, rspIn := Switch(NodeIn, Pkt.type == 1, otherwise);
+
+    let MasterOut := Merge(pkt2, Function(CreateRsp,reqIn));
+};
+

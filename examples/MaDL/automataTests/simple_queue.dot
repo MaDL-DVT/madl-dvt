@@ -1,0 +1,23 @@
+digraph fa {
+  rankdir=LR;
+  node [shape = point]; qi;
+  node [shape = circle];
+  qi -> 0;
+  0 -> 0 [label = "a0"];
+  0 -> 0 [label = "a1"];
+  0 -> 2 [label = "a2"];
+  0 -> 2 [label = "a3"];
+  2 -> 2 [label = "a0"];
+  2 -> 0 [label = "a1"];
+  2 -> 4 [label = "a2"];
+  2 -> 2 [label = "a3"];
+  3 -> 4 [label = "a2"];
+  3 -> 2 [label = "a3"];
+  4 -> 4 [label = "a0"];
+  4 -> 2 [label = "a1"];
+  4 -> 5 [label = "a2"];
+  4 -> 3 [label = "a3"];
+  5 -> 5 [label = "a2"];
+  5 -> 3 [label = "a3"];
+
+}

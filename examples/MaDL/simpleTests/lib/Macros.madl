@@ -1,0 +1,8 @@
+
+macro Reg (chan i) => chan o {
+    let o := Queue(1, i);
+};
+
+//Stuff that shouldn't be exported:
+const tok;
+Sink(Source(tok));

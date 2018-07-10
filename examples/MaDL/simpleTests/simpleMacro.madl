@@ -1,0 +1,7 @@
+const val;
+
+macro simpleMacro (chan in) => chan o {
+	let o:= Queue(2,in);
+};
+
+Sink(simpleMacro(Source(val)));

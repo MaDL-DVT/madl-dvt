@@ -1,0 +1,48 @@
+// Network in Figure 17
+// Paper "A structured visual approach to GALS modelling and verification of communication fabrics"
+// Review for TCAD
+// 2016
+
+const LA;
+const LB;
+
+const tok;
+
+
+chan srcA := Queue(2,Queue(2,Source(LA)));
+chan srcB := Queue(2,Queue(2,Source(LB)));
+chan srcTok := Source(tok);
+
+macro sync (chan input) => chan output {
+    let output := Queue(1, input);
+};
+
+chan q4 := Queue(2,Merge(srcA,srcB));
+
+chan sw1Up,sw1Down := Switch(q4,LA,otherwise);
+
+chan q11 := Queue(2,sw1Up);
+chan q5 := Queue(2,sw1Down);
+
+chan q12 := Queue(2,CtrlJoin(q11,q8));
+
+chan q6 := Queue(2,CtrlJoin(q5,q9));
+
+chan toQ9,toQ10 := Fork(srcTok);
+
+chan q9 := Queue(2,toQ9);
+
+chan q10 := Queue(2,toQ10);
+
+chan toQ8,toQ7 := Fork(q6);
+
+chan q8 := Queue(2,toQ8);
+chan q7 := Queue(2,toQ7);
+Sink(q7);
+
+chan toQ13, toU := Fork(q12);
+
+chan q13 := Queue(2,toQ13);
+Sink(q13);
+
+Sink(CtrlJoin(q10,toU));

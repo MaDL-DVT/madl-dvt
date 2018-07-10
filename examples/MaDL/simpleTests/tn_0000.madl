@@ -1,0 +1,6 @@
+// Test Network 0000
+// 1 source, 2 queues, 1 sink
+
+const pkt;
+
+Sink(Queue(2,Queue(2,Source(pkt))));

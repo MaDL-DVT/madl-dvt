@@ -1,0 +1,8 @@
+const req;
+
+chan source_queue;
+chan queue_sink;
+
+let source_queue := Source(req);
+Sink(queue_sink);
+let queue_sink := Queue(2, source_queue);

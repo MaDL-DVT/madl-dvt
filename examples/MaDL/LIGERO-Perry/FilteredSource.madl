@@ -1,0 +1,10 @@
+macro FilteredSource(int filter_x, int filter_y, int max_x, int max_y) => chan source__OUT {
+    pred filter_pred(p: package) {
+        (p.dst_x == filter_x && p.dst_y == filter_y) || p.dst_x >= max_x || p.dst_y >= max_y
+    };
+
+    chan src__OUT := Source(package);
+    chan switch__OUTA, switch__OUTB := Switch(src__OUT, filter_pred, otherwise);
+    let source__OUT := Vars(switch__OUTB);
+    Sink(switch__OUTA);
+};

@@ -1,0 +1,8 @@
+const red;
+const blue;
+
+chan src1 := Source(red);
+chan src2 := Source(blue);
+
+chan gq_out := GuardQueue(3, src1, src2);
+Sink(gq_out);

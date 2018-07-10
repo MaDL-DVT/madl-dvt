@@ -1,0 +1,12 @@
+const red;
+const blue;
+enum redBlue {red; blue;};
+
+function f (v: redBlue) : redBlue {
+	 if (v == blue) red; else red;
+};
+
+chan s_f := Source(redBlue);
+chan f_q := Function(f,s_f);
+chan q_s := Queue(2,f_q);
+Sink(q_s);

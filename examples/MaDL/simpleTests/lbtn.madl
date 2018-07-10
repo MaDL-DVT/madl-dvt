@@ -1,0 +1,9 @@
+// simple test LoadBalancer 
+// Should NOT have a deadlock
+
+const pkt;
+
+chan c0, c1 := LoadBalancer(Queue(2,Source(pkt)));
+
+DeadSink(c1);
+Sink(c0);

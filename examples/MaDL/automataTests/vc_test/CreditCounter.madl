@@ -1,0 +1,12 @@
+const token_t; 
+
+param int num_crd = 2;
+macro CreditCounter(int num_crd, chan CrdBack__OUT) => chan CrdOut { 
+chan CreditQ__OUT := Queue(num_crd, frk__OUTB)[CreditQ];
+chan frk__OUTA, frk__OUTB := Fork(CredGen__OUT);
+chan cjn__OUT := CtrlJoin(CreditQ__OUT, CrdBack__OUT);
+chan CredGen__OUT := PatientSource(token_t);
+Sink(cjn__OUT);
+let CrdOut := Vars(frk__OUTA);
+
+ }; 

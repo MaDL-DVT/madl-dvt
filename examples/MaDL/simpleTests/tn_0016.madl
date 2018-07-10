@@ -1,0 +1,17 @@
+// test FCtrlJoin
+enum br {blue;red;};
+const blue;
+const red;
+
+pred f (a: br, b: br) {
+	a == b
+};
+
+chan ina := Source(red);
+chan inb := Source(blue); 
+
+chan a := FCtrlJoin(f,ina,inb);
+
+MultiMatch(f,);
+
+Sink(a);

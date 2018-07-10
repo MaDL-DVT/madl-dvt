@@ -1,0 +1,9 @@
+// test using bus declaration at the output
+
+const pkt;
+
+bus<2> outs;
+
+let outs[0],outs[1] := Fork(Source(pkt));
+Sink(outs[0]);
+Sink(outs[1]);

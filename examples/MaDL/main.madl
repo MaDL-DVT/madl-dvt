@@ -1,0 +1,47 @@
+// ------------------------------------------------------------------------
+// Main Library
+// @Tu/e 2016
+// ------------------------------------------------------------------------
+/* 
+This is a general library of MaDL macro's. Each macro explicitly mentions
+types that need to be defined before importing the macro.
+
+The following macro's are exported from this library:
+
+* CreditCounter - Require const token_t;
+* Register      - 
+* Delay         - Require const token_t;
+
+
+*/
+
+
+// ------------------------------------------------------------------------
+// CreditCounter
+// Require: 
+// type const token_t;
+// ------------------------------------------------------------------------
+macro CreditCounter(int counters, chan i) => chan o {
+   chan q_in;
+   let q_in, o := Fork(PatientSource(token_t));
+   Sink(CtrlJoin(Queue(counters, q_in), i));
+};
+
+// ------------------------------------------------------------------------
+// Register
+// ------------------------------------------------------------------------
+// Simulates a simple 1 place register. Often used to break combinatorial 
+// cycles.
+macro Register (chan input) => chan output {
+   let output := Queue(1,input);
+};
+
+// ------------------------------------------------------------------------
+// Non-deterministic delay
+// Require:
+// type const token_t;
+// ------------------------------------------------------------------------
+// Non-deterministic delay
+macro Delay (chan i) => chan o {
+    let o := CtrlJoin(i, PatientSource(token_t));
+};

@@ -1,0 +1,8 @@
+const red;
+
+chan a,b := Fork(Source(red));
+
+chan c := Queue(2,a);
+chan d := Queue(2,b);
+
+Sink(CtrlJoin(c,d));

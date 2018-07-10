@@ -1,0 +1,76 @@
+const req;
+
+enum network_switch_pred1_param0 {
+    req;
+    rsp;
+};
+
+const rsp;
+
+pred network_switch_pred0(var0 : network_switch_pred1_param0) {
+    req == var0
+};
+
+pred network_switch_pred1(var0 : network_switch_pred1_param0) {
+    rsp == var0
+};
+
+pred reorderBuffer_match_pred(var0 : network_switch_pred1_param0, var1 : network_switch_pred1_param0) {
+    var0 == var1
+};
+
+
+macro reorder_buffer3_2_3(chan dataIn, chan idIn, chan fromNetwork) => chan toNetwork, chan dataOut {
+    chan idBuffer_match;
+    chan loadBalancer_returnRegister0;
+    chan loadBalancer_returnRegister1;
+    chan loadBalancer_returnRegister2;
+    chan returnRegister0_match;
+    chan returnRegister1_match;
+    chan returnRegister2_match;
+    
+    let toNetwork := Queue(2, dataIn);
+    let idBuffer_match := Queue(2, idIn);
+    let loadBalancer_returnRegister0, loadBalancer_returnRegister1, loadBalancer_returnRegister2 := LoadBalancer(fromNetwork);
+    let dataOut := MultiMatch(reorderBuffer_match_pred, idBuffer_match, returnRegister0_match, returnRegister1_match, returnRegister2_match);
+    let returnRegister0_match := Queue(1, loadBalancer_returnRegister0);
+    let returnRegister1_match := Queue(1, loadBalancer_returnRegister1);
+    let returnRegister2_match := Queue(1, loadBalancer_returnRegister2);
+};
+
+macro Delay(chan input) => chan output {
+    chan fork_sink;
+    
+    let output, fork_sink := Fork(input);
+    Sink(fork_sink);
+};
+
+macro network(chan dataIn) => chan dataOut {
+    chan switch_requestQueue;
+    chan requestQueue_requestDelay;
+    chan requestDelay_merge;
+    chan switch_responseQueue;
+    chan responseQueue_responseDelay;
+    chan responseDelay_merge;
+    
+    let switch_requestQueue, switch_responseQueue := Switch(dataIn, network_switch_pred0, network_switch_pred1);
+    let requestQueue_requestDelay := Queue(2, switch_requestQueue);
+    let requestDelay_merge := Delay(requestQueue_requestDelay);
+    let responseQueue_responseDelay := Queue(2, switch_responseQueue);
+    let responseDelay_merge := Delay(responseQueue_responseDelay);
+    let dataOut := Merge(requestDelay_merge, responseDelay_merge);
+};
+
+
+chan source_fork;
+chan fork_dataIn;
+chan fork_idIn;
+chan reorderBuffer_network;
+chan network_reorderBuffer;
+chan reorderBuffer_sink;
+
+let reorderBuffer_network, reorderBuffer_sink := reorder_buffer3_2_3(fork_dataIn, fork_idIn, network_reorderBuffer);
+let source_fork := Source(network_switch_pred1_param0);
+let fork_dataIn, fork_idIn := Fork(source_fork);
+Sink(reorderBuffer_sink);
+let network_reorderBuffer := network(reorderBuffer_network);

@@ -1,0 +1,231 @@
+// Modelling a broadcast router for the Spidergon
+// Distributed routing version
+
+param int QSIZE = 2;
+param int SIZE = 3; // #bits to encode the number of nodes.
+param int NUM_NODE = 2 ; // number of nodes in a quadrant
+param int TTLSIZE = 2; // number of bits to encode max value of TTL
+
+struct CCSpidergonPkt {
+    destN : [SIZE-1:0]; // destination node = address to be written or read
+    iport : enum {acr;cw;ccw;} ; // input port tag added when receiving a packet.
+    ttl   : [TTLSIZE-1:0]; // time to live
+//    type  : [0:0]; // 0 = response, 1 = request
+};
+
+const acr;
+const cw;
+const ccw;
+
+// Recognizer for requests
+pred IsRequest (p: CCSpidergonPkt) {
+      p.type == 1
+};
+
+// Recognizes initial value of TTL
+pred InitialTTL (p: CCSpidergonPkt) {
+     p.ttl == NUM_NODE-1
+};
+
+function decTTL (p: CCSpidergonPkt) {
+     destN = p.destN;
+     iport = p.iport;
+     ttl = p.ttl - 1;
+};
+
+
+// Recognizes packet coming from Across ingress port
+pred IsACR (p: CCSpidergonPkt) {
+     p.iport == acr
+};
+
+// Recognizes packet coming from Clockwise ingress port
+pred IsCW (p: CCSpidergonPkt) {
+     p.iport == cw
+};
+
+// Recognizes packet coming from Across ingress port
+pred IsCCW (p: CCSpidergonPkt) {
+     p.iport == ccw
+};
+
+pred NullTTL (p: CCSpidergonPkt) {
+     p.ttl == 0
+};
+
+// Tag at the ingress port CW
+function cwTag (p: CCSpidergonPkt) : CCSpidergonPkt {
+   destN = p.destN;
+   iport = cw;
+   ttl   = p.ttl;   
+//   type = p.type;
+};
+
+// Tag at the ingress port CCW
+function ccwTag (p: CCSpidergonPkt) : CCSpidergonPkt {
+   destN = p.destN;
+   iport = ccw;
+   ttl   = p.ttl;
+//   type = p.type;
+};
+
+// Tag at the ingress port ACR
+function acrTag (p: CCSpidergonPkt) : CCSpidergonPkt {
+   destN = p.destN;
+   iport = acr;
+   ttl   = p.ttl;   
+//   type = p.type;
+};
+
+
+macro ingressPortTag (bus<3> inPorts) => chan outPort {
+// tag all inputs
+// inPorts[0] = from acr, inPorts[1] = from cw, inPorts[2] = from ccw
+
+let outPort := Merge(Function(acrTag,inPorts[0]), Function(cwTag,inPorts[1]), Function(ccw,inPorts[2]));
+
+};
+
+
+macro BCRouter (int NodeID, chan inPort) => bus<3> outPorts{
+// outPorts[0] = acr, outPorts[1] = cw, outPorts[3] = ccw
+
+   chan originHere, notHere := Switch(Function(decTTL,inPort),InitialTTL,otherwise);
+
+   chan fromAcr,notFromAcr := Switch(notHere,IsACR,otherwise);
+
+   chan toCW1, toCCW1 := Fork(fromAcr); 
+
+
+   chan fromCW,fromCCW := Switch(notFromAcr,IsCW,otherwise);
+
+   let outPorts[0] := Merge();
+   let outPorts[1] := Merge();
+   let outPorts[2] := Merge();
+   
+
+
+};
+
+macro SPLocker (int NodeID, bus<3> inPorts) => bus<3> outPorts {
+
+      // we first tag all input ports
+      chan inputTags := ingressPortTag(inPorts);
+
+      // responses are sunk. Requests are broadcasted
+      chan isReq, isRsp := Switch(inputTags, isRequest,otherwise);
+      Sink(isRsp);
+
+      // only if not at destination already
+      chan noBC, BC := Switch(isReq,NullTTL,otherwise);
+      Sink(noBC); // for now local messages are ignored
+
+      // send to the BC router to lock the requested node.
+      let outPorts := BCRouter(BC);
+
+};
+
+
+
+
+macro SPRouterLogic (int Current, chan inPort) => bus<4> outPorts {
+    // Shortest path routing logic for Spidergon
+    // We implement across first
+    // outputs
+    // outPorts<0>: local out
+    // outPorts<1>: across out
+    // outPorts<2>: cw out
+    // outPorts<3>: ccw out
+
+    // first check for across move
+
+    // if dest = curr then stops
+    // else
+    // Routing algorithm
+    // IF (dest - curr) % 4*N <= N THEN Clockwise
+    // ELSE IF (dest - curr)  % 4*N >= 3*N THEN CounterClockwise
+    // ELSE across
+
+    pred SwitchP0 (p: CCSpidergonPkt) {
+        p.destN == Current
+    };
+ 
+    pred SwitchP1 (p: CCSpidergonPkt) {
+        ((p.destN-Current)%(4*NUM_NODE)) <= NUM_NODE
+    };
+
+    pred SwitchP2 (p: CCSpidergonPkt) {
+        ((p.destN-Current)%(4*NUM_NODE)) >= (3* NUM_NODE)
+    };
+
+    chan notAtDest;
+    chan notCW;
+    let outPorts[0],notAtDest := Switch(inPort,SwitchP0,otherwise);
+    let outPorts[2], notCW := Switch(notAtDest,SwitchP1,otherwise);
+    let outPorts[3], outPorts[1] := Switch(notCW,SwitchP2,otherwise);
+
+}; // end SPRouterLogic
+
+
+macro Merge4 (bus<4> inPorts) => chan o {
+    let o:= Merge(inPorts[3], Merge(inPorts[2], Merge(inPorts[0],inPorts[1])));
+};
+
+macro BCRouter (int nodeID, chan inPort) => bus<3> outPorts {
+    // outputs
+    // outPorts[0]: forward to across
+    // outPorts[1]: forward to cw
+    // outPorts[2]: forward to ccw
+
+
+
+    bus<4> routedINLocal,routedINACR, routedINCW,routedINCCW;
+
+    // we instantiate the routing logic for each input
+    let routedINLocal := SPRouterLogic(nodeID,inPorts[0]);
+    let routedINACR   := SPRouterLogic(nodeID,Function(acrTag,inPorts[1]));
+    let routedINCW    := SPRouterLogic(nodeID,Function(cwTag,inPorts[2]));
+    let routedINCCW   := SPRouterLogic(nodeID,Function(ccwTag,inPorts[3]));
+
+    // we then merge all the outputs
+
+    for (int i = 0;i<4;i++){
+        let outPorts[i] :=
+        	Queue(QSIZE,Merge4(routedINLocal[i],routedINACR[i],routedINCW[i],routedINCCW[i]));
+    };
+
+}; // end SPRouter
+
+// we now create the Spidergon
+
+macro PacketFilter (int NodeID, chan input) => chan o {
+    // this filtering makes everything smaller
+    // it is only useful if the parameters are such
+    // that invalid routes can be generated.
+    // Otherwise, it is unnecessary. It filters nothing.
+    chan toSink;
+    let toSink,o := Switch(input,CCSpidergonPkt.destN==NodeID,otherwise);
+    Sink(toSink);
+};
+
+// we create NUM_NODE * 4 sources
+bus<NUM_NODE*4> srcs;
+for (int i = 0; i<4*NUM_NODE;i++) {
+    let srcs[i] := PacketFilter(i,Source(CCSpidergonPkt));
+};
+
+bus<4*NUM_NODE*4> allOUTS; // bus with all output channels for the entire network
+
+// we generate the border cases
+for (int i = 0;i<NUM_NODE*4;i++) {
+    let allOUTS[4*i], allOUTS[4*i+1], allOUTS[4*i+2], allOUTS[4*i+3]
+    := SPRouter(i,srcs[i]
+      ,allOUTS[4*((i+2*NUM_NODE)%(4*NUM_NODE))+1] // ACR in
+      ,allOUTS[4*((i-1)%(4*NUM_NODE))+2] // CW IN
+      ,allOUTS[4*((i+1)%(4*NUM_NODE))+3]); // CCW in
+};
+
+// we sink all local outputs
+for (int i = 0;i<NUM_NODE*4;i++) {
+    Sink(allOUTS[4*i]);
+};

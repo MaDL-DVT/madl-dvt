@@ -1,0 +1,38 @@
+// Testing Freek's proposal for guarding transfers to happen only when a queue is empty.
+
+
+struct Cnt {
+   val : [3:0];
+};
+
+function inc (p: Cnt) : Cnt {
+     val = p.val + 1;
+};
+
+function dec (p: Cnt) : Cnt {
+     val = p.val - 1;
+};
+
+
+function toZero (p: Cnt) : Cnt {
+     val = 0;
+};
+
+const pkt;
+
+chan src := Source(pkt);
+
+chan src1,src2 := Fork(src);
+
+chan q := Queue(2,src1);
+
+
+CtrlJoin(plus1,src2);
+
+chan q_t := Queue(2,Merge(a,Merge(b,c)));
+
+
+chan plus1,min1,zero := LoadBalancer(q_t);
+
+
+

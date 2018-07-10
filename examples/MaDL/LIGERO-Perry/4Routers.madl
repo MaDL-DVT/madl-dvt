@@ -1,0 +1,13 @@
+struct package {
+    cycles : [2:0];
+	dst_x : [0:0];
+	dst_y : [0:0];
+};
+
+uses CWRouter;
+uses CCWRouter;
+
+chan R0_N, R0_E, R0_S, R0_W :=  CWRouter(0, 0, 2, 2, 1, R2_S, R1_W, R2_N, R1_E)[R0];
+chan R1_N, R1_E, R1_S, R1_W := CCWRouter(1, 0, 2, 2, 2, R3_S, R0_W, R3_N, R0_E)[R1];
+chan R2_N, R2_E, R2_S, R2_W :=  CWRouter(0, 1, 2, 2, 0, R0_S, R3_W, R0_N, R3_E)[R2];
+chan R3_N, R3_E, R3_S, R3_W := CCWRouter(1, 1, 2, 2, 3, R1_S, R2_W, R1_N, R2_E)[R3];

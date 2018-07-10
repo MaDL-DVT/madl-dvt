@@ -1,0 +1,15 @@
+// test cases
+// understanding the match primitive
+
+const pkt;
+chan a := Source(pkt);
+chan b := Source(pkt);
+
+pred f (a: pkt, b:pkt) {
+     true
+};
+
+chan c,d := Match(f,a,b);
+
+Sink(c);
+DeadSink(d);

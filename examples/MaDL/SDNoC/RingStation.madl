@@ -1,0 +1,26 @@
+const token_t; 
+
+struct package{ 
+     dst : [NUM_NODES-1:0]; 
+}; 
+
+param int NODE_ID = 0;
+param int RING_SIZE = 1;
+param int switch_mode = 0;
+macro RingStation(int NODE_ID, int RING_SIZE, int switch_mode, chan inj__OUT, chan IN__OUT) => chan ejc, chan OUT { 
+pred demux_p (p: package) { 
+    (switch_mode == 0 && NODE_ID % RING_SIZE == p.dst % RING_SIZE) ||
+    (switch_mode == 1 && NODE_ID % RING_SIZE != p.dst % RING_SIZE) ||
+    (switch_mode == 2 && p.dst % 2 == 0) ||
+    (switch_mode == 3 && p.dst % 2 == 1) ||
+    (switch_mode == 4)
+
+}; 
+chan demux__OUTA, demux__OUTB := Switch(IN__OUT, demux_p, otherwise);
+chan r_buf__OUT := Queue(2, demux__OUTA)[r_buf];
+chan s_buf__OUT := Queue(2, demux__OUTB)[s_buf];
+let ejc := Vars(s_buf__OUT);
+let OUT := Vars(mux__OUT);
+chan mux__OUT := Merge(inj__OUT, r_buf__OUT)[mux];
+
+ }; 

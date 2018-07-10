@@ -1,0 +1,6 @@
+This directory is intended for MaDL files that illustrate bugs in various parts of the tools.
+
+There should be a bug associated with each file on the issue tracker.  Please
+note the bug number in the file.
+
+Once a bug is fixed, the file should be moved to a regression test suite instead.

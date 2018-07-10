@@ -1,0 +1,64 @@
+// DEADLOCK-FREE
+// because tokens are consumed in the same order
+// as they are emitted. 
+
+const token_t;
+
+process prod () => chan o1, chan o2 {
+
+   state S0 () {
+        trans {
+             token_t -> o1;
+             next S1();
+        };
+   };
+
+   state S1() {
+         trans {
+              token_t -> o2;
+              next S0();
+         };
+   };
+
+};
+
+process cons (chan i1, chan i2) => chan err {
+
+   state S0() { 
+      trans {
+         token_t d <- i1;
+         next S1();
+      };
+      trans {
+         token_t d <- i2;
+         next ERROR (); 
+      };
+   }; 
+
+   state S1() {
+       trans {
+           token_t d <- i2;
+           next S0(); 
+       };
+   };
+
+   state ERROR () {
+      trans {
+         token_t -> err;
+         next ERROR();
+      };
+   };
+
+}; 
+
+ 
+chan a,b := prod()[PRODUCER];
+chan q_a := Queue(1,a)[QA];
+chan q_b := Queue(1,b)[QB];
+chan err := cons(q_a,q_b)[CONSUMER];
+chan q_err := Queue(1,err)[QERR];
+DeadSink(q_err)[SNK];
+
+
+
+

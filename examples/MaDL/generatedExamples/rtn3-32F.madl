@@ -1,0 +1,43 @@
+enum source_msg {
+    req;
+    rsp;
+};
+
+pred reorderBuffer_match_pred(var0 : source_msg, var1 : source_msg) {
+    var0 == var1
+};
+
+
+macro network(chan dataIn) => chan dataOut {
+    
+    let dataOut := Queue(2, dataIn);
+};
+
+macro reorder_buffer3_3_2(chan dataIn, chan idIn, chan fromNetwork) => chan toNetwork, chan dataOut {
+    chan idBuffer_match;
+    chan loadBalancer_returnRegister0;
+    chan loadBalancer_returnRegister1;
+    chan returnRegister0_match;
+    chan returnRegister1_match;
+    
+    let toNetwork := Queue(3, dataIn);
+    let idBuffer_match := Queue(3, idIn);
+    let loadBalancer_returnRegister0, loadBalancer_returnRegister1 := LoadBalancer(fromNetwork);
+    let dataOut := MultiMatch(reorderBuffer_match_pred, idBuffer_match, returnRegister0_match, returnRegister1_match);
+    let returnRegister0_match := Queue(1, loadBalancer_returnRegister0);
+    let returnRegister1_match := Queue(1, loadBalancer_returnRegister1);
+};
+
+
+chan source_fork;
+chan fork_dataIn;
+chan fork_idIn;
+chan reorderBuffer_network;
+chan network_reorderBuffer;
+chan reorderBuffer_sink;
+
+let reorderBuffer_network, reorderBuffer_sink := reorder_buffer3_3_2(fork_dataIn, fork_idIn, network_reorderBuffer);
+let source_fork := Source(source_msg);
+let fork_dataIn, fork_idIn := Fork(source_fork);
+Sink(reorderBuffer_sink);
+let network_reorderBuffer := network(reorderBuffer_network);

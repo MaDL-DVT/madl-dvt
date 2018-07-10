@@ -1,0 +1,15 @@
+//
+// Running nuxmv on this results in fatal 176.
+// The bug only occurs when 'pkt' is a datatype representing at least 2 colors.
+//
+// Issue #129
+
+union empty {};
+enum pkt {a;b};
+enum pkt2 {a}; //This datatype does not result in a fatal
+
+chan packetChan := Source(pkt);
+chan emptyChan := Source(empty);
+chan merge_queue := Merge(packetChan, emptyChan);
+chan queue_sink := Queue(2, merge_queue);
+Sink(queue_sink);

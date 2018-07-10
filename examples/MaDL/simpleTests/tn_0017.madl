@@ -1,0 +1,23 @@
+// testing data 
+
+// we have a packet with a header and a payload
+struct pkt{
+    header : enum {req;rsp;};
+	payload: [3:0];
+};
+
+// the following two are needed
+// to have the fields as type identifiers.
+// TODO: we should do this automatically. (?)
+enum header {req;rsp;};
+const req;
+const rsp;
+
+chan src := Queue(2,Source(pkt));
+
+// now I would like to switch on the header.
+// How can we write this done?
+chan up,down := Switch(src, pkt.header == req, pkt.header == rsp);
+
+Sink(up);
+Sink(down);

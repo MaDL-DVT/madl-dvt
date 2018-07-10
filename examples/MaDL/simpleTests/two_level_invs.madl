@@ -1,0 +1,14 @@
+// test of invariants with two level of credits
+const token_t;
+
+macro CreditCounter(int counters, chan i) => chan o {
+   chan q_in;
+   let q_in, o := Fork(PatientSource(token_t));
+   Sink(CtrlJoin(Queue(counters, q_in), i));
+};
+
+chan src_l1 := CtrlJoin(Source(token_t), CreditCounter(2,cr_l1));
+chan q_l1 := CtrlJoin(Queue(2,src_l1),CreditCounter(4,cr_l2));
+chan cr_l2, tmp := Fork(Queue(2,q_l1));
+chan to_sink, cr_l1 := Fork(tmp);
+Sink(to_sink);

@@ -1,0 +1,13 @@
+// Testing interaction between switch and const
+// without merge and with enum
+
+enum types {type1;type2;};
+const type1;
+const type2;
+
+chan inject := Source(types);
+
+chan out1,out2 := Switch(inject,type1,type2);
+
+Sink(out1);
+Sink(out2);

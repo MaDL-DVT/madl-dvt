@@ -1,0 +1,60 @@
+// smt input blows up
+//
+// the input file for smt blows up into the megabytes
+//
+// see bug #98
+
+param int LOG_NUM_ID = 2;
+param int NUM_ID = 4;  // must be >= 3
+
+struct pkt {
+    id : [LOG_NUM_ID-1:0];
+    id2 : [0:0];
+};
+
+pred id_eq ( a : pkt, b : pkt ) {
+    a.id == b.id
+};
+
+const credit;
+
+macro CreditCounter (chan i) => chan o {
+	chan tmp;
+	let tmp, o := Fork(PatientSource(credit));
+	Sink(CtrlJoin(Queue(2, tmp), i));
+};
+
+// ******************************************************
+
+macro Reg(chan i) => chan o {
+	let o := Queue(1, i);
+};
+
+chan cc;
+chan IN := CtrlJoin(Source(pkt), cc);
+
+chan a, b := Fork(IN);
+
+macro Q (chan i) => bus<3> o {
+	bus<3> tmp := Switch(i, pkt.id == 0, pkt.id == 1, otherwise);
+	let o[0] := Reg(tmp[0]);
+	let o[1] := Reg(tmp[1]);
+	let o[2] := Reg(tmp[2]);
+};
+
+macro P (chan a, bus<3> b) => chan o {
+	bus<2> tmp := LoadBalancer(a);
+	bus<3> mm := MultiMatch(id_eq, b, Reg(tmp[0]), Reg(tmp[1]));
+	let o := Merge(Merge(mm[0], mm[1]), mm[2]);
+};
+
+macro N (chan i) => chan o {
+	let o := Reg(i);
+};
+
+chan OUT, dealloc := Fork(P(N(a),Q(b)));
+
+Sink(OUT);
+
+let cc := CreditCounter(dealloc);
+

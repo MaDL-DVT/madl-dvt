@@ -1,0 +1,10 @@
+const pkt;
+
+chan src_a := Source(pkt);
+chan src_b := Source(pkt);
+chan src_c := Source(pkt);
+
+chan up, down := Fork(Queue(2,src_b));
+
+Sink(Merge(src_a,up));
+Sink(Merge(src_c,down));

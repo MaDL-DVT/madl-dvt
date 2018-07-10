@@ -1,0 +1,273 @@
+// testing simple MI protocol with direct queues.
+
+param int QSIZE = 2; // size of input buffers
+param int XDIM = 2;  // size of the x dimension
+param int YDIM = 2;  // size of the y dimension
+param int XBITS = 0; // #bits-1 to encode XDIM
+param int YBITS = 0; // #bits-1 to encode YDIM
+param int XDIR = XDIM-1; // x-coordinate of the directory
+param int YDIR = YDIM-1; // y-coordinate of the directory
+
+const tok;
+
+struct Packet {
+  x     : [XBITS:0];
+  y     : [YBITS:0];
+  x_src : [XBITS:0];
+  y_src : [YBITS:0];
+  color : [1:0]; // GetX = 00 (0), PutX == 01 (1) , WriteBackAck = 10 (2), Inv = 11 (3); 
+};
+
+function MakeGetX00 () : Packet {
+  x = XDIR;
+  y = YDIR;
+  x_src = 0;
+  y_src = 0;
+  color = 0; // GetX
+};
+
+function MakePutX00 () : Packet {
+  x = XDIR;
+  y = YDIR;
+  x_src = 0;
+  y_src = 0;
+  color = 1; // PutX
+};
+  
+
+function MakeGetX10 () : Packet {
+  x = XDIR;
+  y = YDIR;
+  x_src = 1;
+  y_src = 0;
+  color = 0; // GetX
+};
+
+function MakePutX10 () : Packet {
+  x = XDIR;
+  y = YDIR;
+  x_src = 1;
+  y_src = 0;
+  color = 1; // PutX
+};
+
+
+function MakeGetX01 () : Packet {
+  x = XDIR;
+  y = YDIR;
+  x_src = 0;
+  y_src = 1;
+  color = 0; // GetX
+};
+
+function MakePutX01 () : Packet {
+  x = XDIR;
+  y = YDIR;
+  x_src = 0;
+  y_src = 1;
+  color = 1; // PutX
+};
+
+process MI00 (int xID, int yID, chan input, chan start) =>  chan output {
+  
+  state I(){
+    trans {
+      tok d <- start;
+      MakeGetX00() -> output;
+      next M();
+    };
+  };
+
+  state M(){
+    trans {
+      tok d <- start; // this should be Repl but we are missing the connection to a CPU. 
+	    MakePutX00() -> output;
+	    next MI();
+    };
+    trans{
+      Packet d <- input;
+      // Inv to the cache
+	    guard d.color == 3 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR;       
+	    MakePutX00() -> output;
+	    next MI();
+    };
+  };
+
+  state MI (){
+    trans {
+      Packet d <- input;
+      // Inv to the cache
+      guard d.color == 3 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR;       
+      next MI();
+    };
+    trans {
+      Packet d <- input;
+      // WBA to the cache
+      guard d.color == 2 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR;       
+      next I();
+    };
+  };
+};
+
+
+
+process MI10 (int xID, int yID, chan input, chan start) =>  chan output {
+  
+  state I(){
+    trans {
+      tok d <- start;
+      MakeGetX10() -> output;
+      next M();
+    };
+  };
+
+  state M(){
+    trans {
+      tok d <- start; // this should be Repl but we are missing the connection to a CPU. 
+      MakePutX10() -> output;
+      next MI();
+    };
+    trans{
+      Packet d <- input;
+      // Inv to the cache
+      guard d.color == 3 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR; 
+      MakePutX10() -> output;
+      next MI();
+    };
+  };
+
+  state MI (){
+    trans {
+      Packet d <- input;
+      // Inv to the cache
+      guard d.color == 3 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR; 
+      next MI();
+    };
+    trans {
+      Packet d <- input;
+      // WBA to the cache
+      guard d.color == 2 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR; 
+      next I();
+    };
+  };
+};
+
+
+process MI01 (int xID, int yID, chan input, chan start) =>  chan output {
+  
+  state I(){
+    trans {
+      tok d <- start;
+      MakeGetX01() -> output;
+      next M();
+    };
+  };
+
+  state M(){
+    trans {
+      tok d <- start; // this should be Repl but we are missing the connection to a CPU. 
+      MakePutX01() -> output;
+      next MI();
+    };
+    trans{
+      Packet d <- input;
+      // Inv to the cache
+      guard d.color == 3 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR; 
+      MakePutX01() -> output;
+      next MI();
+    };
+  };
+
+  state MI (){
+    trans {
+      Packet d <- input;
+      // Inv to the cache
+      guard d.color == 3 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR; 
+      next MI();
+    };
+    trans {
+      Packet d <- input;
+      // WBA to the cache
+      guard d.color == 2 && d.x == xID && d.y == yID && d.x_src == XDIR && d.y_src == YDIR; 
+      next I();
+    };
+  };
+};
+
+struct dirState {
+  ownerx : [XBITS:0];
+  ownery : [YBITS:0];
+};
+
+function setOwner (p: Packet) : dirState {
+  ownerx = p.x_src;
+  ownery = p.y_src;
+};
+
+function MakeWBA (p: dirState) : Packet {
+  x = p.ownerx;
+  y = p.ownery;
+  x_src = XDIR;
+  y_src = YDIR;
+  color = 2; // WBA
+};
+
+function MakeInv (p: dirState) : Packet {
+  x = p.ownerx;
+  y = p.ownery;
+  x_src = XDIR;
+  y_src = YDIR;
+  color = 3; // INV
+};
+
+process DIR (chan input) => chan output {
+  
+  state I() {
+    trans {
+      Packet d <- input;
+      // GetX and not coming from the Directory
+      guard d.color == 0 && (d.x_src != XDIR || d.y_src != YDIR) && d.x == XDIR && d.y == YDIR;
+      next M(setOwner(d));
+    };
+  };
+
+  state M(dirState c) {
+    trans {
+      Packet d <- input;
+      // PutX from the cache owner.
+      guard d.color == 1 && d.x_src == c.ownerx && d.y_src == c.ownery && d.x == XDIR && d.y == YDIR; 
+      MakeWBA(c) -> output;
+      next I();
+    };
+    trans {
+      MakeInv(c) -> output;
+      next MI(c);
+    };
+  };
+
+  state MI(dirState c) {
+    trans {
+      Packet d <- input;
+      guard d.color == 1 && d.x_src == c.ownerx && d.y_src == c.ownery && d.x == XDIR && d.y == YDIR; // PutX
+      MakeWBA(c) -> output;
+      next I();
+    };
+  };
+};
+
+chan MI00_out := Queue(2,MI00(0,0,toMI00,Source(tok)));
+chan MI10_out := Queue(2,MI10(1,0,toMI10,Source(tok)));
+chan MI01_out := Queue(2,MI01(0,1,toMI01,Source(tok)));
+chan MI_out := Queue(2,Merge(MI00_out,Merge(MI10_out,MI01_out)));
+
+pred to00 (p: Packet) {
+  p.x == 0 && p.y == 0
+};
+pred to10 (p: Packet) {
+  p.x == 1 && p.y == 0
+};
+chan toMI00, tmp1 := Switch(DIR_out,to00,otherwise);
+chan toMI10,toMI01 := Switch(tmp1,to10,otherwise);
+chan DIR_out := DIR(MI_out);
+
+
