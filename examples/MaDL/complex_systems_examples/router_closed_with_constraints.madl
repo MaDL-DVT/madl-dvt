@@ -1,0 +1,59 @@
+// Router non-deterministic with constraints
+
+const token_t; 
+
+// K is the size of the buffer at each output port
+param int K = 2;
+// L is the maximum number of packets that the router will store
+param int L = 2;
+// N is te number of packets that the router injects
+param int N = 2;
+
+uses limitedSource;
+
+macro router_ndcc
+      (int K, int L, int N, 
+      	chan iEast__OUT, chan iWest__OUT, chan iSouth__OUT, chan iNorth__OUT) 
+      => chan oEast, chan oWest, chan oSouth, chan oNorth { 
+// The code below is generated from the MaDL Whiteboard user interface
+chan mrg14__OUT := Merge(iEast__OUT, iWest__OUT)[mrg14];
+chan mrg15__OUT := Merge(iSouth__OUT, iNorth__OUT)[mrg15];
+chan mrg16__OUT := Merge(mrg14__OUT, mrg15__OUT)[mrg16];
+chan mrg17__OUT := Merge(srcToken__oLocal, mrg16__OUT)[mrg17];
+chan lb18__OUTA, lb18__OUTB := LoadBalancer(frk1__OUTA)[lb18];
+chan lb19__OUTA, lb19__OUTB := LoadBalancer(lb18__OUTB)[lb19];
+chan lb20__OUTA, lb20__OUTB := LoadBalancer(lb18__OUTA)[lb20];
+let oEast := Vars(frk11__OUTA);
+let oWest := Vars(frk5__OUTA);
+chan buffWest__OUT := Queue(K, cjn17__OUT)[buffWest];
+chan buffEast__OUT := Queue(K, cjn14__OUT)[buffEast];
+let oSouth := Vars(frk7__OUTA);
+chan buffSouth__OUT := Queue(K, cjn20__OUT)[buffSouth];
+chan buffNorth__OUT := Queue(K, cjn23__OUT)[buffNorth];
+let oNorth := Vars(frk9__OUTA);
+chan srcToken__oLocal := limitedSource(N)[srcToken];
+chan stationEast__OUT := Queue(1, lb20__OUTA)[stationEast];
+chan srcEast__OUT := Source(token_t)[srcEast];
+chan cjn14__OUT := CtrlJoin(srcEast__OUT, stationEast__OUT)[cjn14];
+chan stationWest__OUT := Queue(1, lb20__OUTB)[stationWest];
+chan cjn17__OUT := CtrlJoin(srcWest__OUT, stationWest__OUT)[cjn17];
+chan srcWest__OUT := Source(token_t)[srcWest];
+chan stationSouth__OUT := Queue(1, lb19__OUTA)[stationSouth];
+chan cjn20__OUT := CtrlJoin(srcSouth__OUT, stationSouth__OUT)[cjn20];
+chan srcSouth__OUT := Source(token_t)[srcSouth];
+chan stationNorth__OUT := Queue(1, lb19__OUTB)[stationNorth];
+chan cjn23__OUT := CtrlJoin(srcNorth__OUT, stationNorth__OUT)[cjn23];
+chan srcNorth__OUT := Source(token_t)[srcNorth];
+chan frk1__OUTA, frk1__OUTB := Fork(mrg17__OUT)[frk1];
+chan Limiter__OUT := Queue(L, frk1__OUTB)[Limiter];
+chan cjn3__OUT := CtrlJoin(mrg12__OUT, Limiter__OUT)[cjn3];
+Sink(cjn3__OUT)[snk4];
+chan frk5__OUTA, frk5__OUTB := Fork(buffWest__OUT)[frk5];
+chan mrg6__OUT := Merge(frk5__OUTB, frk7__OUTB)[mrg6];
+chan frk7__OUTA, frk7__OUTB := Fork(buffSouth__OUT)[frk7];
+chan mrg8__OUT := Merge(frk11__OUTB, frk9__OUTB)[mrg8];
+chan frk9__OUTA, frk9__OUTB := Fork(buffNorth__OUT)[frk9];
+chan frk11__OUTA, frk11__OUTB := Fork(buffEast__OUT)[frk11];
+chan mrg12__OUT := Merge(mrg6__OUT, mrg8__OUT)[mrg12];
+
+ }; 

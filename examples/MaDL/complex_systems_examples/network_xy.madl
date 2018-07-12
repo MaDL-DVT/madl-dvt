@@ -1,0 +1,44 @@
+// Generates hypercubes of size X by Y
+// closed system
+
+const token_t;
+
+
+// K is the size of the buffer at each output port
+param int K = 2;
+// L is the maximum number of packets that the router will store
+param int L = 2;
+// N is te number of packets that the router injects
+param int N = 2;
+
+// X is the number of routers in the X-dimension
+param int X = 50;
+// Y is the number of routers in the Y-dimension
+param int Y = 50;
+
+// We import the router model
+uses router_closed_with_constraints;
+
+// Bus with all channels.
+bus<4*X*Y> allOUTS;
+// order of outputs: 
+// east, west, south, north
+for (int j = 0; j < Y;j++) {
+	for (int i = 0; i < X; i++) {
+		let allOUTS[j*X*4+i*4], 
+			allOUTS[j*X*4+i*4+1],
+			allOUTS[j*X*4+i*4+2],
+			allOUTS[j*X*4+i*4+3] 
+		:= router_ndcc(K,L,N,
+			allOUTS[j*X*4+((i+1)%X)*4+1], // east input
+			allOUTS[j*X*4+((i-1)%X)*4], // west input
+			allOUTS[((j-1)%Y)*X*4+i*4+2], // south input
+			allOUTS[((j+1)%Y)*X*4+i*4+3]); // north input
+	};
+};
+
+
+
+
+
+

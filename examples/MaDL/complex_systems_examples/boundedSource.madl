@@ -1,0 +1,13 @@
+const token_t; 
+
+param int N = 2;
+macro boundedSource(int N, chan iLocal__OUT) => chan oLocal { 
+chan src__OUT := Source(token_t)[src];
+chan crdQ__OUT := Queue(N, frk4__OUTA)[crdQ];
+chan frk4__OUTA, frk4__OUTB := Fork(src__OUT)[frk4];
+chan cjn5__OUT := CtrlJoin(iLocal__OUT, crdQ__OUT)[cjn5];
+let oLocal := Vars(tokQ__OUT);
+Sink(cjn5__OUT)[snk7];
+chan tokQ__OUT := Queue(N, frk4__OUTB)[tokQ];
+
+ }; 

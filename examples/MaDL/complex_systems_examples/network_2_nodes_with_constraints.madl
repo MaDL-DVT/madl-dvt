@@ -1,0 +1,8 @@
+const token_t; 
+
+param int K = 2;
+param int L = 4;
+param int N = 2;
+uses non_deterministic_router_closed_with_constraint;
+chan R0__oEast, R0__oWest, R0__oSouth, R0__oNorth := non_deterministic_router_closed_with_constraint(K, L, N, R1__oWest, R1__oEast, R0__oNorth, R0__oSouth)[R0];
+chan R1__oEast, R1__oWest, R1__oSouth, R1__oNorth := non_deterministic_router_closed_with_constraint(K, L, N, R0__oWest, R0__oEast, R1__oNorth, R1__oSouth)[R1];

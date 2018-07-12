@@ -1,0 +1,26 @@
+const token_t; 
+
+param int K = 2;
+param int N = 2;
+uses boundedSource;
+macro non_deterministic_router(int K, int N, chan iEast__OUT, chan iWest__OUT, chan iSouth__OUT, chan iNorth__OUT) => chan oEast, chan oWest, chan oSouth, chan oNorth { 
+chan localSrc__oLocal := boundedSource(N, buffLocal__OUT)[localSrc];
+chan mrg14__OUT := Merge(iEast__OUT, iWest__OUT)[mrg14];
+chan mrg15__OUT := Merge(iSouth__OUT, iNorth__OUT)[mrg15];
+chan mrg16__OUT := Merge(mrg14__OUT, mrg15__OUT)[mrg16];
+chan mrg17__OUT := Merge(localSrc__oLocal, mrg16__OUT)[mrg17];
+chan lb18__OUTA, lb18__OUTB := LoadBalancer(mrg17__OUT)[lb18];
+chan lb19__OUTA, lb19__OUTB := LoadBalancer(lb18__OUTB)[lb19];
+chan lb20__OUTA, lb20__OUTB := LoadBalancer(lb18__OUTA)[lb20];
+chan lb21__OUTA, lb21__OUTB := LoadBalancer(lb20__OUTA)[lb21];
+let oEast := Vars(buffEast__OUT);
+let oWest := Vars(buffWest__OUT);
+chan buffWest__OUT := Queue(K, lb20__OUTB)[buffWest];
+chan buffEast__OUT := Queue(K, lb21__OUTB)[buffEast];
+let oSouth := Vars(buffSouth__OUT);
+chan buffSouth__OUT := Queue(K, lb19__OUTA)[buffSouth];
+chan buffNorth__OUT := Queue(K, lb19__OUTB)[buffNorth];
+let oNorth := Vars(buffNorth__OUT);
+chan buffLocal__OUT := Queue(K, lb21__OUTA)[buffLocal];
+
+ }; 

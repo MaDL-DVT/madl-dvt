@@ -1,0 +1,12 @@
+const token_t; 
+
+param int N = 2;
+macro limitedSource(int N) => chan oLocal { 
+chan src__OUT := PatientSource(token_t)[src];
+chan crdQ__OUT := Queue(N, frk4__OUTA)[crdQ];
+chan frk4__OUTA, frk4__OUTB := Fork(src__OUT)[frk4];
+let oLocal := Vars(tokQ__OUT);
+DeadSink(crdQ__OUT)[snk7];
+chan tokQ__OUT := Queue(N, frk4__OUTB)[tokQ];
+
+ }; 

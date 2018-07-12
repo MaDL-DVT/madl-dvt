@@ -1,0 +1,36 @@
+const token_t; 
+
+param int K = 2;
+param int N = 2;
+uses limitedSource;
+macro non_deterministic_router_closed(int K, int N, chan iEast__OUT, chan iWest__OUT, chan iSouth__OUT, chan iNorth__OUT) => chan oEast, chan oWest, chan oSouth, chan oNorth { 
+chan mrg14__OUT := Merge(iEast__OUT, iWest__OUT)[mrg14];
+chan mrg15__OUT := Merge(iSouth__OUT, iNorth__OUT)[mrg15];
+chan mrg16__OUT := Merge(mrg14__OUT, mrg15__OUT)[mrg16];
+chan mrg17__OUT := Merge(srcToken__oLocal, mrg16__OUT)[mrg17];
+chan lb18__OUTA, lb18__OUTB := LoadBalancer(mrg17__OUT)[lb18];
+chan lb19__OUTA, lb19__OUTB := LoadBalancer(lb18__OUTB)[lb19];
+chan lb20__OUTA, lb20__OUTB := LoadBalancer(lb18__OUTA)[lb20];
+let oEast := Vars(buffEast__OUT);
+let oWest := Vars(buffWest__OUT);
+chan buffWest__OUT := Queue(K, cjn17__OUT)[buffWest];
+chan buffEast__OUT := Queue(K, cjn14__OUT)[buffEast];
+let oSouth := Vars(buffSouth__OUT);
+chan buffSouth__OUT := Queue(K, cjn20__OUT)[buffSouth];
+chan buffNorth__OUT := Queue(K, cjn23__OUT)[buffNorth];
+let oNorth := Vars(buffNorth__OUT);
+chan srcToken__oLocal := limitedSource(N)[srcToken];
+chan stationEast__OUT := Queue(1, lb20__OUTA)[stationEast];
+chan srcEast__OUT := Source(token_t)[srcEast];
+chan cjn14__OUT := CtrlJoin(srcEast__OUT, stationEast__OUT)[cjn14];
+chan stationWest__OUT := Queue(1, lb20__OUTB)[stationWest];
+chan cjn17__OUT := CtrlJoin(srcWest__OUT, stationWest__OUT)[cjn17];
+chan srcWest__OUT := Source(token_t)[srcWest];
+chan stationSouth__OUT := Queue(1, lb19__OUTA)[stationSouth];
+chan cjn20__OUT := CtrlJoin(srcSouth__OUT, stationSouth__OUT)[cjn20];
+chan srcSouth__OUT := Source(token_t)[srcSouth];
+chan stationNorth__OUT := Queue(1, lb19__OUTB)[stationNorth];
+chan cjn23__OUT := CtrlJoin(srcNorth__OUT, stationNorth__OUT)[cjn23];
+chan srcNorth__OUT := Source(token_t)[srcNorth];
+
+ }; 
