@@ -1,0 +1,93 @@
+// Generates hypercubes of size X by Y
+// closed system
+
+const token_t;
+
+
+// K is the size of the buffer at each output port
+param int K = 1;
+// L is the maximum number of packets that the router will store
+param int L = 8;
+// N is te number of packets that the router injects
+param int N = 2;
+// TD_CAP is the capacity of a terminal device
+param int TD_CAP = 2; // should be equal to total number of packets
+
+// X is the number of routers in the X-dimension
+param int X = 1;
+// Y is the number of routers in the Y-dimension
+param int Y = 1;
+
+// We import the router model
+// Note that uses only imports what is inside macro declarations.
+uses router_closed_with_constraints;
+uses terminal_device;
+
+// Bus with all channels.
+// The idea is to declare a bus containing all channels of the network.
+// Then, we connect all these channels to the routers and the 
+// terminal devices. 
+
+chan east_output_00, 	// east output
+	 west_output_00,	// west output						
+	 south_output_00,	// south output
+	 north_output_00 	// north output
+		:= router_ndcc(K,L,N,
+			west_output_01, // east input
+			TD_00, // west input
+			north_output_10, // south input
+			TD_01)[R00]; // north input, RYX
+
+
+chan east_output_10, 	// east output
+	 west_output_10,	// west output						
+	 south_output_10,	// south output
+	 north_output_10 	// north output
+		:= router_ndcc(K,L,N,
+			west_output_11, // east input
+			TD_02, // west input
+			TD_03, // south input
+			south_output_00)[R10]; // north input
+
+
+chan east_output_01, 	// east output
+	 west_output_01,	// west output						
+	 south_output_01,	// south output
+	 north_output_01 	// north output
+		:= router_ndcc(K,L,N,
+			TD_04, // east input
+			east_output_00, // west input
+			north_output_11, // south input
+			TD_05)[R01]; // north input
+
+chan east_output_11, 	// east output
+	 west_output_11,	// west output						
+	 south_output_11,	// south output
+	 north_output_11 	// north output
+		:= router_ndcc(K,L,N,
+			TD_06, // east input
+			east_output_10, // west input
+			TD_07, // south input
+			south_output_01)[R11]; // north input
+
+chan TD_00 := terminal_device(TD_CAP,west_output_00)[TD00]; 
+chan TD_01 := terminal_device(TD_CAP,north_output_00)[TD01]; 
+chan TD_02 := terminal_device(TD_CAP,west_output_10)[TD02];
+chan TD_03 := terminal_device(TD_CAP,south_output_10)[TD03]; 
+chan TD_04 := terminal_device(TD_CAP,north_output_01)[TD04];
+chan TD_05 := terminal_device(TD_CAP,east_output_01)[TD05]; 
+chan TD_06 := terminal_device(TD_CAP,east_output_11)[TD06];
+chan TD_07 := terminal_device(TD_CAP,south_output_11)[TD07]; 
+
+// deadlock
+// Q___ROUTER__Limiter := 2
+// Q___ROUTER__buffEast := 1
+// x := 4
+// Q___ROUTER__stationEast := 1
+// Q___TD_EAST__Queue_1 := 2
+
+
+
+
+
+

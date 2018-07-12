@@ -1,0 +1,26 @@
+// Terminal Device Model
+// Authors: Tatiana and Julien
+
+
+const token_t;
+
+// capacity of the terminal device
+// means capacity of its output port.
+param int TD_CAP = 1; // in practice, this should unlimited. 
+// when instantiating the termina device
+// set TD_CAP to the total number of tokens/packets in the network.
+
+// Currently, terminal devices start empty.
+// TODO (T+J): extend the model such that terminal devices
+// can be initalised with some initial packets. 
+
+macro terminal_device (int TD_CAP, chan in) => chan out {
+	// A terminal device has one input port
+	// and one output port
+	// Terminal device reads a packet and 
+	// forwards it to the output after 
+	// some time.
+	// TODO (JS): add an explicit non-deterministic delay.
+	let out := Queue(TD_CAP,in);
+};
+
