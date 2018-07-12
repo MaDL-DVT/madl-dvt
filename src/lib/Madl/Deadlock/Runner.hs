@@ -65,6 +65,7 @@ data CommandLineOptions = CommandLineOptions {
     argSMTSolver :: SmtSolver, -- ^ Determines which SMT solver is used.
     argSources :: Sources, -- ^ Determines when to stop checking for deadlocks.
     argVerbose :: Verbose, -- ^ Determines which information is provided to the user.
+    argFullQueues :: Bool, -- ^ Allows user to turn on optimisation searching for never full queues. 
     argNuxmvOptions :: ReachabilityOptions, -- ^ The options to use for reachability analysis.
     argUseInvariants :: Bool, -- ^ Determines whether invariants are calculated.
     showChannelTypes  :: Bool, -- ^ Determines whether channel types are displayed
@@ -84,6 +85,7 @@ defaultOptions = CommandLineOptions {
     argSMTSolver = Z3,
     argSources = ONE,
     argVerbose = OFF,
+    argFullQueues = False,
     argNuxmvOptions = ReachabilityOptions {
         keepAigerModel = False,
         keepNuxmvModel = False,
@@ -93,8 +95,9 @@ defaultOptions = CommandLineOptions {
     showChannelTypes = False,
     showChannelSource = False,
     showChannelConnections = False,
-    showRings = False
+    showRings = False    
 }
+
 
 -- | Function to convert a color to a string.
 show_p :: Color -> String

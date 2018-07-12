@@ -62,7 +62,7 @@ showHelp exeOpts = do
 -- | Header of the help message triggered by the "help" flag
 helpHeader :: String
 helpHeader = unlines [
-      "\n(c) Copyright 2015 - 2017 Eindhoven University of Technology"
+      "\n(c) Copyright 2015 - 2018 Eindhoven University of Technology"
     , "**********************************************************************"
     , "**                                                                  **"
     , "**              MaDL Modelling and Verification Environment         **"

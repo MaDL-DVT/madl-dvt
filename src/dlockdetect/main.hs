@@ -72,6 +72,9 @@ exeOptions =
     , Option "" ["no-cyclecheck"]
         (NoArg (\opts -> opts {argCycleCheck = False}))
         "Don't search for combinatorial cycles.\n"
+    , Option "" ["full-queues-compute"]
+        (NoArg (\opts -> opts {argFullQueues = True}))
+        "Search for queues that are never full.\n"
     , Option "" ["stop-at-first"]
         (NoArg (\opts -> opts {argSources = ONE}))
         "Stop deadlock detection after the first source with a deadlock has been found (default)."
@@ -226,16 +229,17 @@ main = do
 
     putStrLn ("Computing network invariants ... ")
     -- Invariants are not computed if there is either no forks or no joins. 
---    let invs = {-# SCC "GenerateInvariants" #-} if argUseInvariants options && (length  (filter isFork comps) > 0 && length (filter isCJoin comps) > 0) then getInvariants network else []
     let invs = {-# SCC "GenerateInvariants" #-} if argUseInvariants options then getInvariants network else []
     putStrLn $ "Found " ++ show (length invs) ++ " invariants."
     when (argVerbose options == ON) $ putStrLn $ "Invariants: \n"
     when (argVerbose options == ON) $ putStrLn $ utxt (showInvariants2 invs network)
-
     putStrLn $ "Computing never full queues ..."
-    nfqs <- {-# SCC "ComputeNeverFullQueues" #-} notFullQueues network (argSMTSolver options) (invs ++ ringInvs)
+    nfqs <- case (argFullQueues options) of
+        False -> return []
+        True -> do 
+            {-# SCC "ComputeNeverFullQueues" #-} notFullQueues network (argSMTSolver options) (invs ++ ringInvs)
     putStrLn $ "Found " ++ show (length nfqs) ++ " queues that are never full."
-    when (argVerbose options == ON) $ putStrLn ("Never full queues are: " ++ show nfqs)
+    putStrLn ("Never full queues are: " ++ show nfqs)
     putStrLn $ "Running deadlock detection."
     -- Run deadlock detection using the options specified by the user
     result <- runDeadlockDetection network options (invs ++ ringInvs) nfqs
