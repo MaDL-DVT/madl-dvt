@@ -17,6 +17,7 @@ import Data.Char (isDigit)
 import qualified Data.HashMap as Hash
 import GHC.Conc (numCapabilities)
 import System.Console.GetOpt
+import System.Environment
 
 import Utils.Executable
 import Utils.File
@@ -72,9 +73,6 @@ exeOptions =
     , Option "" ["no-cyclecheck"]
         (NoArg (\opts -> opts {argCycleCheck = False}))
         "Don't search for combinatorial cycles.\n"
-    , Option "" ["full-queues-compute"]
-        (NoArg (\opts -> opts {argFullQueues = True}))
-        "Search for queues that are never full.\n"
     , Option "" ["stop-at-first"]
         (NoArg (\opts -> opts {argSources = ONE}))
         "Stop deadlock detection after the first source with a deadlock has been found (default)."
@@ -149,15 +147,41 @@ exeOptions =
                                 else fatal 94 $ "Unvalid argument: bdd-bmc depth " ++n)}})
             "search-depth")
         "NuXmv invariant proof with bdd-bmc search."
+    , Option "" ["bmc-inc"]
+        (OptArg (\depth opts -> opts {argNuxmvOptions = (argNuxmvOptions opts) {reachabilityEngine = NUXMV $ BMCINC (case depth of
+                    Nothing -> 10
+                    Just n -> if all isDigit n && (read n :: Int) > 0 then read n :: Int
+                                else fatal 94 $ "Unvalid argument: bmc-inc depth " ++n)}})
+            "search-depth")
+        "NuXmv invariant proof with bmc-inc search."    
     , Option "" ["showrings"]
         (NoArg (\opts -> opts {showRings = True}))
         "Display detailed ring information."
-
+    , Option "" ["no-rings"]
+        (NoArg (\opts -> opts {detectRings = False}))
+        "Disable ring detection."
+    , Option "" ["no-livelock"]
+        (NoArg (\opts -> opts {detectLivelock = False}))
+        "Disable livelock detection."
     ]
 
 -- | Main entry point
 main :: IO ()
 main = do
+    -- write the default value for the environment var for path to nuXmv
+    putStrLn $ "Reading environment variables ..."
+    mwb_path_n <- lookupEnv "MWB_PATH_NUXMV"
+    _ <- case mwb_path_n of
+        Nothing -> setEnv "MWB_PATH_NUXMV" "/usr/local/bin"
+        Just _ -> return ()
+    newVal <- getEnv "MWB_PATH_NUXMV"
+    putStrLn $ "MWB_PATH_NUXMV = "++newVal
+    mwb_path_z <- lookupEnv "MWB_PATH_Z3"  
+    _ <- case mwb_path_z of
+        Nothing -> setEnv "MWB_PATH_Z3" "/usr/local/bin"
+        Just _ -> return ()
+    newValZ <- getEnv "MWB_PATH_Z3"
+    putStrLn $ "MWB_PATH_Z3 = "++newValZ
     -- Fetch user input
     options <- parseArgs exeOptions defaultOptions
     -- Print the number of cores in use.
@@ -207,39 +231,39 @@ main = do
     when (argVerbose options == ON) $ mapM_ (putStrLn . show) cycles
 
     -- Search possible livelocks
-    let liveLock = findPossibleLivelocks network
-    putStrLn $ case liveLock of 
+    when (detectLivelock options) $ putStrLn $ "Checking for livelocks."
+    let liveLock = if detectLivelock options then findPossibleLivelocks network else Nothing
+    when (detectLivelock options) $ putStrLn $ case liveLock of 
         Nothing -> "No possible livelocks found."
         Just loop -> "Found possible livelock." ++ if (argVerbose options == ON)
             then "\n" ++ (show $ map (\(chan, col) -> (channelName $ fst $ snd3 $ getChannelContext network chan, col)) loop)
             else ""
 
     -- Detect rings
-    let rings = findRings network
-    putStrLn $ "Found " ++ show (length rings) ++ " base rings."
-    when (showRings options) $ mapM_ (putStrLn . (showRing network)) rings
-    let combRings = combineRings network rings
-    putStrLn $ "Found " ++ (show $ (length combRings)) ++ " combined rings."
-    when (showRings options) $ mapM_ (putStrLn . (showRing network)) (filter (\r -> not $ elem r rings) combRings)
+    let rings = if detectRings options then findRings network else []
+    when (detectRings options) $ putStrLn $ "Found " ++ show (length rings) ++ " base rings."
+    when (detectRings options) $ when (showRings options) $ mapM_ (putStrLn . (showRing network)) rings
+    let combRings = if detectRings options then combineRings network rings else []
+    when (detectRings options) $ putStrLn $ "Found " ++ (show $ (length combRings)) ++ " combined rings."
+    when (detectRings options) $ when (showRings options) $ mapM_ (putStrLn . (showRing network)) (filter (\r -> not $ elem r rings) combRings)
 
     -- Get ring invariants from combined rings
-    let ringInvs = getRingInvariants network combRings
-    putStrLn $ "Found " ++ (show $ length ringInvs) ++ " ring invariants."
-    when (showRings options) $ putStrLn $ utxt (showInvariants2 ringInvs network)
+    let ringInvs = if detectRings options then getRingInvariants network combRings else []
+    when (detectRings options) $ putStrLn $ "Found " ++ (show $ length ringInvs) ++ " ring invariants."
+    when (detectRings options) $ when (showRings options) $ putStrLn $ utxt (showInvariants2 ringInvs network)
 
     putStrLn ("Computing network invariants ... ")
     -- Invariants are not computed if there is either no forks or no joins. 
+--    let invs = {-# SCC "GenerateInvariants" #-} if argUseInvariants options && (length  (filter isFork comps) > 0 && length (filter isCJoin comps) > 0) then getInvariants network else []
     let invs = {-# SCC "GenerateInvariants" #-} if argUseInvariants options then getInvariants network else []
     putStrLn $ "Found " ++ show (length invs) ++ " invariants."
     when (argVerbose options == ON) $ putStrLn $ "Invariants: \n"
     when (argVerbose options == ON) $ putStrLn $ utxt (showInvariants2 invs network)
+
     putStrLn $ "Computing never full queues ..."
-    nfqs <- case (argFullQueues options) of
-        False -> return []
-        True -> do 
-            {-# SCC "ComputeNeverFullQueues" #-} notFullQueues network (argSMTSolver options) (invs ++ ringInvs)
+    nfqs <- {-# SCC "ComputeNeverFullQueues" #-} notFullQueues network (argSMTSolver options) (invs ++ ringInvs)
     putStrLn $ "Found " ++ show (length nfqs) ++ " queues that are never full."
-    putStrLn ("Never full queues are: " ++ show nfqs)
+    when (argVerbose options == ON) $ putStrLn ("Never full queues are: " ++ show nfqs)
     putStrLn $ "Running deadlock detection."
     -- Run deadlock detection using the options specified by the user
     result <- runDeadlockDetection network options (invs ++ ringInvs) nfqs

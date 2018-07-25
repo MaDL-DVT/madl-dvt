@@ -65,7 +65,7 @@ helpHeader = unlines [
       "\n(c) Copyright 2015 - 2018 Eindhoven University of Technology"
     , "**********************************************************************"
     , "**                                                                  **"
-    , "**              MaDL Modelling and Verification Environment         **"
+    , "**              MaDL Design and Verification Environment            **"
     , "**                                                                  **"
     , "**********************************************************************"
     ]
