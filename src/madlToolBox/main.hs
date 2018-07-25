@@ -6,7 +6,7 @@ import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 import Data.Aeson
 import GHC.Generics
-import System.Environment (getArgs)
+import System.Environment
 
 -- This is awful...
 import qualified Data.Text as Text
@@ -102,10 +102,22 @@ main = do
 -- TODO: see what options are relevant
 verifyNetwork :: ColoredNetwork -> IO ServerReply
 verifyNetwork network = do
+    putStrLn $ "Reading environment variables ..."
+    mwb_path_n <- lookupEnv "MWB_PATH_NUXMV"
+    _ <- case mwb_path_n of
+        Nothing -> setEnv "MWB_PATH_NUXMV" "/usr/local/bin"
+        Just _ -> return ()
+    newVal <- getEnv "MWB_PATH_NUXMV"
+    putStrLn $ "MWB_PATH_NUXMV = "++newVal
+    mwb_path_z <- lookupEnv "MWB_PATH_Z3"  
+    _ <- case mwb_path_z of
+        Nothing -> setEnv "MWB_PATH_Z3" "/usr/local/bin"
+        Just _ -> return ()
+    newValZ <- getEnv "MWB_PATH_Z3"
+    putStrLn $ "MWB_PATH_Z3 = "++newValZ
     let reply = defaultServerReply{fileParses = True, fileTypeChecks = True}
     -- SMT only, since we need a SMT model 
-    let options = Madl.Deadlock.Runner.defaultOptions{argRunMode = ReachabilityAfterSmt}
-
+    let options = Madl.Deadlock.Runner.defaultOptions{argRunMode = ReachabilityAfterSmt, argNuxmvOptions =  ReachabilityOptions { keepAigerModel = False, keepNuxmvModel = False, reachabilityEngine = NUXMV IC3}}
     -- Cycle check        
     numC <- return 0;
     --numC <- return $ length $ checkCycles $ removeColors network
