@@ -605,7 +605,7 @@ data ReachabilityEngine = ABC AbcEngine | NUXMV NuxmvEngine deriving (Eq)
 -- | The implemented settings for abc
 data AbcEngine = PDR | BMC deriving (Eq)
 -- | The implemented settings for nuxmv
-data NuxmvEngine = BDD | FWD | BWD | FWDBWD | BDDBMC Int | IC3 | IC3M deriving (Eq)
+data NuxmvEngine = BDD | FWD | BWD | FWDBWD | BDDBMC Int | BMCINC Int | IC3 | IC3M deriving (Eq)
 
 -- | Check whether the given engine is an abc engine
 isAbcEngine :: ReachabilityEngine -> Bool
@@ -646,6 +646,7 @@ callEngine engine = do
             BWD          -> "go\ncheck_invar -s backward\nprint_usage\nquit\n"
             FWDBWD       -> "go\ncheck_invar -s forward-backward\nprint_usage\nquit\n"
             BDDBMC depth -> "go\nbuild_boolean_model\nbmc_setup\ncheck_invar -s bdd-bmc -k " ++show depth ++"\nprint_usage\nquit\n"
+            BMCINC depth -> "go_bmc\ncheck_invar_bmc_inc -s forward -k "++show depth ++"\nshow_traces -p 4 -o trace.xml\nquit"            
             IC3          -> "flatten_hierarchy\nencode_variables\nbuild_boolean_model\ncheck_invar_ic3 -v 1 -a 1 -g\nprint_usage\nquit\n"
             IC3M         -> "go_msat\ncheck_invar_ic3 -i\nprint_usage\nquit\n"
     let contents = case engine of

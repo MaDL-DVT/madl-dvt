@@ -30,7 +30,6 @@ import              System.Exit (exitFailure)
 import              System.IO (hPutStrLn,hClose,openFile,IOMode(..))
 import              System.IO.Temp (withTempFile)
 import              System.Process (readProcessWithExitCode)
-import              System.Environment
 
 import GHC.Conc (numCapabilities)
 import Text.Parsec.Error(errorMessages, messageString)
@@ -66,6 +65,7 @@ data CommandLineOptions = CommandLineOptions {
     argSMTSolver :: SmtSolver, -- ^ Determines which SMT solver is used.
     argSources :: Sources, -- ^ Determines when to stop checking for deadlocks.
     argVerbose :: Verbose, -- ^ Determines which information is provided to the user.
+    argFullQueues :: Bool, -- ^ Allows user to turn on optimisation searching for never full queues. 
     argNuxmvOptions :: ReachabilityOptions, -- ^ The options to use for reachability analysis.
     argUseInvariants :: Bool, -- ^ Determines whether invariants are calculated.
     showChannelTypes  :: Bool, -- ^ Determines whether channel types are displayed
@@ -74,6 +74,7 @@ data CommandLineOptions = CommandLineOptions {
     showRings :: Bool, -- ^ Determines whether ring information is displayed
     detectRings :: Bool, -- ^ Determines whether ring detection is done
     detectLivelock :: Bool -- ^ Determines whether livelock detection is done
+
 }
 
 -- | Default commandline options.
@@ -87,6 +88,7 @@ defaultOptions = CommandLineOptions {
     argSMTSolver = Z3,
     argSources = ONE,
     argVerbose = OFF,
+    argFullQueues = False,
     argNuxmvOptions = ReachabilityOptions {
         keepAigerModel = False,
         keepNuxmvModel = False,
@@ -98,8 +100,9 @@ defaultOptions = CommandLineOptions {
     showChannelConnections = False,
     showRings = False,
     detectRings = True,
-    detectLivelock = True
+    detectLivelock = True    
 }
+
 
 -- | Function to convert a color to a string.
 show_p :: Color -> String
@@ -119,8 +122,7 @@ check_feasibility i x' qs vars show_p_t invs solver f =
                     hPutStrLn h $ smt'
                     hPutStrLn h $ "(check-sat)\n(get-model)"
                     () <- hClose h
-                    path <- getEnv "MWB_PATH_Z3"
-                    (_exit,solver_output,_err) <- (uncurry readProcessWithExitCode) (solverFunction path solver file) []
+                    (_exit,solver_output,_err) <- (uncurry readProcessWithExitCode) (solverFunction solver file) []
                     -- putStrLn solver_output
                     case parseSMTOutput solver_output of
                         Left err -> do
@@ -246,8 +248,7 @@ runDeadlockDetection net options invs nfqs =
                     when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model completed. ")
                     when (argVerbose options == ON) $ putStrLn ("Calling SMT solver ... ")
                     hClose h
-                    path <- getEnv "MWB_PATH_Z3"
-                    (_exit,solver_output,_err) <- (uncurry readProcessWithExitCode) (solverFunction path (argSMTSolver options) file) []
+                    (_exit,solver_output,_err) <- (uncurry readProcessWithExitCode) (solverFunction (argSMTSolver options) file) []
                     when (not $ argKeepSMTModel options) $ removeFile file
                     -- putStrLn solver_output
                     case parseSMTOutput solver_output of
