@@ -172,7 +172,11 @@ runDeadlockDetection net options invs nfqs =
         reachability_model = (ReachabilityInput net allFormulas (Just spec') invs)
         reachability_model_invs_only = (ReachabilityInput net Map.empty Nothing invs)
         -- write nuXmv model
-        nuxmv_model = writeModel reachability_model
+        written_model = case (keepNuxmvModel (argNuxmvOptions options)) of
+            1 -> reachability_model
+            2 -> reachability_model_invs_only
+            _ -> reachability_model
+        nuxmv_model = writeModel written_model
 
         -- reachability analysis
         nuxmv :: IO (Either String (Bool, Maybe SMTModel))

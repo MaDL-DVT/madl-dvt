@@ -107,9 +107,9 @@ exeOptions =
     , Option "" ["keep-nuxmv-model"]
         (OptArg (\mode opts -> opts {argNuxmvOptions = (argNuxmvOptions opts) {keepNuxmvModel = (case mode of
                     Nothing -> 0
-                    Just n -> if all isDigit n && (read n :: Int) > 0 && (read n :: Int) < 3 then read n :: Int
+                    Just n -> if all isDigit n && (read n :: Int) >= 0 && (read n :: Int) < 3 then read n :: Int
                                 else fatal 94 $ "Unvalid argument: keep-nuxmv-model mode " ++n)}})
-            "generation mode")
+            "generation-mode")
         "Keep the file containing the SMV model after performing a liveness proof using nuXmv. 0: no model, 1: model + deadlock check, 2: model + invariants."
     , Option "" ["keep-smt-model"]
         (NoArg (\opts -> opts {argKeepSMTModel = True}))
