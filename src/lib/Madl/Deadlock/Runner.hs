@@ -91,7 +91,7 @@ defaultOptions = CommandLineOptions {
     argFullQueues = False,
     argNuxmvOptions = ReachabilityOptions {
         keepAigerModel = False,
-        keepNuxmvModel = False,
+        keepNuxmvModel = 0,
         reachabilityEngine = NUXMV IC3M
     },
     argUseInvariants = True,
@@ -170,6 +170,7 @@ runDeadlockDetection net options invs nfqs =
         spec' = spec net
         allFormulas = unfold_formula net (BlockVars Seq.empty nfqs) spec'
         reachability_model = (ReachabilityInput net allFormulas (Just spec') invs)
+        reachability_model_invs_only = (ReachabilityInput net Map.empty Nothing invs)
         -- write nuXmv model
         nuxmv_model = writeModel reachability_model
 

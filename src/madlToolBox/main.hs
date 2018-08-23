@@ -117,7 +117,7 @@ verifyNetwork network = do
     putStrLn $ "MWB_PATH_Z3 = "++newValZ
     let reply = defaultServerReply{fileParses = True, fileTypeChecks = True}
     -- SMT only, since we need a SMT model 
-    let options = Madl.Deadlock.Runner.defaultOptions{argRunMode = ReachabilityAfterSmt, argNuxmvOptions =  ReachabilityOptions { keepAigerModel = False, keepNuxmvModel = False, reachabilityEngine = NUXMV IC3}}
+    let options = Madl.Deadlock.Runner.defaultOptions{argRunMode = ReachabilityAfterSmt, argNuxmvOptions =  ReachabilityOptions { keepAigerModel = False, keepNuxmvModel = 0, reachabilityEngine = NUXMV IC3}}
     -- Cycle check        
     numC <- return 0;
     --numC <- return $ length $ checkCycles $ removeColors network

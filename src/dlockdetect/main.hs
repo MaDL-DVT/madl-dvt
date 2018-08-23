@@ -99,14 +99,18 @@ exeOptions =
         "Create SMV model of the network and write it to model.nuxmv.\n "
     , Option "" ["keep-all-models"]
         (NoArg (\opts -> opts {argKeepSMTModel = True,
-                argNuxmvOptions = (argNuxmvOptions opts) {keepAigerModel = True, keepNuxmvModel = True}}))
+                argNuxmvOptions = (argNuxmvOptions opts) {keepAigerModel = True, keepNuxmvModel = 0}}))
         "Keep the file(s) containing the AIG, SMV and SMT model(s) after performing a liveness proof.\n "
     , Option "" ["keep-aiger-model"]
         (NoArg (\opts -> opts {argNuxmvOptions = (argNuxmvOptions opts) {keepAigerModel = True}}))
         "Keep the file containing the AIG model after performing a liveness proof using ABC.\n "
     , Option "" ["keep-nuxmv-model"]
-        (NoArg (\opts -> opts {argNuxmvOptions = (argNuxmvOptions opts) {keepNuxmvModel = True}}))
-        "Keep the file containing the SMV model after performing a liveness proof using nuXmv."
+        (OptArg (\mode opts -> opts {argNuxmvOptions = (argNuxmvOptions opts) {keepNuxmvModel = (case mode of
+                    Nothing -> 0
+                    Just n -> if all isDigit n && (read n :: Int) > 0 && (read n :: Int) < 3 then read n :: Int
+                                else fatal 94 $ "Unvalid argument: keep-nuxmv-model mode " ++n)}})
+            "generation mode")
+        "Keep the file containing the SMV model after performing a liveness proof using nuXmv. 0: no model, 1: model + deadlock check, 2: model + invariants."
     , Option "" ["keep-smt-model"]
         (NoArg (\opts -> opts {argKeepSMTModel = True}))
         "Keep the file(s) containing the SMT model(s) after performing a liveness proof using SMT.\n "

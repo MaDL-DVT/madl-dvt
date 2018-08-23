@@ -615,7 +615,7 @@ isAbcEngine NUXMV{} = False
 -- | Options for reachability analysis
 data ReachabilityOptions = ReachabilityOptions {
     keepAigerModel :: Bool, -- ^ Specifies whether the produced aiger model should be removed after reachability analysis
-    keepNuxmvModel :: Bool, -- ^ Specifies whether the produced nuxmv model should be removed after reachability analysis
+    keepNuxmvModel :: Int , -- ^ Specifies the generation mode for the generated nuXmv model.
     reachabilityEngine :: ReachabilityEngine -- ^ Specifies the engine to be used
 }
 
@@ -672,7 +672,7 @@ hasDeadlock opts input = do
     {-# SCC "Reachability" #-} callEngine (reachabilityEngine opts)
     output <- readFile "result.txt"
     when (not (keepAigerModel opts) && (isAbcEngine $ reachabilityEngine opts)) $ removeFile "model_invar_0.aig"
-    when (not $ keepNuxmvModel opts) $ removeFile "model.nuxmv"
+    when ((keepNuxmvModel opts) == 0) $ removeFile "model.nuxmv"
     removeFile "result.txt"
     let true = case reachabilityEngine opts of
             ABC{} -> "Property proved"
