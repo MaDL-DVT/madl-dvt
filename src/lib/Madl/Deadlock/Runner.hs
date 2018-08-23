@@ -149,31 +149,34 @@ notFullQueues net solver invs = fmap (map fst) $ par_filterM isInfeasible (getCo
         _ -> return False where
 
 -- | Main function to perform deadlock and reachability analysis.
+
+-- some helpers used to calculate formulas for the nuxmv model
+literals :: ColoredNetwork -> Seq Formula
+literals net = Seq.fromList $ map (uncurry mkLiteral) (getComponentsWithID net)
+
+mkLiteral :: ComponentID -> Component -> Formula
+mkLiteral i Source{} = Lit (BlockSource i)
+mkLiteral _ _ = F
+
+spec :: ColoredNetwork -> Formula
+spec net = disjunctive $ literals net
+
 runDeadlockDetection :: ColoredNetwork -> CommandLineOptions -> [Invariant Int] -> [ComponentID] -> IO (Either String (Bool, Maybe SMTModel))
 runDeadlockDetection net options invs nfqs =
-    -- Calculate network properties
+    -- Export invariants to their SMT expression
     let (smtinvs, qs, vars) = export_invariants_to_smt net show_p invs    
-        --when (argVerbose options == ON) $ putStrLn ("Computing never full queues ... ")
-        --nfqs :: IO [ComponentID]
-        --nfqs = {-# SCC "NeverFullQueues" #-} notFullQueues net (argSMTSolver options) invs
-        -- when (argVerbose options == ON) $ putStrLn ("Never full queues: " ++ show nfqs')
 
-        -- nuxmv model
-        nuxmv_model = writeModel (ReachabilityInput net Map.empty Nothing invs)
+        -- formula for the nuXmv model
+        spec' = spec net
+        allFormulas = unfold_formula net (BlockVars Seq.empty nfqs) spec'
+        reachability_model = (ReachabilityInput net allFormulas (Just spec') invs)
+        -- write nuXmv model
+        nuxmv_model = writeModel reachability_model
 
         -- reachability analysis
         nuxmv :: IO (Either String (Bool, Maybe SMTModel))
         nuxmv = do
---            nfqs' <- nfqs
-            let allFormulas = unfold_formula net (BlockVars Seq.empty nfqs) spec
-                mkLiteral :: ComponentID -> Component -> Formula
-                mkLiteral i Source{} = Lit (BlockSource i)
-                mkLiteral _ _ = F
-                spec :: Formula
-                spec = disjunctive literals
-                literals :: Seq Formula
-                literals = Seq.fromList $ map (uncurry mkLiteral) (getComponentsWithID net)
-            ret <- hasDeadlock (argNuxmvOptions options) (ReachabilityInput net allFormulas (Just spec) invs)
+            ret <- hasDeadlock (argNuxmvOptions options) reachability_model
             case ret of
                 Left err -> return $ Left err
                 Right b -> return $ Right (b,Nothing)
