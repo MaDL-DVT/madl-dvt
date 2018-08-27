@@ -90,7 +90,8 @@ library
                   Parser.ASTTranslator,
                   Parser.MadlTypeChecker,
                   Madl2mCRL2.Converter,
-                  Madl2fsm.Madl2fsm  
+                  Madl2fsm.Madl2fsm,
+                  Madl2smv.Converter
   build-depends:       base >= 4.7 && < 5,
                        fgl >= 5.5.2,
                        text >= 1.2.1,
@@ -232,6 +233,16 @@ executable madl2mcrl2
            ghc-options: -Wall -Werror
            default-language: Haskell2010
 
+executable madl2smv
+    hs-source-dirs: src/madl2smv
+    main-is: Main.hs
+    build-depends:
+                  madl,
+                  text,
+                  base
+    ghc-options: -Wall -Werror
+    default-language: Haskell2010
+
 executable madltoolbox
     hs-source-dirs: src/madlToolBox
     main-is: main.hs
@@ -253,7 +264,7 @@ executable madltoolbox
                   --filepath
     ghc-options: -Wall -Werror
     default-language: Haskell2010
-          
+
 executable computeColours
     hs-source-dirs: src/madlToolBox
     main-is: computeColours.hs
@@ -275,7 +286,7 @@ executable computeColours
         filepath
     ghc-options: -Wall -Werror
     default-language: Haskell2010
- 
+
 executable madlserver
     hs-source-dirs: src/server
     main-is: main.hs
@@ -299,7 +310,7 @@ executable madlserver
     default-language: Haskell2010
 
 
-    
+
 --executable madl-exe
 --  hs-source-dirs:      app
 --  main-is:             Main.hs
