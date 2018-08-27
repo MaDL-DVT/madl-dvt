@@ -93,6 +93,8 @@ stateName net cid = let cm = compMap net
                     in case (getComponent net cid) of
                           (Source _ _) -> "src" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_state"
                           (Queue _ _) -> "q" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_state"
+                          (Merge _) -> "mrg" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_state"
+                          _ -> error "stateName: unexpected component type"
 
 --Takes a network, a ComponentID and returns the state declaration for the given component
 stateDecl :: ColoredNetwork -> ComponentID -> String
@@ -204,7 +206,8 @@ data MaDL = MaDL { x :: [ComponentID],
                    target :: ChannelID -> ComponentID,
                    isFirst :: ChannelID -> Bool,
                    t :: ComponentID -> T,
-                   def :: Int }
+                   name :: ComponentID -> String,
+                   def :: Int } deriving Show
 
 getX :: ColoredNetwork -> [ComponentID]
 getX net = getComponentIDs net
@@ -280,8 +283,59 @@ getMaDL net = MaDL { x = getX net,
                      target = getTarget net,
                      isFirst = getIsFirst net,
                      t = getT net,
+                     name = stateName net,
                      def = defaultColor
                     }
 
+instance Show (ChannelID -> [Int]) where
+  show _ = "stub1"
+
+instance Show (ChannelID -> ComponentID) where
+  show _ = "stub2"
+
+instance Show (ChannelID -> Bool) where
+  show _ = "stub3"
+
+instance Show (ComponentID -> Int -> Int) where
+  show _ = "stub4"
+
+instance Show (ComponentID -> Int -> Bool) where
+  show _ = "stub5"
+
+instance Show (ComponentID -> [ChannelID]) where
+  show _ = "stub6"
+
+instance Show (ComponentID -> T) where
+  show _ = "stub7"
+
+instance Show (ComponentID -> String) where
+  show _ = "stub8"
+
+mkExpr :: MaDL -> Expr
+mkExpr madl = S_Upd (mkArgs madl (x madl))
+
+mkArgs :: MaDL -> [ComponentID] -> Args
+mkArgs madl xs
+  | L.length xs > 1 = Args (mkArg madl (L.head xs)) (mkArgs madl (L.tail xs))--Arg (S Free)
+  | otherwise = Arg (mkArg madl (L.head xs))
+
+mkArg :: MaDL -> ComponentID -> Arg
+mkArg madl x = case ((t (madl)) x) of
+                  Source_t -> Src_Upd (BDArgs (BArg (B True)) (DArg (D 0)) (V $ (name madl) x))
+                  Queue_t -> Q_Upd (BDArgs (BArg (B True)) (DArg (D 0)) (V "123"))
+                  Merge_t -> Mrg_Upd (BDArgs (BArg (B True)) (DArg (D 0)) (V "123"))
+                  _ -> error "mkArg: unexpected component type"
+
+mkSrcArgs :: MaDL -> ComponentID -> BDArgs
+mkSrcArgs madl x = BDArgs (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))) (DArg (mkDexprO madl x (L.head ((outp madl) x)))) (V $ (name madl) x)
+
+mkBexprOIrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
+mkBexprOIrdy _ _ _ = B True
+
+mkBexprOTrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
+mkBexprOTrdy _ _ _ = B True
+
+mkDexprO :: MaDL -> ComponentID -> ChannelID -> DExpr
+mkDexprO _ _ _ = D 0
 {-instance Show Prediction where
   show (Prediction a b c) = show a ++ "-" ++ show b ++ "-" ++ show c-}
