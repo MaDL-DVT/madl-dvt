@@ -37,6 +37,7 @@ import Text.Regex.TDFA ((=~))
 import System.IO (hPutStrLn,hClose)
 import System.IO.Temp (withTempFile)
 import System.Process (callProcess)
+import System.Environment
 
 --import Control.Concurrent (forkIO,killThread)
 import System.Directory (removeFile)
@@ -615,7 +616,7 @@ isAbcEngine NUXMV{} = False
 -- | Options for reachability analysis
 data ReachabilityOptions = ReachabilityOptions {
     keepAigerModel :: Bool, -- ^ Specifies whether the produced aiger model should be removed after reachability analysis
-    keepNuxmvModel :: Bool, -- ^ Specifies whether the produced nuxmv model should be removed after reachability analysis
+    keepNuxmvModel :: Int , -- ^ Specifies the generation mode for the generated nuXmv model.
     reachabilityEngine :: ReachabilityEngine -- ^ Specifies the engine to be used
 }
 
@@ -637,6 +638,7 @@ executeProcess process contents handle = withTempFile "." "script.nu" $ \f h -> 
 -- | Call the given engine. Assumes that the file model.nuxmv contains the nuxmv model
 callEngine :: ReachabilityEngine -> IO ()
 callEngine engine = do
+    path <- getEnv "MWB_PATH_NUXMV"
     let abcContents abcEngine = case abcEngine of
             PDR -> "pdr\nquit"
             BMC     -> "bmc3 -v\nquit"
@@ -655,9 +657,9 @@ callEngine engine = do
 
     let process = case engine of
             ABC{} -> "/usr/local/bin/abc -f"
-            NUXMV{} -> "/usr/local/bin/nuxmv -source"
+            NUXMV{} -> path++"/nuxmv -source"
     let writeAiger = "read_model -i model.nuxmv\nflatten_hierarchy\nencode_variables\nbuild_boolean_model\nwrite_aiger_model -p model -b\nquit\n"
-    when (isAbcEngine engine) $ executeProcess "/usr/local/bin/nuxmv -source" writeAiger ""
+    when (isAbcEngine engine) $ executeProcess (path++"/nuxmv -source") writeAiger ""
     {-# SCC "ExecuteReachability" #-} executeProcess process contents " | tee result.txt 1>&2"
 
 -- | Write the nuxmv model to the file model.nuxmv
@@ -672,7 +674,7 @@ hasDeadlock opts input = do
     {-# SCC "Reachability" #-} callEngine (reachabilityEngine opts)
     output <- readFile "result.txt"
     when (not (keepAigerModel opts) && (isAbcEngine $ reachabilityEngine opts)) $ removeFile "model_invar_0.aig"
-    when (not $ keepNuxmvModel opts) $ removeFile "model.nuxmv"
+    when ((keepNuxmvModel opts) == 0) $ removeFile "model.nuxmv"
     removeFile "result.txt"
     let true = case reachabilityEngine opts of
             ABC{} -> "Property proved"
