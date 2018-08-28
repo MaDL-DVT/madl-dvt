@@ -40,7 +40,7 @@ getAllMergeIDs net = let comps = getComponentIDs net
 typeMap :: ColoredNetwork -> BM.Bimap Color Int
 typeMap net = let cids = getComponentIDs net
                   colors = L.nub $ L.concat $ map (\x -> compColors net x) cids
-              in BM.fromList (L.zip colors [0..(L.length colors)])
+              in BM.fromList (L.zip colors [1..((L.length colors)+1)])
 
 --Takes a network and creates a ComponentID-Int bimap
 compMap :: ColoredNetwork -> BM.Bimap ComponentID Int
@@ -76,7 +76,8 @@ varName net cid r = let cm = compMap net
                     in case (getComponent net cid) of
                           (Source _ _) -> "src" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_" ++ r
                           (Sink _) -> "snk" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_" ++ r
-                          _ -> error "irdyName: unexpected component type"
+                          (Merge _) -> "mrg" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int))
+                          _ -> error "varName: unexpected component type"
 
 --Takes a network, a ComponentID, a channel type (irdy, trdy, or data) and makes a variable declaration
 varDecl :: ColoredNetwork -> ComponentID -> ChanType -> String
@@ -86,6 +87,17 @@ varDecl net cid t = let c = compType net cid
                           Irdy -> "\t" ++ varName net cid "irdy" ++ " : boolean;"
                           Trdy -> "\t" ++ varName net cid "trdy" ++ " : boolean;"
                           Data -> "\t" ++ varName net cid "data" ++ " : {" ++ c' ++ "};"
+
+mVarName :: ColoredNetwork -> ComponentID -> String
+mVarName net cid = let cm = compMap net
+                   in case (getComponent net cid) of
+                        (Merge _) -> "mrg" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int))
+                        _ -> error "mVarName: unexpected component type"
+
+mVarDecl :: ColoredNetwork -> ComponentID -> String
+mVarDecl net cid = let c = compType net cid
+                       c' = foldr (\a b -> case b of "" -> noslashes (show a); _ -> noslashes (show a) ++ "," ++ noslashes (show b)) "" (map (\(_,x) -> x) c)
+                   in "\t" ++ mVarName net cid ++ " : boolean;"
 
 --Takes a network, a ComponentID and returns the state name for the given component
 stateName :: ColoredNetwork -> ComponentID -> String
@@ -99,7 +111,7 @@ stateName net cid = let cm = compMap net
 --Takes a network, a ComponentID and returns the state declaration for the given component
 stateDecl :: ColoredNetwork -> ComponentID -> String
 stateDecl net cid = let c = compType net cid
-                        c' = foldr (\a b -> case b of "" -> noslashes (show a); _ -> noslashes (show a) ++ "," ++ noslashes (show b)) "" (map (\(_,x) -> x) c)
+                        c' = "0," ++ (foldr (\a b -> case b of "" -> noslashes (show a); _ -> noslashes (show a) ++ "," ++ noslashes (show b)) "" (map (\(_,x) -> x) c))
                     in case (getComponent net cid) of
                           (Source _ _) -> "\t" ++ stateName net cid ++ " : {" ++ c' ++ "};"
                           (Queue _ n) -> "\t" ++ stateName net cid ++ " : array 0.." ++ noslashes (show (n-1)) ++ " of : {" ++ c' ++ "};"
@@ -140,8 +152,12 @@ makeVAR net = let srcs = getAllSourceIDs net
                   snks = getAllSinkIDs net
                   qs = getAllQueueIDs net
               in "VAR\n" ++
-                 foldr (\a b -> a ++ "\n" ++ b) "" ((map (\x -> varDecl net x Trdy) srcs) ++
+                 foldr (\a b -> a ++ "\n" ++ b) "" ((map (\x -> varDecl net x Irdy) srcs) ++
+                                                    (map (\x -> varDecl net x Trdy) srcs) ++
+                                                    (map (\x -> varDecl net x Data) srcs) ++
                                                     (map (\x -> varDecl net x Irdy) snks) ++
+                                                    (map (\x -> varDecl net x Trdy) snks) ++
+                                                    (map (\x -> varDecl net x Data) snks) ++
                                                     (map (\x -> stateDecl net x) srcs) ++
                                                     (map (\x -> stateDecl net x) qs) ++
                                                     (map (\x -> qInd net x) qs))
@@ -155,6 +171,11 @@ makeINIT net = let srcs = getAllSourceIDs net
                                                      (map (\x -> foldr (\a b -> a ++ "\n" ++ b) "" (map (\y -> "\tinit(" ++ stateName net x ++ "[" ++ noslashes (show y) ++ "]) := 0;") [0..((getQueueSize net x)-1)])) qs)
                                                       )
 
+makeSMV :: ColoredNetwork -> String
+makeSMV net = "MODULE main\n" ++
+              makeVAR net ++ "\n" ++
+              "ASSIGN\n" ++
+              makeINIT net
 
 ----------Later, I should move it to a separate file--------------
 --Data structure for source states
@@ -179,21 +200,21 @@ data DArgs =    DArg DExpr
 data BExpr =    B Bool
               | Y String
               | AssignB BExpr
-              | Not BExpr
+              | Negation BExpr
               | NotEmpty V
               | NotFull V
-              | GetLast V
-              | And BExpr BExpr
-              | Or BExpr BExpr deriving Show
+              | Conj BExpr BExpr
+              | Disj BExpr BExpr
+              | Equals DExpr DExpr deriving Show
 data DExpr =    D Int
               | X String
+              | GetLast V
               | AssignD DExpr
-              | Eq DExpr DExpr
               | If BExpr DExpr DExpr deriving Show
 data V = V String deriving Show
 
 --join, fork, function, merge, queue, sink, source, switch
-data T = Join_t | Fork_t | Function_t | Merge_t | Queue_t | Sink_t | Source_t | Switch_t
+data T = Join_t | Fork_t | Function_t | Merge_t | Queue_t | Sink_t | Source_t | Switch_t deriving Eq
 
 data MaDL = MaDL { x :: [ComponentID],
                    g :: [ChannelID],
@@ -206,7 +227,8 @@ data MaDL = MaDL { x :: [ComponentID],
                    target :: ChannelID -> ComponentID,
                    isFirst :: ChannelID -> Bool,
                    t :: ComponentID -> T,
-                   name :: ComponentID -> String,
+                   intName :: ComponentID -> String -> String,
+                   stName :: ComponentID -> String,
                    def :: Int } deriving Show
 
 getX :: ColoredNetwork -> [ComponentID]
@@ -258,7 +280,7 @@ getIsFirst net cid = case (getComponent net (getTarget net cid)) of
                         (Merge _) -> let ins = getInChannels net (getTarget net cid)
                                      in cid == L.head ins
                         _ -> error "getIsFirst: unexpected component type"
---Join_t | Fork_t | Function_t | Merge_t | Queue_t | Sink_t | Source_t | Switch_t
+
 getT :: ColoredNetwork -> ComponentID -> T
 getT net cid = case (getComponent net cid) of
                   (ControlJoin _) -> Join_t
@@ -283,7 +305,8 @@ getMaDL net = MaDL { x = getX net,
                      target = getTarget net,
                      isFirst = getIsFirst net,
                      t = getT net,
-                     name = stateName net,
+                     intName = varName net,
+                     stName = stateName net,
                      def = defaultColor
                     }
 
@@ -311,8 +334,11 @@ instance Show (ComponentID -> T) where
 instance Show (ComponentID -> String) where
   show _ = "stub8"
 
+instance Show (ComponentID -> String -> String) where
+  show _ = "stub9"
+
 mkExpr :: MaDL -> Expr
-mkExpr madl = S_Upd (mkArgs madl (x madl))
+mkExpr madl = S_Upd (mkArgs madl (filter (\y -> ((t madl) y == Source_t) || ((t madl) y == Queue_t) || (((t madl) y == Merge_t))) (x madl)))
 
 mkArgs :: MaDL -> [ComponentID] -> Args
 mkArgs madl xs
@@ -320,22 +346,73 @@ mkArgs madl xs
   | otherwise = Arg (mkArg madl (L.head xs))
 
 mkArg :: MaDL -> ComponentID -> Arg
-mkArg madl x = case ((t (madl)) x) of
-                  Source_t -> Src_Upd (BDArgs (BArg (B True)) (DArg (D 0)) (V $ (name madl) x))
-                  Queue_t -> Q_Upd (BDArgs (BArg (B True)) (DArg (D 0)) (V "123"))
-                  Merge_t -> Mrg_Upd (BDArgs (BArg (B True)) (DArg (D 0)) (V "123"))
+mkArg madl x = case ((t madl) x) of
+                  Source_t -> Src_Upd (mkSrcArgs madl x)
+                  Queue_t -> Q_Upd (mkQArgs madl x)
+                  Merge_t -> Mrg_Upd (mkMrgArgs madl x)
                   _ -> error "mkArg: unexpected component type"
 
 mkSrcArgs :: MaDL -> ComponentID -> BDArgs
-mkSrcArgs madl x = BDArgs (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))) (DArg (mkDexprO madl x (L.head ((outp madl) x)))) (V $ (name madl) x)
+mkSrcArgs madl x = BDArgs (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))) (DArg (mkDexprO madl x (L.head ((outp madl) x)))) (V $ (stName madl) x)
+
+mkQArgs :: MaDL -> ComponentID -> BDArgs
+mkQArgs madl x = BDArgs (BArgs (mkBexprIIrdy madl x (L.head ((inp madl) x))) (BArgs (mkBexprITrdy madl x (L.head ((inp madl) x))) (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))))) (DArgs (mkDexprI madl x (L.head ((inp madl) x))) (DArg (mkDexprI madl x (L.head ((outp madl) x))))) (V $ (stName madl) x)
+
+mkMrgArgs :: MaDL -> ComponentID -> BDArgs
+mkMrgArgs madl x = BDArgs (BArgs (mkBexprIIrdy madl x (((inp madl) x) !! 1)) (BArgs (mkBexprITrdy madl x (((inp madl) x) !! 1)) (BArgs (mkBexprIIrdy madl x (((inp madl) x) !! 2)) (BArgs (mkBexprITrdy madl x (((inp madl) x) !! 2)) (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))))))) (DArg (D 0)) (V $ (stName madl) x)
+
+mkBexprIIrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
+mkBexprIIrdy madl cid chan = case ((t madl) cid) of
+                                Source_t -> error "mkBexprIIrdy: unexpected component type"
+                                _ -> mkBexprOIrdy madl ((initiator madl) chan) chan
 
 mkBexprOIrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
-mkBexprOIrdy _ _ _ = B True
+mkBexprOIrdy madl cid chan = case ((t madl) cid) of
+                                Join_t -> Conj (mkBexprIIrdy madl cid (((inp madl) cid) !! 1)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 2))
+                                Fork_t -> Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head $ filter (\x -> x /= chan) ((outp madl) cid)))
+                                Function_t -> mkBexprIIrdy madl cid (L.head ((inp madl) cid))
+                                Merge_t -> Disj (mkBexprIIrdy madl cid (((inp madl) cid) !! 1)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 2))
+                                Queue_t -> NotEmpty (V $ (stName madl) cid)
+                                Sink_t -> error "mkBexprOIrdy: unexpected component type"
+                                Source_t -> Y ((intName madl) cid "irdy")
+                                Switch_t -> if (chan /= (((outp madl) cid) !! 2))
+                                            then Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (mkPred madl cid ((c_g madl) chan))
+                                            else Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (Negation (mkPred madl cid ((c_g madl) chan)))
+
+mkBexprITrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
+mkBexprITrdy madl cid chan = case ((t madl) cid) of
+                                Fork_t -> Conj (mkBexprOTrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1))
+                                Function_t -> mkBexprOTrdy madl cid (((outp madl) cid) !! 1)
+                                Join_t -> Conj (mkBexprIIrdy madl cid (L.head $ filter (\x -> x /= chan) ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))
+                                Merge_t -> if (chan /= (((inp madl) cid) !! 2))
+                                           then Conj (Conj (Y ((intName madl) cid "")) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 2))
+                                           else Conj (Conj (Negation (Y ((intName madl) cid ""))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 1))
+                                Queue_t -> NotFull (V $ (stName madl) cid)
+                                Sink_t -> Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
+                                Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1))) (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 2)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 2)))
 
 mkBexprOTrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
-mkBexprOTrdy _ _ _ = B True
+mkBexprOTrdy madl cid chan = case ((t madl) cid) of
+                                Sink_t -> error "mkBexprOTrdy: unexpected component type"
+                                _ -> mkBexprITrdy madl ((target madl) chan) chan
+
+mkDexprI :: MaDL -> ComponentID -> ChannelID -> DExpr
+mkDexprI madl cid chan = case ((t madl) cid) of
+                            Source_t -> X ((intName madl) cid "irdy")
+                            _ -> mkDexprO madl ((initiator madl) chan) chan
 
 mkDexprO :: MaDL -> ComponentID -> ChannelID -> DExpr
-mkDexprO _ _ _ = D 0
+mkDexprO madl cid chan = case ((t madl) cid) of
+                            Sink_t -> error "mkDexprO: unexpected component type"
+                            Queue_t -> GetLast (V $ (stName madl) cid)
+                            Function_t -> mkFun madl cid ((c_g madl) chan)
+                            _ -> mkDexprI madl cid (L.head ((inp madl) cid))
+
+mkPred :: MaDL -> ComponentID -> [Int] -> BExpr
+mkPred _ _ _ = B True
+
+mkFun :: MaDL -> ComponentID -> [Int] -> DExpr
+mkFun _ _ _ = D 0
+
 {-instance Show Prediction where
   show (Prediction a b c) = show a ++ "-" ++ show b ++ "-" ++ show c-}
