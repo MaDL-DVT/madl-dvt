@@ -199,7 +199,7 @@ data DArgs =    DArg DExpr
               | DArgs DExpr DArgs deriving Show
 data BExpr =    B Bool
               | Y String
-              | AssignB BExpr
+--              | AssignB BExpr
               | Negation BExpr
               | NotEmpty V
               | NotFull V
@@ -209,7 +209,7 @@ data BExpr =    B Bool
 data DExpr =    D Int
               | X String
               | GetLast V
-              | AssignD DExpr
+--              | AssignD DExpr
               | If BExpr DExpr DExpr deriving Show
 data V = V String deriving Show
 
@@ -359,7 +359,7 @@ mkQArgs :: MaDL -> ComponentID -> BDArgs
 mkQArgs madl x = BDArgs (BArgs (mkBexprIIrdy madl x (L.head ((inp madl) x))) (BArgs (mkBexprITrdy madl x (L.head ((inp madl) x))) (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))))) (DArgs (mkDexprI madl x (L.head ((inp madl) x))) (DArg (mkDexprI madl x (L.head ((outp madl) x))))) (V $ (stName madl) x)
 
 mkMrgArgs :: MaDL -> ComponentID -> BDArgs
-mkMrgArgs madl x = BDArgs (BArgs (mkBexprIIrdy madl x (((inp madl) x) !! 1)) (BArgs (mkBexprITrdy madl x (((inp madl) x) !! 1)) (BArgs (mkBexprIIrdy madl x (((inp madl) x) !! 2)) (BArgs (mkBexprITrdy madl x (((inp madl) x) !! 2)) (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))))))) (DArg (D 0)) (V $ (stName madl) x)
+mkMrgArgs madl x = BDArgs (BArgs (mkBexprIIrdy madl x (((inp madl) x) !! 0)) (BArgs (mkBexprITrdy madl x (((inp madl) x) !! 0)) (BArgs (mkBexprIIrdy madl x (((inp madl) x) !! 1)) (BArgs (mkBexprITrdy madl x (((inp madl) x) !! 1)) (BArgs (mkBexprOIrdy madl x (L.head ((outp madl) x))) (BArg (mkBexprOTrdy madl x (L.head ((outp madl) x))))))))) (DArg (D 0)) (V $ (stName madl) x)
 
 mkBexprIIrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprIIrdy madl cid chan = case ((t madl) cid) of
@@ -368,28 +368,28 @@ mkBexprIIrdy madl cid chan = case ((t madl) cid) of
 
 mkBexprOIrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprOIrdy madl cid chan = case ((t madl) cid) of
-                                Join_t -> Conj (mkBexprIIrdy madl cid (((inp madl) cid) !! 1)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 2))
+                                Join_t -> Conj (mkBexprIIrdy madl cid (((inp madl) cid) !! 0)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
                                 Fork_t -> Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head $ filter (\x -> x /= chan) ((outp madl) cid)))
                                 Function_t -> mkBexprIIrdy madl cid (L.head ((inp madl) cid))
-                                Merge_t -> Disj (mkBexprIIrdy madl cid (((inp madl) cid) !! 1)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 2))
+                                Merge_t -> Disj (mkBexprIIrdy madl cid (((inp madl) cid) !! 0)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
                                 Queue_t -> NotEmpty (V $ (stName madl) cid)
                                 Sink_t -> error "mkBexprOIrdy: unexpected component type"
                                 Source_t -> Y ((intName madl) cid "irdy")
-                                Switch_t -> if (chan /= (((outp madl) cid) !! 2))
+                                Switch_t -> if (chan /= (((outp madl) cid) !! 1))
                                             then Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (mkPred madl cid ((c_g madl) chan))
                                             else Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (Negation (mkPred madl cid ((c_g madl) chan)))
 
 mkBexprITrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprITrdy madl cid chan = case ((t madl) cid) of
-                                Fork_t -> Conj (mkBexprOTrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1))
-                                Function_t -> mkBexprOTrdy madl cid (((outp madl) cid) !! 1)
+                                Fork_t -> Conj (mkBexprOTrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 0))
+                                Function_t -> mkBexprOTrdy madl cid (((outp madl) cid) !! 0)
                                 Join_t -> Conj (mkBexprIIrdy madl cid (L.head $ filter (\x -> x /= chan) ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))
-                                Merge_t -> if (chan /= (((inp madl) cid) !! 2))
-                                           then Conj (Conj (Y ((intName madl) cid "")) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 2))
-                                           else Conj (Conj (Negation (Y ((intName madl) cid ""))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 1))
+                                Merge_t -> if (chan /= (((inp madl) cid) !! 1))
+                                           then Conj (Conj (Y ((intName madl) cid "")) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 1))
+                                           else Conj (Conj (Negation (Y ((intName madl) cid ""))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 0))
                                 Queue_t -> NotFull (V $ (stName madl) cid)
                                 Sink_t -> Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
-                                Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1))) (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 2)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 2)))
+                                Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1)))
 
 mkBexprOTrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprOTrdy madl cid chan = case ((t madl) cid) of
@@ -425,6 +425,18 @@ mkFun madl cid cols
                             (D ((fun madl) cid (L.head $ L.tail cols)))
   | L.length cols == 1 = (D ((fun madl) cid (L.head cols)))
   | otherwise = error "mkFun: list of colors can not be empty"
+
+getCompName :: Arg -> String
+getCompName (S _) = ""
+getCompName (Src_Upd (BDArgs _ _ (V s))) = s
+
+getType :: String -> T
+getType ('s':_) = Source_t
+getType ('q':_) = Queue_t
+getType ('m':_) = Merge_t
+getType _ = error "getType: unexpected input"
+
+--bards,datgs to smv
 
 {-instance Show Prediction where
   show (Prediction a b c) = show a ++ "-" ++ show b ++ "-" ++ show c-}
