@@ -408,11 +408,23 @@ mkDexprO madl cid chan = case ((t madl) cid) of
                             Function_t -> mkFun madl cid ((c_g madl) chan)
                             _ -> mkDexprI madl cid (L.head ((inp madl) cid))
 
+--prd :: ComponentID -> Int -> Bool
 mkPred :: MaDL -> ComponentID -> [Int] -> BExpr
-mkPred _ _ _ = B True
+mkPred madl cid [] = error "mkPred: list of colors can not be empty"
+mkPred madl cid (x:[]) = Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)
+mkPred madl cid (x:xs) = Disj (Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)) (mkPred madl cid xs)
 
+--fun :: ComponentID -> Int -> Int
 mkFun :: MaDL -> ComponentID -> [Int] -> DExpr
-mkFun _ _ _ = D 0
+mkFun madl cid cols
+  | L.length cols > 2 = If (Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D $ L.head cols))
+                           (D ((fun madl) cid (L.head cols)))
+                           (mkFun madl cid (L.tail cols))
+  | L.length cols == 2 = If (Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D $ L.head cols))
+                            (D ((fun madl) cid (L.head cols)))
+                            (D ((fun madl) cid (L.head $ L.tail cols)))
+  | L.length cols == 1 = (D ((fun madl) cid (L.head cols)))
+  | otherwise = error "mkFun: list of colors can not be empty"
 
 {-instance Show Prediction where
   show (Prediction a b c) = show a ++ "-" ++ show b ++ "-" ++ show c-}
