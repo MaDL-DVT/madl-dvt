@@ -427,8 +427,18 @@ mkFun madl cid cols
   | otherwise = error "mkFun: list of colors can not be empty"
 
 getCompName :: Arg -> String
-getCompName (S _) = ""
 getCompName (Src_Upd (BDArgs _ _ (V s))) = s
+getCompName (Q_Upd (BDArgs _ _ (V s))) = s
+getCompName (Mrg_Upd (BDArgs _ _ (V s))) = s
+getCompName _ = ""
+
+getAllNames :: Expr -> [String]
+getAllNames (S_Upd (Arg arg)) = if (getCompName arg /= "")
+                              then [(getCompName arg)]
+                              else []
+getAllNames (S_Upd (Args arg args)) = if (getCompName arg /= "")
+                                      then ((getCompName arg):(getAllNames (S_Upd args)))
+                                      else (getAllNames (S_Upd args))
 
 getType :: String -> T
 getType ('s':_) = Source_t
