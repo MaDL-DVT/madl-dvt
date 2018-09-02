@@ -533,7 +533,7 @@ makeQCell madl sname cell = let expr = mkExpr madl
                             in case cell of
                                   0 -> "\tnext(" ++ sname ++ "[0]) := case\n" ++
                                        "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
-                                       "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (q" ++ show (getID sname) ++ "_ind" ++ " = 1) : " ++ sname ++ "[0] := 0;\n" ++
+                                       "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (q" ++ show (getID sname) ++ "_ind" ++ " = 1) : 0;\n" ++
                                        "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
                                        "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++
                                        "\t\t\tesac;\n"
