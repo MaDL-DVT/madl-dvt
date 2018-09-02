@@ -17,4 +17,5 @@ main = do
     Right net -> return net
   --putStrLn $ makeSMV network
   --putStrLn $ show $ getMaDL network
-  putStrLn $ show $ mkExpr $ getMaDL network
+  --putStrLn $ show $ mkExpr $ getMaDL network
+  putStrLn $ makeSMV network
