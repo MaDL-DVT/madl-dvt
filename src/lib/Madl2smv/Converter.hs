@@ -115,7 +115,8 @@ stateDecl net cid = let c = compType net cid
                         c' = "0," ++ (foldr (\a b -> case b of "" -> noslashes (show a); _ -> noslashes (show a) ++ "," ++ noslashes (show b)) "" (map (\(_,x) -> x) c))
                     in case (getComponent net cid) of
                           (Source _ _) -> "\t" ++ stateName net cid ++ " : {" ++ c' ++ "};"
-                          (Queue _ n) -> "\t" ++ stateName net cid ++ " : array 0.." ++ noslashes (show (n-1)) ++ " of : {" ++ c' ++ "};"
+                          (Queue _ n) -> "\t" ++ stateName net cid ++ " : array 0.." ++ noslashes (show (n-1)) ++ " of {" ++ c' ++ "};"
+                          (Merge _) -> "\t" ++ stateName net cid ++ " : {0,1,2};"
 
 --Takes a network, a ComponentID (has to be a queue) and returns a qInd variable name
 qIndName :: ColoredNetwork -> ComponentID -> String
@@ -163,6 +164,7 @@ makeVAR net = let srcs = getAllSourceIDs net
                                                     (map (\x -> mVarDecl net x) mrgs) ++
                                                     (map (\x -> stateDecl net x) srcs) ++
                                                     (map (\x -> stateDecl net x) qs) ++
+                                                    (map (\x -> stateDecl net x) mrgs) ++
                                                     (map (\x -> qInd net x) qs))
 
 --Takes a network and makes an INIT block
@@ -486,7 +488,7 @@ makeSrcNEXT madl sname = let expr = mkExpr madl
                              odata = printDExpr madl $ getSrcOData arg
                          in "\tnext(" ++ sname ++ ") := case\n" ++
                             "\t\t\t\t((" ++ sname ++ " = 0) & ((" ++ oirdy ++ " & " ++ otrdy ++ ") | !" ++ oirdy ++ ")) | ((" ++ sname ++ " = " ++ odata ++ ") & " ++ oirdy ++ " & " ++ otrdy ++ ") : 0;\n" ++
-                            "\t\t\t\t((" ++ sname ++ " = 0 | (" ++ sname ++ " = " ++ odata ++ ")) & " ++ oirdy ++ " & !" ++ otrdy ++ " : " ++ odata ++ ";\n"  ++
+                            "\t\t\t\t(" ++ sname ++ " = 0 | (" ++ sname ++ " = " ++ odata ++ ")) & " ++ oirdy ++ " & !" ++ otrdy ++ " : " ++ odata ++ ";\n"  ++
                             "\t\t\t\tTRUE : " ++ sname ++ ";\n" ++
                             "\t\t\tesac;"
 
@@ -535,13 +537,13 @@ makeQCell madl sname cell = let expr = mkExpr madl
                                        "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
                                        "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (q" ++ show (getID sname) ++ "_ind" ++ " = 1) : 0;\n" ++
                                        "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
-                                       "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++
+                                       "\t\t\t\tTRUE: " ++ sname ++ "[0];\n" ++
                                        "\t\t\tesac;\n"
                                   _ -> "\tnext(" ++ sname ++ "[" ++ show cell ++ "]) := case\n" ++
                                        "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ sname ++ "[" ++ show (cell - 1) ++ "]" ++ ";\n" ++
-                                       "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (" ++ show cell ++ " = " ++ show (((qSize madl) sname) - 1) ++ ") : " ++ sname ++ "[" ++ show cell ++"] := 0;\n" ++
+                                       "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (" ++ show cell ++ " = " ++ show (((qSize madl) sname) - 1) ++ ") : 0;\n" ++
                                        "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : (" ++ show cell ++ " <= q" ++ show (getID sname) ++ "_ind - 1)? " ++ sname ++ "[" ++ show (cell - 1) ++ "] : " ++ sname ++ "[" ++ show cell ++ "]" ++ ";\n" ++
-                                       "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++
+                                       "\t\t\t\tTRUE: " ++ sname ++ "[" ++ show cell ++ "];\n" ++
                                        "\t\t\tesac;\n"
 
 makeMrgNEXT :: MaDL -> String -> String
@@ -556,7 +558,7 @@ makeMrgNEXT madl sname = let expr = mkExpr madl
                              mname = "mrg" ++ show (getID sname) ++ "_sel"
                          in "\tnext(" ++ sname ++ ") := case\n" ++
                             --((state = 0) | (state = sel)) & ((i0i & i0t & !sel) | (i1i & i1t & sel)) -> 0
-                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (" ++ i0irdy ++ " & " ++ i0trdy ++ " & !" ++ mname ++ ") | (" ++ i1irdy ++ " & " ++ i1trdy ++ " & " ++ mname ++ ")) : 0;\n" ++
+                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & ((" ++ i0irdy ++ " & " ++ i0trdy ++ " & !" ++ mname ++ ") | (" ++ i1irdy ++ " & " ++ i1trdy ++ " & " ++ mname ++ ")) : 0;\n" ++
                             --((state = 0) | (state = sel)) & (!(i0i & i01) & !sel) -> 1
                             "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & !" ++ mname ++ ") : 1;\n" ++
                             --((state = 0) | (state = sel)) & (!(i0i & i01) & sel) -> 2
