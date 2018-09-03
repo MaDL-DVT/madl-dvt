@@ -98,7 +98,7 @@ mVarName net cid = let cm = compMap net
 mVarDecl :: ColoredNetwork -> ComponentID -> String
 mVarDecl net cid = let c = compType net cid
                        c' = foldr (\a b -> case b of "" -> noslashes (show a); _ -> noslashes (show a) ++ "," ++ noslashes (show b)) "" (map (\(_,x) -> x) c)
-                   in "\t" ++ mVarName net cid ++ " : {0,1,2};"
+                   in "\t" ++ mVarName net cid ++ " : {1,2};"
 
 --Takes a network, a ComponentID and returns the state name for the given component
 stateName :: ColoredNetwork -> ComponentID -> String
@@ -402,8 +402,8 @@ mkBexprITrdy madl cid chan = case ((t madl) cid) of
                                 Function_t -> mkBexprOTrdy madl cid (((outp madl) cid) !! 0)
                                 Join_t -> Conj (mkBexprIIrdy madl cid (L.head $ filter (\x -> x /= chan) ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))
                                 Merge_t -> if (chan /= (((inp madl) cid) !! 1))
-                                           then Conj (Conj (Y ((intName madl) cid "")) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
-                                           else Conj (Conj (Negation (Y ((intName madl) cid ""))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 0))
+                                           then Conj (Conj (Equals (X ((intName madl) cid "")) (D 1)) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
+                                           else Conj (Conj (Equals (X ((intName madl) cid "")) (D 2)) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 0))
                                 Queue_t -> NotFull (V $ (stName madl) cid)
                                 Sink_t -> Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
                                 Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((inp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((inp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((inp madl) cid) !! 1)))
@@ -558,11 +558,12 @@ makeMrgNEXT madl sname = let expr = mkExpr madl
                              mname = "mrg" ++ show (getID sname) ++ "_sel"
                          in "\tnext(" ++ sname ++ ") := case\n" ++
                             --((state = 0) | (state = sel)) & ((i0i & i0t & !sel) | (i1i & i1t & sel)) -> 0
-                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & ((" ++ i0irdy ++ " & " ++ i0trdy ++ " & !" ++ mname ++ ") | (" ++ i1irdy ++ " & " ++ i1trdy ++ " & " ++ mname ++ ")) : 0;\n" ++
+                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & ((" ++ i0irdy ++ " & " ++ i0trdy ++ " & (" ++ mname ++ " = 1)) | (" ++ i1irdy ++ " & " ++ i1trdy ++ " & (" ++ mname ++ " = 2))) : 0;\n" ++
                             --((state = 0) | (state = sel)) & (!(i0i & i01) & !sel) -> 1
-                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & !" ++ mname ++ ") : 1;\n" ++
+                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & (" ++ mname ++ " = 1)) : 1;\n" ++
                             --((state = 0) | (state = sel)) & (!(i0i & i01) & sel) -> 2
-                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & !" ++ mname ++ ") : 2;\n" ++
+                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & (" ++ mname ++ " = 2)) : 2;\n" ++
+                            "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++ 
                             "\t\t\tesac;\n"
 
 
