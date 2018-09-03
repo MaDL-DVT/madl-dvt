@@ -400,11 +400,11 @@ mkBexprITrdy madl cid chan = case ((t madl) cid) of
                                 Function_t -> mkBexprOTrdy madl cid (((outp madl) cid) !! 0)
                                 Join_t -> Conj (mkBexprIIrdy madl cid (L.head $ filter (\x -> x /= chan) ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))
                                 Merge_t -> if (chan /= (((inp madl) cid) !! 1))
-                                           then Conj (Conj (Y ((intName madl) cid "")) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 1))
-                                           else Conj (Conj (Negation (Y ((intName madl) cid ""))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((outp madl) cid) !! 0))
+                                           then Conj (Conj (Y ((intName madl) cid "")) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
+                                           else Conj (Conj (Negation (Y ((intName madl) cid ""))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 0))
                                 Queue_t -> NotFull (V $ (stName madl) cid)
                                 Sink_t -> Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
-                                Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1)))
+                                Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((inp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((inp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((inp madl) cid) !! 1)))
 
 mkBexprOTrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprOTrdy madl cid chan = case ((t madl) cid) of
