@@ -15,4 +15,7 @@ main = do
   network <- case parsed of
     Left err -> error err
     Right net -> return net
-  putStr $ makeINIT network
+  --putStrLn $ makeSMV network
+  --putStrLn $ show $ getMaDL network
+  --putStrLn $ show $ mkExpr $ getMaDL network
+  putStrLn $ makeSMV network
