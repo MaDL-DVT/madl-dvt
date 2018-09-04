@@ -406,7 +406,7 @@ mkBexprITrdy madl cid chan = case ((t madl) cid) of
                                            else Conj (Conj (Equals (X ((intName madl) cid "")) (D 2)) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 0))
                                 Queue_t -> NotFull (V $ (stName madl) cid)
                                 Sink_t -> Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
-                                Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((inp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((inp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((inp madl) cid) !! 1)))
+                                Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1)))
 
 mkBexprOTrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprOTrdy madl cid chan = case ((t madl) cid) of
@@ -428,7 +428,7 @@ mkDexprO madl cid chan = case ((t madl) cid) of
 
 --prd :: ComponentID -> Int -> Bool
 mkPred :: MaDL -> ComponentID -> [Int] -> BExpr
-mkPred madl cid [] = error "mkPred: list of colors can not be empty"
+mkPred madl cid [] = B False 
 mkPred madl cid (x:[]) = Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)
 mkPred madl cid (x:xs) = Disj (Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)) (mkPred madl cid xs)
 
@@ -563,7 +563,7 @@ makeMrgNEXT madl sname = let expr = mkExpr madl
                             "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & (" ++ mname ++ " = 1)) : 1;\n" ++
                             --((state = 0) | (state = sel)) & (!(i0i & i01) & sel) -> 2
                             "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & (" ++ mname ++ " = 2)) : 2;\n" ++
-                            "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++ 
+                            "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++
                             "\t\t\tesac;\n"
 
 
