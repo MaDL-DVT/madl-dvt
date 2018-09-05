@@ -398,7 +398,7 @@ mkBexprOIrdy madl cid chan = case ((t madl) cid) of
 
 mkBexprITrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprITrdy madl cid chan = case ((t madl) cid) of
-                                Fork_t -> Conj (mkBexprOTrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 0))
+                                Fork_t -> Conj (mkBexprOTrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1))
                                 Function_t -> mkBexprOTrdy madl cid (((outp madl) cid) !! 0)
                                 Join_t -> Conj (mkBexprIIrdy madl cid (L.head $ filter (\x -> x /= chan) ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))
                                 Merge_t -> if (chan /= (((inp madl) cid) !! 1))
@@ -407,6 +407,7 @@ mkBexprITrdy madl cid chan = case ((t madl) cid) of
                                 Queue_t -> NotFull (V $ (stName madl) cid)
                                 Sink_t -> Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
                                 Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1)))
+                                Source_t -> error "mkBexprITrdy: unexpected component type"
 
 mkBexprOTrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprOTrdy madl cid chan = case ((t madl) cid) of
@@ -428,7 +429,7 @@ mkDexprO madl cid chan = case ((t madl) cid) of
 
 --prd :: ComponentID -> Int -> Bool
 mkPred :: MaDL -> ComponentID -> [Int] -> BExpr
-mkPred madl cid [] = B False 
+mkPred madl cid [] = B False
 mkPred madl cid (x:[]) = Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)
 mkPred madl cid (x:xs) = Disj (Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)) (mkPred madl cid xs)
 
