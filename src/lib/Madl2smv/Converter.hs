@@ -443,7 +443,7 @@ mkFun madl cid cols
                             (D ((fun madl) cid (L.head cols)))
                             (D ((fun madl) cid (L.head $ L.tail cols)))
   | L.length cols == 1 = (D ((fun madl) cid (L.head cols)))
-  | otherwise = error "mkFun: list of colors can not be empty"
+  | otherwise = D 0
 
 getCompName :: Arg -> String
 getCompName (Src_Upd (BDArgs _ _ (V s))) = s
