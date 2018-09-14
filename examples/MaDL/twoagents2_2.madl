@@ -8,15 +8,18 @@ const req;
 const rsp;
 
 macro Delay (chan i) => chan o {
-   chan x, y := Fork(i);
-   let o := Vars(x);
+   chan y;
+   let o,y := Fork(i);
    Sink(y);
+   //chan x, y := Fork(i);
+   //let o := Vars(x);
+   //Sink(y);
 };
 
 
 macro CreditCounter(chan i) => chan o {
 	chan q_in;
-	let q_in, o := Fork(PatientSource(token));
+	let q_in, o := Fork(Source(token));
 	Sink(CtrlJoin(Queue(counters, q_in), i));
 };
 
