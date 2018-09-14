@@ -48,6 +48,10 @@ compMap :: ColoredNetwork -> BM.Bimap ComponentID Int
 compMap net = let cids = getComponentIDs net
               in BM.fromList (L.zip cids [0..(L.length cids)])
 
+chanMap :: ColoredNetwork -> BM.Bimap ChannelID Int
+chanMap net = let cids = getChannelIDs net
+              in BM.fromList (L.zip cids [0..(L.length cids)])
+
 --Takes a network, a componentID and returns a set of colors that it can work with. If the component is neither source, nor queue, nor sink, then an empty list is returned.
 compColors :: ColoredNetwork -> ComponentID -> [Color]
 compColors net cid = case (getComponent net cid) of
@@ -78,6 +82,7 @@ varName net cid r = let cm = compMap net
                           (Source _ _) -> "src" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_" ++ r
                           (Sink _) -> "snk" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_" ++ r
                           (Merge _) -> "mrg" ++ noslashes (show ((fromJust $ BM.lookup cid cm)::Int)) ++ "_sel"
+                          --(Queue _ _) -> "queue123"
                           _ -> error "varName: unexpected component type"
 
 --Takes a network, a ComponentID, a channel type (irdy, trdy, or data) and makes a variable declaration
@@ -148,12 +153,17 @@ makeIVAR net = let srcs = getAllSourceIDs net
                   foldr (\a b -> a ++ "\n" ++ b) "" ((map (\x -> varDecl net x Irdy ++ "\n" ++ varDecl net x Data) srcs) ++
                                                      (map (\x -> varDecl net x Trdy ++ "\n" ++ varDecl net x Data) snks))
 
+makeBIVAR :: ColoredNetwork -> ChannelID -> String -> String
+makeBIVAR net cid r = let chMap = chanMap net
+                      in "\t" ++ r ++ (show (chMap BM.! cid)) ++ " : boolean;"
+
 --Takes a network and makes a VAR block
 makeVAR :: ColoredNetwork -> String
 makeVAR net = let srcs = getAllSourceIDs net
                   snks = getAllSinkIDs net
                   qs = getAllQueueIDs net
                   mrgs = getAllMergeIDs net
+                  chans = getChannelIDs net
               in "VAR\n" ++
                  foldr (\a b -> a ++ "\n" ++ b) "" ((map (\x -> varDecl net x Irdy) srcs) ++
                                                     --(map (\x -> varDecl net x Trdy) srcs) ++
@@ -165,12 +175,15 @@ makeVAR net = let srcs = getAllSourceIDs net
                                                     (map (\x -> stateDecl net x) srcs) ++
                                                     (map (\x -> stateDecl net x) qs) ++
                                                     (map (\x -> stateDecl net x) mrgs) ++
-                                                    (map (\x -> qInd net x) qs))
+                                                    (map (\x -> qInd net x) qs) ++
+                                                    (map (\x -> makeBIVAR net x "block") chans) ++
+                                                    (map (\x -> makeBIVAR net x "idle") chans))
 
 --Takes a network and makes an INIT block
 makeINIT :: ColoredNetwork -> String
 makeINIT net = let srcs = getAllSourceIDs net
                    qs = getAllQueueIDs net
+                   mrgs = getAllMergeIDs net
                in foldr (\a b -> a ++ "\n" ++ b) "" ((map (\x -> "\tinit(" ++ stateName net x ++ ") := 0;") srcs) ++
                                                      (map (\x -> "\tinit(" ++ qIndName net x ++ ") := 0;") qs) ++
                                                      (map (\x -> foldr (\a b -> a ++ "\n" ++ b) "" (map (\y -> "\tinit(" ++ stateName net x ++ "[" ++ noslashes (show y) ++ "]) := 0;") [0..((getQueueSize net x)-1)])) qs)
@@ -181,7 +194,9 @@ makeSMV net = "MODULE main\n" ++
               makeVAR net ++ "\n" ++
               "ASSIGN\n" ++
               makeINIT net ++
-              makeNEXT net
+              makeNEXT net ++
+              makeInvar net ++
+              makeInvarSpec net
 
 ----------Later, I should move it to a separate file--------------
 --Data structure for source states
@@ -226,6 +241,7 @@ data MaDL = MaDL { x :: [ComponentID],
                    g :: [ChannelID],
                    c_g :: ChannelID -> [Int],
                    fun :: ComponentID -> Int -> Int,
+                   inv :: ComponentID -> Int -> Int,
                    prd :: ComponentID -> Int -> Bool,
                    inp :: ComponentID -> [ChannelID],
                    outp :: ComponentID -> [ChannelID],
@@ -236,6 +252,8 @@ data MaDL = MaDL { x :: [ComponentID],
                    qSize :: String -> Int,
                    intName :: ComponentID -> String -> String,
                    stName :: ComponentID -> String,
+                   cMap :: BM.Bimap ComponentID Int,
+                   chMap :: BM.Bimap ChannelID Int,
                    def :: Int } deriving Show
 
 getX :: ColoredNetwork -> [ComponentID]
@@ -258,6 +276,19 @@ getFun net cid x = let tm = typeMap net
                                                 xout' = tm BM.! xout
                                             in xout'
                         _ -> error "getFun: unexpected component type"
+
+getInverse :: ColoredNetwork -> ComponentID -> Int -> Int
+getInverse net cid x = let tm = typeMap net
+                           o = L.head $ getOutChannels net cid
+                           (ColorSet cols) = getColorSet net o
+                           cols' = S.toList cols
+                       in case (getComponent net cid) of
+                            (Function _ f _) -> let dom = map (\z -> tm BM.! (eval (makeVArguments [z]) f)) cols'
+                                                    xout = filter (\z -> z == x) dom
+                                                in if (xout /= [])
+                                                   then L.head xout
+                                                   else error "getInverse: unable to compute the inverse"
+                            _ -> error "getInverse: unexpected component type"
 
 getPrd :: ColoredNetwork -> ComponentID -> Int -> Bool
 getPrd net cid x = let tm = typeMap net
@@ -311,6 +342,7 @@ getMaDL net = MaDL { x = getX net,
                      g = getG net,
                      c_g = getCg net,
                      fun = getFun net,
+                     inv = getInverse net,
                      prd = getPrd net,
                      inp = getInp net,
                      outp = getOutp net,
@@ -321,8 +353,20 @@ getMaDL net = MaDL { x = getX net,
                      qSize = getQSize net,
                      intName = varName net,
                      stName = stateName net,
+                     cMap = compMap net,
+                     chMap = chanMap net,
                      def = defaultColor
                     }
+
+instance Show T where
+  show Join_t = "Join"
+  show Fork_t = "Fork"
+  show Function_t = "Function"
+  show Merge_t = "Merge"
+  show Queue_t = "Queue"
+  show Sink_t = "Sink"
+  show Source_t = "Source"
+  show Switch_t = "Switch"
 
 instance Show (ChannelID -> [Int]) where
   show _ = "stub1"
@@ -353,6 +397,7 @@ instance Show (ComponentID -> String -> String) where
 
 instance Show (String -> Int) where
   show _ = "stub10"
+
 
 mkExpr :: MaDL -> Expr
 mkExpr madl = S_Upd (mkArgs madl (filter (\y -> ((t madl) y == Source_t) || ((t madl) y == Queue_t) || (((t madl) y == Merge_t))) (x madl)))
@@ -394,7 +439,7 @@ mkBexprOIrdy madl cid chan = case ((t madl) cid) of
                                 Source_t -> Y ((intName madl) cid "irdy")
                                 Switch_t -> if (chan /= (((outp madl) cid) !! 1))
                                             then Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (mkPred madl cid ((c_g madl) chan))
-                                            else Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (Negation (mkPred madl cid ((c_g madl) chan)))
+                                            else Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (mkPred madl cid ((c_g madl) chan))
 
 mkBexprITrdy :: MaDL -> ComponentID -> ChannelID -> BExpr
 mkBexprITrdy madl cid chan = case ((t madl) cid) of
@@ -427,11 +472,22 @@ mkDexprO madl cid chan = case ((t madl) cid) of
                             Function_t -> mkFun madl cid ((c_g madl) chan)
                             _ -> mkDexprI madl cid (L.head ((inp madl) cid))
 
+
 --prd :: ComponentID -> Int -> Bool
 mkPred :: MaDL -> ComponentID -> [Int] -> BExpr
 mkPred madl cid [] = B False
 mkPred madl cid (x:[]) = Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)
 mkPred madl cid (x:xs) = Disj (Equals (mkDexprI madl cid (L.head ((inp madl) cid))) (D x)) (mkPred madl cid xs)
+
+mkPred' :: MaDL -> ComponentID -> DExpr -> [Int] -> BExpr
+mkPred' madl cid expr [] = B False
+mkPred' madl cid expr (x:[]) = Equals expr (D x)
+mkPred' madl cid expr (x:xs) = Disj (Equals expr (D x)) (mkPred' madl cid expr xs)
+
+mkSrcIdle :: DExpr -> [Int] -> BExpr
+mkSrcIdle expr [] = B True
+mkSrcIdle expr (x:[]) = Negation (Equals expr (D x))
+mkSrcIdle expr (x:xs) = Disj (Negation (Equals expr (D x))) (mkSrcIdle expr xs)
 
 --fun :: ComponentID -> Int -> Int
 mkFun :: MaDL -> ComponentID -> [Int] -> DExpr
@@ -443,6 +499,28 @@ mkFun madl cid cols
                             (D ((fun madl) cid (L.head cols)))
                             (D ((fun madl) cid (L.head $ L.tail cols)))
   | L.length cols == 1 = (D ((fun madl) cid (L.head cols)))
+  | otherwise = D 0
+
+mkFun' :: MaDL -> ComponentID -> DExpr -> [Int] -> DExpr
+mkFun' madl cid expr cols
+  | L.length cols > 2 = If (Equals expr (D $ L.head cols))
+                           (D ((fun madl) cid (L.head cols)))
+                           (mkFun' madl cid expr (L.tail cols))
+  | L.length cols == 2 = If (Equals expr (D $ L.head cols))
+                            (D ((fun madl) cid (L.head cols)))
+                            (D ((fun madl) cid (L.head $ L.tail cols)))
+  | L.length cols == 1 = (D ((fun madl) cid (L.head cols)))
+  | otherwise = D 0
+
+mkInverse :: MaDL -> ComponentID -> DExpr -> [Int] -> DExpr
+mkInverse madl cid expr cols
+  | L.length cols > 2 = If (Equals expr (D $ L.head cols))
+                           (D ((inv madl) cid (L.head cols)))
+                           (mkInverse madl cid expr (L.tail cols))
+  | L.length cols == 2 = If (Equals expr (D $ L.head cols))
+                            (D ((inv madl) cid (L.head cols)))
+                            (D ((inv madl) cid (L.head $ L.tail cols)))
+  | L.length cols == 1 = (D ((inv madl) cid (L.head cols)))
   | otherwise = D 0
 
 getCompName :: Arg -> String
@@ -566,7 +644,172 @@ makeMrgNEXT madl sname = let expr = mkExpr madl
                             "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & (" ++ mname ++ " = 2)) : 2;\n" ++
                             "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++
                             "\t\t\tesac;\n"
+{-
+mkBlock :: MaDL -> ChannelID -> DExpr -> BExpr
+mkBlock madl cid expr = let targ = (target madl) cid
+                            comptype = (t madl) targ
+                            ind = (cMap madl) BM.! targ
+                        in case comptype of
+                              Fork_t -> Disj (mkBlock madl (((outp madl) targ) !! 0) expr) (mkBlock madl (((outp madl) targ) !! 1) expr)
+                              Function_t -> mkBlock madl (((outp madl) targ) !! 0) (mkFun' madl targ expr ((c_g madl) cid))
+                              Join_t -> if (cid /= (((inp madl) targ) !! 0))
+                                        then Disj (mkIdle madl (((inp madl) targ) !! 1) expr) (mkBlock madl (((outp madl) targ) !! 0) expr)
+                                        else Disj (mkIdle madl (((inp madl) targ) !! 0) expr) (Conj (mkBexprIIrdy madl targ (((inp madl) targ) !! 0)) (mkBlock madl (((outp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! 0))))
+                              Merge_t -> let j = if (cid == (L.head ((inp madl) targ)))
+                                                 then 1
+                                                 else 2
+                                         in Disj
+                                            (Conj (Equals (X ("mrg" ++ show ind ++ "_sel")) (D j)) (mkBlock madl (((outp madl) targ) !! 0) expr))
+                                            (Conj (Negation (Equals (X ("mrg" ++ show ind ++ "_sel")) (D j))) (Conj (mkBexprIIrdy madl targ (((inp madl) targ) !! 1)) (mkBlock madl (((inp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! (j-1))))))
+                              Queue_t -> Conj (mkBlock madl (((outp madl) targ) !! 0) (X ("q" ++ show ind ++ "state[" ++ show ((qSize madl) ("q" ++ show ind ++ "_state")) ++ "]"))) (Equals (X ("q" ++ show ind ++ "_ind")) (D ((qSize madl) ("q" ++ show ind ++ "_state"))))
+                              Sink_t -> B False
+                              Source_t -> error "mkBlock: sources do not have block equations"
+                              Switch_t -> Disj (Conj (mkPred' madl targ expr ((c_g madl) cid)) (mkBlock madl (((outp madl) targ) !! 0) expr)) (Conj (mkPred' madl targ expr ((c_g madl) cid)) (mkBlock madl (((outp madl) targ) !! 1) expr))
+-}
 
+getInvarName :: String -> String
+getInvarName [] = []
+getInvarName (' ':xs) = []
+getInvarName (x:xs) = (x:getInvarName xs)
+
+invarExists :: String -> [String] -> Bool
+invarExists n ivs = let n' = getInvarName n in elem True (map (\x -> n' == getInvarName x) ivs)
+
+
+mkBlock :: MaDL -> ChannelID -> DExpr -> [String] -> [String]
+mkBlock madl chan expr r = let targ = (target madl) chan
+                               comptype = (t madl) targ
+                               compind = (cMap madl) BM.! targ
+                               chanind = (chMap madl) BM.! chan
+                               inv = "block" ++ show chanind
+                               r' = (inv:r)
+                           in if (L.elem inv r)
+                              then []
+                              else case comptype of
+                                      Fork_t -> let o1 = ((outp madl) targ) !! 0
+                                                    o2 = ((outp madl) targ) !! 1
+                                                    chanind1 = (chMap madl) BM.! o1
+                                                    chanind2 = (chMap madl) BM.! o2
+                                                in ["INVAR block" ++ show chanind ++ " = block" ++ show chanind1 ++ " | block" ++ show chanind2] ++
+                                                   (mkBlock madl o1 expr r') ++
+                                                   (mkBlock madl o2 expr r')
+                                      Function_t -> let o1 = ((outp madl) targ) !! 0
+                                                        chanind1 = (chMap madl) BM.! o1
+                                                    in ["INVAR block" ++ show chanind ++ " = block" ++ show chanind1] ++
+                                                       (mkBlock madl o1 (mkFun' madl targ expr ((c_g madl) chan)) r')
+                                      Join_t -> let i1 = ((inp madl) targ) !! 0
+                                                    i2 = ((inp madl) targ) !! 1
+                                                    chanind1 = (chMap madl) BM.! i1
+                                                    chanind2 = (chMap madl) BM.! i2
+                                                    chanindo = (chMap madl) BM.! (((outp madl) targ) !! 0)
+                                                in if (chan /= i1)
+                                                   then ["INVAR block" ++ show chanind ++ " = idle" ++ show chanind2 ++ " | block" ++ show chanind1] ++
+                                                        (mkIdle madl i2 expr r') ++
+                                                        (mkBlock madl (((outp madl) targ) !! 0) expr r')
+                                                   else ["INVAR block" ++ show chanind ++ " = idle" ++ show chanind1 ++ " | (" ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! 0))) ++ " & block" ++ show chanind1 ++ ")"] ++
+                                                        (mkIdle madl i1 expr r') ++
+                                                        (mkBlock madl (((outp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! 0)) r')
+                                      Merge_t -> let (j::Int) = if (chan == (L.head ((inp madl) targ)))
+                                                                then 1
+                                                                else 2
+                                                     (k::Int) = if (j == 1)
+                                                                then 2
+                                                                else 1
+                                                     i1 = ((inp madl) targ) !! 0
+                                                     i2 = ((inp madl) targ) !! 1
+                                                     o = ((outp madl) targ) !! 0
+                                                     chanind1 = (chMap madl) BM.! i1
+                                                     chanind2 = (chMap madl) BM.! i2
+                                                     chanindo = (chMap madl) BM.! o
+                                                 in ["INVAR block" ++ show chanind ++ " = (mrg" ++ show compind ++ "_sel = " ++ show j ++ " & block" ++ show chanindo ++ ") | (mrg" ++ show compind ++ "_sel != " ++ show j ++ " & " ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! (k-1)))) ++ " & " ++ "block" ++ show chanindo ++ ")"] ++
+                                                    (mkBlock madl o expr r') ++
+                                                    (mkBlock madl o (mkDexprI madl targ (((inp madl) targ) !! (j-1))) r')
+                                      Queue_t -> let i = ((inp madl) targ) !! 0
+                                                     o = ((outp madl) targ) !! 0
+                                                     chanindo = (chMap madl) BM.! o
+                                                 in ["INVAR block" ++ show chanind ++ " = block" ++ show chanindo ++ " & " ++ "q" ++ show compind ++ "_ind = " ++ (show ((qSize madl) ("q" ++ show compind ++ "_state")))] ++
+                                                    (mkBlock madl o (X ("q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "]")) r')
+                                      Sink_t -> ["INVAR block" ++ show chanind ++ " = FALSE"]
+                                      Source_t -> error "mkBlock: sources do not have block equations"
+                                      Switch_t -> let o1 = ((outp madl) targ) !! 0
+                                                      o2 = ((outp madl) targ) !! 1
+                                                      chanindo1 = (chMap madl) BM.! o1
+                                                      chanindo2 = (chMap madl) BM.! o2
+                                                  in ["INVAR block" ++ show chanind ++ " = (" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo1 ++ ") | (" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo2 ++ ")"] ++
+                                                     (mkBlock madl o1 expr r') ++
+                                                     (mkBlock madl o2 expr r')
+
+
+
+mkIdle :: MaDL -> ChannelID -> DExpr -> [String] -> [String]
+mkIdle madl chan expr r = let inttr = (initiator madl) chan
+                              comptype = (t madl) inttr
+                              compind = (cMap madl) BM.! inttr
+                              chanind = (chMap madl) BM.! chan
+                              inv = "idle" ++ show chanind
+                              r' = (inv:r)
+                          in if L.elem inv r
+                             then []
+                             else case comptype of
+                                    Fork_t -> let o = L.head $ filter (\x -> x /= chan) ((outp madl) inttr)
+                                                  i = ((inp madl) inttr) !! 0
+                                                  chanindo = (chMap madl) BM.! o
+                                                  chanindi = (chMap madl) BM.! i
+                                              in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi ++ " & block" ++ show chanindo] ++
+                                                 (mkIdle madl i expr r') ++
+                                                 (mkBlock madl o expr r')
+                                    Function_t -> let i = ((inp madl) inttr) !! 0
+                                                      chanindi = (chMap madl) BM.! i
+                                                  in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi] ++
+                                                     (mkIdle madl i (mkInverse madl inttr expr ((c_g madl) chan)) r')
+                                    Join_t -> let i1 = ((inp madl) inttr) !! 0
+                                                  i2 = ((inp madl) inttr) !! 1
+                                                  chanindi1 = (chMap madl) BM.! i1
+                                                  chanindi2 = (chMap madl) BM.! i2
+                                              in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi2 ++ " | idle" ++ show chanindi1] ++
+                                                 (mkIdle madl i2 (mkDexprI madl inttr i2) r') ++
+                                                 (mkIdle madl i1 expr r')
+                                    Merge_t -> let i1 = ((inp madl) inttr) !! 0
+                                                   i2 = ((inp madl) inttr) !! 1
+                                                   chanindi1 = (chMap madl) BM.! i1
+                                                   chanindi2 = (chMap madl) BM.! i2
+                                               in ["INVAR idle" ++ show chanind ++ " = (idle" ++ show chanindi1 ++ " & idle" ++ show chanindi2 ++ ") | (mrg" ++ show compind ++ "_sel = 1 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i1)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i1)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ") | (mrg" ++ show compind ++ "_sel = 2 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i2)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i2)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ")" ] ++
+                                                  (mkIdle madl i1 (mkDexprI madl inttr i1) r') ++
+                                                  (mkIdle madl i2 (mkDexprI madl inttr i2) r') ++
+                                                  (mkBlock madl chan (mkDexprI madl inttr chan) r')
+                                    Queue_t -> let i = ((inp madl) inttr) !! 0
+                                                   chanindi = (chMap madl) BM.! i
+                                               in ["INVAR idle" ++ show chanind ++ " = (" ++ "q" ++ show compind ++ "_ind = 0 & idle" ++ show chanindi ++ ") | (q" ++ show compind ++ "_ind > 0 & q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "] = " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ")"] ++
+                                                  (mkIdle madl i expr r') ++
+                                                  (mkBlock madl chan (X ("q" ++ show compind ++ "state[" ++ show ((qSize madl) ("q" ++ show compind ++ "_state")) ++ "]")) r')
+                                    Sink_t -> error "mkIdle: sinks do not have idle equations"
+                                    Source_t -> ["INVAR idle" ++ show chanind ++ " = " ++ (printBExpr madl (mkSrcIdle expr ((c_g madl) chan)))]
+                                    Switch_t -> let i = ((inp madl) inttr) !! 0
+                                                    chanindi = (chMap madl) BM.! i
+                                                in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi] ++
+                                                   (mkIdle madl i expr r')
+
+{-
+mkIdle :: MaDL -> ChannelID -> DExpr -> BExpr
+mkIdle madl cid expr = let targ = (initiator madl) cid
+                           comptype = (t madl) targ
+                           ind = (cMap madl) BM.! targ
+                       in case comptype of
+                             Fork_t -> let o = L.head $ filter (\x -> x /= cid) ((outp madl) targ)
+                                       in Disj (mkIdle madl (((inp madl) targ) !! 0) expr) (mkBlock madl o expr)
+                             Function_t -> mkIdle madl (((inp madl) targ) !! 0) (mkInverse madl targ expr ((c_g madl) cid))
+                             Join_t -> Disj (mkIdle madl (((inp madl) targ) !! 1) (mkDexprI madl targ (((inp madl) targ) !! 1))) (mkIdle madl (((inp madl) targ) !! 0) expr)
+                             Merge_t -> Disj
+                                        (Conj (mkIdle madl (((inp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! 0))) (mkIdle madl (((inp madl) targ) !! 1) (mkDexprI madl targ (((inp madl) targ) !! 1))))
+                                        (Disj
+                                        (Conj (Equals (X ("mrg" ++ show ind ++ "_sel")) (D 1)) (Conj (mkBexprIIrdy madl targ (((inp madl) targ) !! 0)) (Conj (Negation (Equals (mkDexprI madl targ (((inp madl) targ) !! 0)) expr)) (mkBlock madl (((outp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! 0))))))
+                                        (Conj (Equals (X ("mrg" ++ show ind ++ "_sel")) (D 2)) (Conj (mkBexprIIrdy madl targ (((inp madl) targ) !! 1)) (Conj (Negation (Equals (mkDexprI madl targ (((inp madl) targ) !! 1)) expr)) (mkBlock madl (((outp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! 1)))))))
+                             Queue_t -> Disj (Conj (Equals (X ("q" ++ show ind ++ "_ind")) (D 0)) (mkIdle madl (((inp madl) targ) !! 0) expr))
+                                             (Conj (Negation (Equals (X ("q" ++ show ind ++ "_ind")) (D 0))) (Conj (Negation (Equals (X ("q" ++ show ind ++ "state[" ++ show ((qSize madl) ("q" ++ show ind ++ "_state")) ++ "]")) expr)) (mkBlock madl (((outp madl) targ) !! 0) (X ("q" ++ show ind ++ "state[" ++ show ((qSize madl) ("q" ++ show ind ++ "_state")) ++ "]")))))
+                             Sink_t -> error "mkIdle: sinks do not have idle equations"
+                             Source_t -> mkSrcIdle expr ((c_g madl) cid)
+                             Switch_t -> mkIdle madl (((inp madl) targ) !! 0) expr
+-}
 
 getSrcOIrdy :: Arg -> BExpr
 getSrcOIrdy (Src_Upd (BDArgs (BArgs x _) _ _)) = x
@@ -675,3 +918,26 @@ makeNEXT net = let madl = getMaDL net
                                         Merge_t -> makeMrgNEXT madl x
                                         _ -> "") $ getAllNames expr
                in foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") nxts
+{-
+makeInvarSpec :: ColoredNetwork -> String
+makeInvarSpec net = let srcs = getAllSourceIDs net
+                        madl = getMaDL net
+                        b = map (\x -> let inp = varName net x "data"
+                                       in mkBlock madl (L.head (getOutChannels net x)) (X inp)) srcs
+                        b' = map (\x -> "INVARSPEC !" ++ printBExpr madl x) b
+                    in "\n\n" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") b')
+-}
+
+makeInvar :: ColoredNetwork -> String
+makeInvar net = let srcs = getAllSourceIDs net
+                    madl = getMaDL net
+                    b = map (\x -> let inp = varName net x "data"
+                                   in foldr (\w w' -> case w' of "" -> w; _ -> w ++ "\n" ++ w') "" (filter (\z -> z /= []) (mkBlock madl (L.head (getOutChannels net x)) (X inp) []))) srcs
+                in "\n\n" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") b)
+
+makeInvarSpec :: ColoredNetwork -> String
+makeInvarSpec net = let srcs = getAllSourceIDs net
+                        madl = getMaDL net
+                        chMap = chanMap net
+                        b = map (\x -> let c = L.head $ getOutChannels net x in "INVARSPEC !block" ++ (show (chMap BM.! c))) srcs
+                    in "\n\n" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") b)
