@@ -6,6 +6,9 @@ where
 import Madl.MsgTypes
 import Madl.Network
 import Madl.MsgTypes()
+import Madl.Invariants
+import Madl.Deadlock.Formulas
+import Madl.Deadlock.DeadlockDetection
 import Madl.Islands
 import Utils.Text
 import Data.Maybe
@@ -13,6 +16,8 @@ import qualified Data.Char as C
 import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Bimap as BM
+import qualified Data.Text as T
+import qualified Data.Sequence as Seq
 
 data ChanType = Irdy | Trdy | Data
 
@@ -489,6 +494,11 @@ mkSrcIdle expr [] = B True
 mkSrcIdle expr (x:[]) = Negation (Equals expr (D x))
 mkSrcIdle expr (x:xs) = Disj (Negation (Equals expr (D x))) (mkSrcIdle expr xs)
 
+mkSnkBlock :: DExpr -> [Int] -> BExpr
+mkSnkBlock expr [] = B True
+mkSnkBlock expr (x:[]) = Negation (Equals expr (D x))
+mkSnkBlock expr (x:xs) = Disj (Negation (Equals expr (D x))) (mkSnkBlock expr xs)
+
 --fun :: ComponentID -> Int -> Int
 mkFun :: MaDL -> ComponentID -> [Int] -> DExpr
 mkFun madl cid cols
@@ -690,7 +700,7 @@ mkBlock madl chan expr r = let targ = (target madl) chan
                                                     o2 = ((outp madl) targ) !! 1
                                                     chanind1 = (chMap madl) BM.! o1
                                                     chanind2 = (chMap madl) BM.! o2
-                                                in ["INVAR block" ++ show chanind ++ " = block" ++ show chanind1 ++ " | block" ++ show chanind2] ++
+                                                in ["INVAR block" ++ show chanind ++ " = (block" ++ show chanind1 ++ " | block" ++ show chanind2 ++ ")"] ++
                                                    (mkBlock madl o1 expr r') ++
                                                    (mkBlock madl o2 expr r')
                                       Function_t -> let o1 = ((outp madl) targ) !! 0
@@ -703,10 +713,10 @@ mkBlock madl chan expr r = let targ = (target madl) chan
                                                     chanind2 = (chMap madl) BM.! i2
                                                     chanindo = (chMap madl) BM.! (((outp madl) targ) !! 0)
                                                 in if (chan /= i1)
-                                                   then ["INVAR block" ++ show chanind ++ " = idle" ++ show chanind2 ++ " | block" ++ show chanind1] ++
+                                                   then ["INVAR block" ++ show chanind ++ " = (idle" ++ show chanind2 ++ " | block" ++ show chanind1 ++ ")"] ++
                                                         (mkIdle madl i2 expr r') ++
                                                         (mkBlock madl (((outp madl) targ) !! 0) expr r')
-                                                   else ["INVAR block" ++ show chanind ++ " = idle" ++ show chanind1 ++ " | (" ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! 0))) ++ " & block" ++ show chanind1 ++ ")"] ++
+                                                   else ["INVAR block" ++ show chanind ++ " = (idle" ++ show chanind1 ++ " | (" ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! 0))) ++ " & block" ++ show chanind1 ++ "))"] ++
                                                         (mkIdle madl i1 expr r') ++
                                                         (mkBlock madl (((outp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! 0)) r')
                                       Merge_t -> let (j::Int) = if (chan == (L.head ((inp madl) targ)))
@@ -721,21 +731,21 @@ mkBlock madl chan expr r = let targ = (target madl) chan
                                                      chanind1 = (chMap madl) BM.! i1
                                                      chanind2 = (chMap madl) BM.! i2
                                                      chanindo = (chMap madl) BM.! o
-                                                 in ["INVAR block" ++ show chanind ++ " = (mrg" ++ show compind ++ "_sel = " ++ show j ++ " & block" ++ show chanindo ++ ") | (mrg" ++ show compind ++ "_sel != " ++ show j ++ " & " ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! (k-1)))) ++ " & " ++ "block" ++ show chanindo ++ ")"] ++
+                                                 in ["INVAR block" ++ show chanind ++ " = ((mrg" ++ show compind ++ "_sel = " ++ show j ++ " & block" ++ show chanindo ++ ") | (mrg" ++ show compind ++ "_sel != " ++ show j ++ " & " ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! (k-1)))) ++ " & " ++ "block" ++ show chanindo ++ "))"] ++
                                                     (mkBlock madl o expr r') ++
                                                     (mkBlock madl o (mkDexprI madl targ (((inp madl) targ) !! (j-1))) r')
                                       Queue_t -> let i = ((inp madl) targ) !! 0
                                                      o = ((outp madl) targ) !! 0
                                                      chanindo = (chMap madl) BM.! o
-                                                 in ["INVAR block" ++ show chanind ++ " = block" ++ show chanindo ++ " & " ++ "q" ++ show compind ++ "_ind = " ++ (show ((qSize madl) ("q" ++ show compind ++ "_state")))] ++
+                                                 in ["INVAR block" ++ show chanind ++ " = (block" ++ show chanindo ++ " & " ++ "q" ++ show compind ++ "_ind = " ++ (show ((qSize madl) ("q" ++ show compind ++ "_state"))) ++ ")"] ++
                                                     (mkBlock madl o (X ("q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "]")) r')
-                                      Sink_t -> ["INVAR block" ++ show chanind ++ " = FALSE"]
+                                      Sink_t -> ["INVAR block" ++ show chanind ++ " = " ++ (printBExpr madl (mkSnkBlock expr ((c_g madl) chan)))]
                                       Source_t -> error "mkBlock: sources do not have block equations"
                                       Switch_t -> let o1 = ((outp madl) targ) !! 0
                                                       o2 = ((outp madl) targ) !! 1
                                                       chanindo1 = (chMap madl) BM.! o1
                                                       chanindo2 = (chMap madl) BM.! o2
-                                                  in ["INVAR block" ++ show chanind ++ " = (" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo1 ++ ") | (" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo2 ++ ")"] ++
+                                                  in ["INVAR block" ++ show chanind ++ " = ((" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo1 ++ ") | (" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo2 ++ "))"] ++
                                                      (mkBlock madl o1 expr r') ++
                                                      (mkBlock madl o2 expr r')
 
@@ -755,7 +765,7 @@ mkIdle madl chan expr r = let inttr = (initiator madl) chan
                                                   i = ((inp madl) inttr) !! 0
                                                   chanindo = (chMap madl) BM.! o
                                                   chanindi = (chMap madl) BM.! i
-                                              in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi ++ " & block" ++ show chanindo] ++
+                                              in ["INVAR idle" ++ show chanind ++ " = (idle" ++ show chanindi ++ " & block" ++ show chanindo ++ ")"] ++
                                                  (mkIdle madl i expr r') ++
                                                  (mkBlock madl o expr r')
                                     Function_t -> let i = ((inp madl) inttr) !! 0
@@ -766,20 +776,20 @@ mkIdle madl chan expr r = let inttr = (initiator madl) chan
                                                   i2 = ((inp madl) inttr) !! 1
                                                   chanindi1 = (chMap madl) BM.! i1
                                                   chanindi2 = (chMap madl) BM.! i2
-                                              in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi2 ++ " | idle" ++ show chanindi1] ++
+                                              in ["INVAR idle" ++ show chanind ++ " = (idle" ++ show chanindi2 ++ " | idle" ++ show chanindi1 ++ ")"] ++
                                                  (mkIdle madl i2 (mkDexprI madl inttr i2) r') ++
                                                  (mkIdle madl i1 expr r')
                                     Merge_t -> let i1 = ((inp madl) inttr) !! 0
                                                    i2 = ((inp madl) inttr) !! 1
                                                    chanindi1 = (chMap madl) BM.! i1
                                                    chanindi2 = (chMap madl) BM.! i2
-                                               in ["INVAR idle" ++ show chanind ++ " = (idle" ++ show chanindi1 ++ " & idle" ++ show chanindi2 ++ ") | (mrg" ++ show compind ++ "_sel = 1 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i1)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i1)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ") | (mrg" ++ show compind ++ "_sel = 2 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i2)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i2)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ")" ] ++
+                                               in ["INVAR idle" ++ show chanind ++ " = ((idle" ++ show chanindi1 ++ " & idle" ++ show chanindi2 ++ ") | (mrg" ++ show compind ++ "_sel = 1 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i1)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i1)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ") | (mrg" ++ show compind ++ "_sel = 2 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i2)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i2)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ "))" ] ++
                                                   (mkIdle madl i1 (mkDexprI madl inttr i1) r') ++
                                                   (mkIdle madl i2 (mkDexprI madl inttr i2) r') ++
                                                   (mkBlock madl chan (mkDexprI madl inttr chan) r')
                                     Queue_t -> let i = ((inp madl) inttr) !! 0
                                                    chanindi = (chMap madl) BM.! i
-                                               in ["INVAR idle" ++ show chanind ++ " = (" ++ "q" ++ show compind ++ "_ind = 0 & idle" ++ show chanindi ++ ") | (q" ++ show compind ++ "_ind > 0 & q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "] = " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ")"] ++
+                                               in ["INVAR idle" ++ show chanind ++ " = ((" ++ "q" ++ show compind ++ "_ind = 0 & idle" ++ show chanindi ++ ") | (q" ++ show compind ++ "_ind > 0 & q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "] = " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ "))"] ++
                                                   (mkIdle madl i expr r') ++
                                                   (mkBlock madl chan (X ("q" ++ show compind ++ "state[" ++ show ((qSize madl) ("q" ++ show compind ++ "_state")) ++ "]")) r')
                                     Sink_t -> error "mkIdle: sinks do not have idle equations"
