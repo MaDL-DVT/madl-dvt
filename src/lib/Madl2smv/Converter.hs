@@ -739,7 +739,7 @@ mkBlock madl chan expr r = let targ = (target madl) chan
                                                      chanindo = (chMap madl) BM.! o
                                                  in ["INVAR block" ++ show chanind ++ " = (block" ++ show chanindo ++ " & " ++ "q" ++ show compind ++ "_ind = " ++ (show ((qSize madl) ("q" ++ show compind ++ "_state"))) ++ ")"] ++
                                                     (mkBlock madl o (X ("q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "]")) r')
-                                      Sink_t -> ["INVAR block" ++ show chanind ++ " = " ++ (printBExpr madl (mkSnkBlock expr ((c_g madl) chan)))]
+                                      Sink_t -> ["INVAR block" ++ show chanind ++ " = FALSE" {-++ (printBExpr madl (mkSnkBlock expr ((c_g madl) chan)))-}]
                                       Source_t -> error "mkBlock: sources do not have block equations"
                                       Switch_t -> let o1 = ((outp madl) targ) !! 0
                                                       o2 = ((outp madl) targ) !! 1
