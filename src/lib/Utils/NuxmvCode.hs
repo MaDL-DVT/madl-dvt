@@ -64,10 +64,12 @@ bool_type :: IsString a => a
 bool_type = "boolean"
 -- | nuXmv integer type
 int_type :: (IsString a, Monoid a) => Int -> a
-int_type n = range_type 0 (n-1)
+int_type n = if (n > 0) then (range_type 0 (n-1)) else (singleton_type n)
 -- | nuXmv range type
 range_type :: (IsString a, Monoid a) => Int -> Int -> a
 range_type n m = C.show n <> ".." <> C.show m
+-- | nuXmv singleton type
+singleton_type n = "{" <> C.show n <> "}"
 -- | nuXmv enumeration type
 enum_type :: (IsString a, Monoid a) => [a] -> a
 enum_type [] = "{no_values}" -- empty enumerations are not allowed
