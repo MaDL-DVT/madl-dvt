@@ -41,6 +41,10 @@ nuxmv_bool varType = nuxmv_var varType bool_type
 -- | Integer variable declaration
 nuxmv_int :: (IsString a, Monoid a) => NuxmvVariableType -> Int -> a -> a
 nuxmv_int varType n = nuxmv_var varType (int_type n)
+-- | Integer variable declaration but a singleton set is generated if only
+-- one value.
+nuxmv_int_with_singleton :: (IsString a, Monoid a) => NuxmvVariableType -> Int -> a -> a
+nuxmv_int_with_singleton varType n = nuxmv_var varType (int_type_with_singleton n)
 -- | Enumeration declaration
 nuxmv_enum :: (IsString a, Monoid a) => NuxmvVariableType -> [a] -> a -> a
 nuxmv_enum varType vals = nuxmv_var varType (enum_type vals)
@@ -64,12 +68,15 @@ bool_type :: IsString a => a
 bool_type = "boolean"
 -- | nuXmv integer type
 int_type :: (IsString a, Monoid a) => Int -> a
-int_type n = if (n > 0) then (range_type 0 (n-1)) else (singleton_type n)
+int_type n = range_type 0 (n-1)
+-- | nuXmv integer type with singleton
+int_type_with_singleton :: (IsString a, Monoid a) => Int -> a
+int_type_with_singleton n = if (n > 1) then (range_type 0 (n-1)) else (singleton_type n)
 -- | nuXmv range type
 range_type :: (IsString a, Monoid a) => Int -> Int -> a
 range_type n m = C.show n <> ".." <> C.show m
 -- | nuXmv singleton type
-singleton_type n = "{" <> C.show n <> "}"
+singleton_type n = "{" <> C.show (n-1) <> "}"
 -- | nuXmv enumeration type
 enum_type :: (IsString a, Monoid a) => [a] -> a
 enum_type [] = "{no_values}" -- empty enumerations are not allowed
