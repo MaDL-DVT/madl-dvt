@@ -128,8 +128,8 @@ varDefinition net cID t = case getComponent net cID of
     Match{} -> []
     Joitch{} -> []
     Automaton{componentName=name,nrOfStates=n,transitions=ts} ->
-        [nuxmv_int State n (nuxmv_psvar name),
-         nuxmv_int Input (length ts) (nuxmv_ptvar name)]
+        [nuxmv_int_with_singleton State n (nuxmv_psvar name),
+         nuxmv_int_with_singleton Input (length ts) (nuxmv_ptvar name)]
     GuardQueue name size -> nuxmv_int State (size+1) (nuxmvQueueSizeVar name)
                         : ((nuxmv_int Input (getNrInputs net cID) $ merge_oracle name)
                         : mapMaybe fldVar (disjFields t) ++ map bvVar (bitVectors t)) where
@@ -438,7 +438,8 @@ stateUpdate net (n, c@(Queue _ size)) t islands =
         outs = IM.filter f islands
         f' :: Island ChannelID -> Bool
         f' = any ((== n) . (getTarget net)) . islandChannels
-stateUpdate net (cID, Automaton{componentName=name}) _cs isles =
+stateUpdate net (cID, Automaton{componentName=name,nrOfStates=n}) _cs isles =
+    if (n == 1) then [] else
         nuxmv_next (nuxmv_psvar name) [cases] where
     cases = IM.foldr caseIsle (nuxmv_psvar name) tIsles
     caseIsle isle = nuxmv_ite (nuxmvEnabled net isle) (showT nxtState) where
@@ -461,7 +462,7 @@ stateUpdate _ _ _ _ = []
 varInit :: Component -> ColorSet -> [Text]
 varInit c@(Queue _ size) t = catMaybes $ queueSizeInit c : map (queuePosInit c t) [0..size-1]
 varInit c@(GuardQueue _ size) t = catMaybes $ queueSizeInit c : map (queuePosInit c t) [0..size-1]
-varInit (Automaton{componentName=name}) _ = [nuxmv_init (nuxmv_psvar name) "0"]
+varInit (Automaton{componentName=name,nrOfStates=n}) _ = if (n == 1) then [] else [nuxmv_init (nuxmv_psvar name) "0"]
 varInit _ _ = []
 
 -- | Produce a nuxmv model according to synchronous semantics
