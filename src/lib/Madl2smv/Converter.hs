@@ -21,6 +21,7 @@ import qualified Data.Sequence as Seq
 
 data ChanType = Irdy | Trdy | Data
 
+
 defaultColor :: Int
 defaultColor = 0
 
@@ -160,7 +161,7 @@ makeIVAR net = let srcs = getAllSourceIDs net
 
 makeBIVAR :: ColoredNetwork -> ChannelID -> String -> String
 makeBIVAR net cid r = let chMap = chanMap net
-                      in "\t" ++ r ++ (show (chMap BM.! cid)) ++ " : boolean;"
+                      in "\t" ++ r ++ " : boolean;"
 
 --Takes a network and makes a VAR block
 makeVAR :: ColoredNetwork -> String
@@ -169,6 +170,8 @@ makeVAR net = let srcs = getAllSourceIDs net
                   qs = getAllQueueIDs net
                   mrgs = getAllMergeIDs net
                   chans = getChannelIDs net
+                  tm = typeMap net
+                  chMap = chanMap net
               in "VAR\n" ++
                  foldr (\a b -> a ++ "\n" ++ b) "" ((map (\x -> varDecl net x Irdy) srcs) ++
                                                     --(map (\x -> varDecl net x Trdy) srcs) ++
@@ -181,8 +184,12 @@ makeVAR net = let srcs = getAllSourceIDs net
                                                     (map (\x -> stateDecl net x) qs) ++
                                                     (map (\x -> stateDecl net x) mrgs) ++
                                                     (map (\x -> qInd net x) qs) ++
-                                                    (map (\x -> makeBIVAR net x "block") chans) ++
-                                                    (map (\x -> makeBIVAR net x "idle") chans))
+                                                    (L.concat $ map (\x -> let (ColorSet c) = getColorSet net x
+                                                                               c' = S.toList c
+                                                                           in map (\y -> makeBIVAR net x ("block" ++ show (chMap BM.! x) ++ "_" ++ show (tm BM.! y))) c') chans) ++
+                                                    (L.concat $ map (\x -> let (ColorSet c) = getColorSet net x
+                                                                               c' = S.toList c
+                                                                           in map (\y -> makeBIVAR net x ("idle" ++ show (chMap BM.! x) ++ "_" ++ show (tm BM.! y))) c') chans))
 
 --Takes a network and makes an INIT block
 makeINIT :: ColoredNetwork -> String
@@ -202,6 +209,9 @@ makeSMV net = "MODULE main\n" ++
               makeNEXT net ++
               makeInvar net ++
               makeInvarSpec net
+
+showChannels :: ColoredNetwork -> String
+showChannels net = (show $ chanMap net) ++ "\n" ++ (show net)
 
 ----------Later, I should move it to a separate file--------------
 --Data structure for source states
@@ -492,12 +502,12 @@ mkPred' madl cid expr (x:xs) = Disj (Equals expr (D x)) (mkPred' madl cid expr x
 mkSrcIdle :: DExpr -> [Int] -> BExpr
 mkSrcIdle expr [] = B True
 mkSrcIdle expr (x:[]) = Negation (Equals expr (D x))
-mkSrcIdle expr (x:xs) = Disj (Negation (Equals expr (D x))) (mkSrcIdle expr xs)
+mkSrcIdle expr (x:xs) = Conj (Negation (Equals expr (D x))) (mkSrcIdle expr xs)
 
 mkSnkBlock :: DExpr -> [Int] -> BExpr
 mkSnkBlock expr [] = B True
 mkSnkBlock expr (x:[]) = Negation (Equals expr (D x))
-mkSnkBlock expr (x:xs) = Disj (Negation (Equals expr (D x))) (mkSnkBlock expr xs)
+mkSnkBlock expr (x:xs) = Conj (Negation (Equals expr (D x))) (mkSnkBlock expr xs)
 
 --fun :: ComponentID -> Int -> Int
 mkFun :: MaDL -> ComponentID -> [Int] -> DExpr
@@ -691,34 +701,48 @@ mkBlock madl chan expr r = let targ = (target madl) chan
                                comptype = (t madl) targ
                                compind = (cMap madl) BM.! targ
                                chanind = (chMap madl) BM.! chan
-                               inv = "block" ++ show chanind
-                               r' = (inv:r)
-                           in if (L.elem inv r)
+                               chancol = printDExpr madl expr
+                               invar = "block" ++ show chanind ++ "_" ++ chancol
+                               r' = (invar:r)
+                           in if (L.elem invar r)
                               then []
                               else case comptype of
                                       Fork_t -> let o1 = ((outp madl) targ) !! 0
                                                     o2 = ((outp madl) targ) !! 1
                                                     chanind1 = (chMap madl) BM.! o1
                                                     chanind2 = (chMap madl) BM.! o2
-                                                in ["INVAR block" ++ show chanind ++ " = (block" ++ show chanind1 ++ " | block" ++ show chanind2 ++ ")"] ++
+                                                in ["INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = (block" ++ show chanind1 ++  "_" ++ chancol ++ " | block" ++ show chanind2 ++  "_" ++ chancol ++ ")"] ++
                                                    (mkBlock madl o1 expr r') ++
                                                    (mkBlock madl o2 expr r')
                                       Function_t -> let o1 = ((outp madl) targ) !! 0
                                                         chanind1 = (chMap madl) BM.! o1
-                                                    in ["INVAR block" ++ show chanind ++ " = block" ++ show chanind1] ++
-                                                       (mkBlock madl o1 (mkFun' madl targ expr ((c_g madl) chan)) r')
+                                                        icol = case expr of
+                                                                  (D n) -> n
+                                                                  _ -> error "mkBlock: unable to extract an integer from the DExpr"
+                                                        ocol = (fun madl) targ icol
+                                                    in ["INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = block" ++ show chanind1 ++ "_" ++ show ocol] ++
+                                                       (mkBlock madl o1 (D ocol) r')
                                       Join_t -> let i1 = ((inp madl) targ) !! 0
                                                     i2 = ((inp madl) targ) !! 1
                                                     chanind1 = (chMap madl) BM.! i1
                                                     chanind2 = (chMap madl) BM.! i2
                                                     chanindo = (chMap madl) BM.! (((outp madl) targ) !! 0)
+                                                    i1col = (c_g madl) i1
+                                                    i2col = (c_g madl) i2
+                                                    expr' = case expr of
+                                                              (D n) -> n
+                                                              _ -> error ("mkBlock: 1 unable to extract an integer from the DExpr" ++ (printDExpr madl expr))
+                                                    i1res = foldr (\a b -> case b of [] -> a; _ -> a ++ " | " ++ b) [] (map (\x -> "(idle" ++ show chanind2 ++ "_" ++ show x ++ " | block" ++ show chanindo ++ "_" ++ show expr' ++ ")") i2col)
+                                                    i1res' = ["INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = " ++ i1res] ++
+                                                             (L.concat $ map (\x -> (mkIdle madl i2 (D x) r')) i2col) ++
+                                                             (mkBlock madl (((outp madl) targ) !! 0) expr r')
+                                                    i2res = foldr (\a b -> case b of [] -> a; _ -> a ++ " | " ++ b) [] (map (\x -> "(idle" ++ show chanind1 ++ "_" ++ show x ++ " | (" ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! 0))) ++ " & block" ++ show chanindo ++ "_" ++ show x ++ "))") i1col)
+                                                    i2res' = ["INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = " ++ i2res] ++
+                                                             (L.concat $ map (\x -> (mkIdle madl i1 (D x) r')) i1col) ++
+                                                             (L.concat $ map (\x -> (mkBlock madl (((outp madl) targ) !! 0) (D x) r')) i1col)
                                                 in if (chan /= i1)
-                                                   then ["INVAR block" ++ show chanind ++ " = (idle" ++ show chanind2 ++ " | block" ++ show chanind1 ++ ")"] ++
-                                                        (mkIdle madl i2 expr r') ++
-                                                        (mkBlock madl (((outp madl) targ) !! 0) expr r')
-                                                   else ["INVAR block" ++ show chanind ++ " = (idle" ++ show chanind1 ++ " | (" ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! 0))) ++ " & block" ++ show chanind1 ++ "))"] ++
-                                                        (mkIdle madl i1 expr r') ++
-                                                        (mkBlock madl (((outp madl) targ) !! 0) (mkDexprI madl targ (((inp madl) targ) !! 0)) r')
+                                                   then i1res'
+                                                   else i2res'
                                       Merge_t -> let (j::Int) = if (chan == (L.head ((inp madl) targ)))
                                                                 then 1
                                                                 else 2
@@ -731,23 +755,66 @@ mkBlock madl chan expr r = let targ = (target madl) chan
                                                      chanind1 = (chMap madl) BM.! i1
                                                      chanind2 = (chMap madl) BM.! i2
                                                      chanindo = (chMap madl) BM.! o
-                                                 in ["INVAR block" ++ show chanind ++ " = ((mrg" ++ show compind ++ "_sel = " ++ show j ++ " & block" ++ show chanindo ++ ") | (mrg" ++ show compind ++ "_sel != " ++ show j ++ " & " ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! (k-1)))) ++ " & " ++ "block" ++ show chanindo ++ "))"] ++
-                                                    (mkBlock madl o expr r') ++
-                                                    (mkBlock madl o (mkDexprI madl targ (((inp madl) targ) !! (j-1))) r')
+                                                     expr' = case expr of
+                                                               (D n) -> n
+                                                               _ -> error "mkBlock: 2 unable to extract an integer from the DExpr"
+                                                     res1 = "INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = (mrg" ++ show compind ++ "_sel = " ++ show j ++ " & block" ++ show chanindo ++ "_" ++ show expr' ++ ")"
+                                                     ikcols = (c_g madl) (((inp madl) targ) !! (k - 1))
+                                                     res2 = foldr (\a b -> case b of [] -> a; _ -> a ++ " | " ++ b) [] (map (\x -> "(mrg" ++ show compind ++ "_sel != " ++ show j ++ " & " ++ (printBExpr madl (mkBexprIIrdy madl targ (((inp madl) targ) !! (k - 1)))) ++ " & " ++ "block" ++ show chanindo ++ "_" ++ show x ++")") ikcols)
+                                                     res3 = if (res1 /= "" && res2 /= "")
+                                                            then res1 ++ " | " ++ res2
+                                                            else res1 ++ res2
+                                                     res = [res3] ++
+                                                           (mkBlock madl o expr r') ++
+                                                           (L.concat $ map (\x -> (mkBlock madl o (D x) r')) ikcols)
+                                                 in res
                                       Queue_t -> let i = ((inp madl) targ) !! 0
                                                      o = ((outp madl) targ) !! 0
                                                      chanindo = (chMap madl) BM.! o
-                                                 in ["INVAR block" ++ show chanind ++ " = (block" ++ show chanindo ++ " & " ++ "q" ++ show compind ++ "_ind = " ++ (show ((qSize madl) ("q" ++ show compind ++ "_state"))) ++ ")"] ++
-                                                    (mkBlock madl o (X ("q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "]")) r')
-                                      Sink_t -> ["INVAR block" ++ show chanind ++ " = FALSE" {-++ (printBExpr madl (mkSnkBlock expr ((c_g madl) chan)))-}]
+                                                     ocol = (c_g madl) o
+                                                     qs = (qSize madl) ("q" ++ show compind ++ "_state")
+                                                     qlast = "q" ++ show compind ++ "_state[" ++ show (qs - 1) ++ "]"
+                                                     res = map (\x -> ["(block" ++ show chanindo ++ "_" ++
+                                                                       show x ++ " & (" ++
+                                                                       qlast ++ " = " ++
+                                                                       show x ++ ") & (q" ++
+                                                                       show compind ++
+                                                                       "_ind = " ++
+                                                                       show qs ++ "))"]) ocol -- ++ (mkBlock madl o (D x) r')) ocol
+                                                     res' = ["INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = " ++ (foldr (\a b -> case b of [] -> a; _ -> a ++ " | " ++ b) [] (L.concat res))]
+                                                     res'' = L.concat (map (\x -> mkBlock madl o (D x) r') ocol)
+                                                 in res' ++ res''
+                                      Sink_t -> ["INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = FALSE"]
                                       Source_t -> error "mkBlock: sources do not have block equations"
                                       Switch_t -> let o1 = ((outp madl) targ) !! 0
                                                       o2 = ((outp madl) targ) !! 1
                                                       chanindo1 = (chMap madl) BM.! o1
                                                       chanindo2 = (chMap madl) BM.! o2
-                                                  in ["INVAR block" ++ show chanind ++ " = ((" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo1 ++ ") | (" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo2 ++ "))"] ++
-                                                     (mkBlock madl o1 expr r') ++
-                                                     (mkBlock madl o2 expr r')
+                                                      o1cols = (c_g madl) o1
+                                                      o2cols = (c_g madl) o2
+                                                      icol = case expr of
+                                                                (D n) -> n
+                                                                _ -> error "mkBlock: unable to extract an integer from the DExpr"
+                                                      condl = L.elem icol o1cols
+                                                      condr = L.elem icol o2cols
+                                                      resl = if condl
+                                                             then "(" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo1 ++ "_" ++ show icol ++ ")"
+                                                             else ""
+                                                      resr = if condr
+                                                             then "(" ++ printBExpr madl (mkPred' madl targ expr ((c_g madl) chan)) ++ " & block" ++ show chanindo2 ++ "_" ++ show icol ++ ")"
+                                                             else ""
+                                                      res = if (resl /= "") && (resr /= "")
+                                                            then "(" ++ resl ++ " | " ++ resr ++ ")"
+                                                            else resl ++ resr
+                                                      block1 = if condl
+                                                               then (mkBlock madl o1 (D icol) r')
+                                                               else []
+                                                      block2 = if condr
+                                                               then (mkBlock madl o2 (D icol) r')
+                                                               else []
+                                                  in ["INVAR block" ++ show chanind ++ "_" ++ chancol ++ " = " ++ res] ++
+                                                     block1 ++
+                                                     block2
 
 
 
@@ -756,47 +823,88 @@ mkIdle madl chan expr r = let inttr = (initiator madl) chan
                               comptype = (t madl) inttr
                               compind = (cMap madl) BM.! inttr
                               chanind = (chMap madl) BM.! chan
-                              inv = "idle" ++ show chanind
-                              r' = (inv:r)
-                          in if L.elem inv r
+                              chancol = printDExpr madl expr
+                              invar = "idle" ++ show chanind ++ "_" ++ chancol
+                              r' = (invar:r)
+                          in if L.elem invar r
                              then []
                              else case comptype of
                                     Fork_t -> let o = L.head $ filter (\x -> x /= chan) ((outp madl) inttr)
                                                   i = ((inp madl) inttr) !! 0
                                                   chanindo = (chMap madl) BM.! o
                                                   chanindi = (chMap madl) BM.! i
-                                              in ["INVAR idle" ++ show chanind ++ " = (idle" ++ show chanindi ++ " & block" ++ show chanindo ++ ")"] ++
+                                              in ["INVAR idle" ++ show chanind ++ "_" ++ chancol ++ " = (idle" ++ show chanindi ++ "_" ++ chancol ++ " & block" ++ show chanindo ++ "_" ++ chancol ++ ")"] ++
                                                  (mkIdle madl i expr r') ++
                                                  (mkBlock madl o expr r')
                                     Function_t -> let i = ((inp madl) inttr) !! 0
                                                       chanindi = (chMap madl) BM.! i
-                                                  in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi] ++
+                                                      ocol = case expr of
+                                                                (D n) -> n
+                                                                _ -> error "mkIdle: unable to extract an integer from the DExpr"
+                                                      icol = (inv madl) inttr ocol
+                                                  in ["INVAR idle" ++ show chanind ++ "_" ++ show ocol ++ " = idle" ++ show chanindi ++ "_" ++ show icol] ++
                                                      (mkIdle madl i (mkInverse madl inttr expr ((c_g madl) chan)) r')
                                     Join_t -> let i1 = ((inp madl) inttr) !! 0
                                                   i2 = ((inp madl) inttr) !! 1
                                                   chanindi1 = (chMap madl) BM.! i1
                                                   chanindi2 = (chMap madl) BM.! i2
-                                              in ["INVAR idle" ++ show chanind ++ " = (idle" ++ show chanindi2 ++ " | idle" ++ show chanindi1 ++ ")"] ++
-                                                 (mkIdle madl i2 (mkDexprI madl inttr i2) r') ++
-                                                 (mkIdle madl i1 expr r')
+                                                  i2col = (c_g madl) i2
+                                                  ocol = case expr of
+                                                            (D n) -> n
+                                                            _ -> error "mkIdle: unable to extract an integer out of a DExpr"
+                                                  res = (foldr (\a b -> case b of [] -> a; _ -> a ++ " | " ++ b) [] (map (\x -> "idle" ++ show chanindi2 ++ "_" ++ show x) i2col)) ++ " | idle" ++ show chanindi1 ++ "_" ++ show ocol
+                                                  res' = ["INVAR idle" ++ show chanind ++ "_" ++ chancol ++ " = " ++ res] ++
+                                                         (L.concat $ map (\x -> mkIdle madl i2 (D x) r') i2col) ++
+                                                         (mkIdle madl i1 expr r')
+                                              in res'
                                     Merge_t -> let i1 = ((inp madl) inttr) !! 0
                                                    i2 = ((inp madl) inttr) !! 1
                                                    chanindi1 = (chMap madl) BM.! i1
                                                    chanindi2 = (chMap madl) BM.! i2
-                                               in ["INVAR idle" ++ show chanind ++ " = ((idle" ++ show chanindi1 ++ " & idle" ++ show chanindi2 ++ ") | (mrg" ++ show compind ++ "_sel = 1 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i1)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i1)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ ") | (mrg" ++ show compind ++ "_sel = 2 & " ++ (printBExpr madl (mkBexprIIrdy madl inttr i2)) ++ " & " ++ (printDExpr madl (mkDexprI madl inttr i2)) ++ " != " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ "))" ] ++
-                                                  (mkIdle madl i1 (mkDexprI madl inttr i1) r') ++
-                                                  (mkIdle madl i2 (mkDexprI madl inttr i2) r') ++
-                                                  (mkBlock madl chan (mkDexprI madl inttr chan) r')
+                                                   i1col = (c_g madl) i1
+                                                   i2col = (c_g madl) i2
+                                                   res1 = "(" ++ (foldr (\a b -> case b of [] -> a; _ -> a ++ " & " ++ b) [] ((map (\x -> "idle" ++ show chanindi1 ++ "_" ++ show x) i1col) ++ (map (\x -> "idle" ++ show chanindi2 ++ "_" ++ show x) i2col))) ++ ")"
+                                                   expr' = case expr of
+                                                             (D n) -> n
+                                                             _ -> error "mkIdle: unable to extract an integer out of a DExpr"
+                                                   i1col' = i1col L.\\ [expr']
+                                                   i2col' = i2col L.\\ [expr']
+                                                   res2 = (map (\x -> "(mrg" ++ show compind ++ "_sel = 1 & " ++ printDExpr madl (mkDexprI madl inttr i1) ++ " = " ++ show x ++ " & block" ++ show chanind ++ "_" ++ show x ++ ")") i1col') ++
+                                                          (map (\x -> "(mrg" ++ show compind ++ "_sel = 2 & " ++ printDExpr madl (mkDexprI madl inttr i2) ++ " = " ++ show x ++ " & block" ++ show chanind ++ "_" ++ show x ++ ")") i2col')
+                                                   res2' = foldr (\a b -> case b of [] -> a; _ -> a ++ " | " ++ b) [] res2
+                                                   res2'' = case res2' of
+                                                              "" -> res2'
+                                                              _ -> " | (" ++ res2' ++ ")"
+                                                   res = ["INVAR idle" ++ show chanind ++ "_" ++ chancol ++ " = " ++ res1 ++ res2''] ++
+                                                         (L.concat (map (\x -> mkIdle madl i1 (D x) r') i1col)) ++
+                                                         (L.concat (map (\x -> mkIdle madl i2 (D x) r') i2col)) ++
+                                                         (L.concat (map (\x -> mkBlock madl chan (D x) r') i1col')) ++
+                                                         (L.concat (map (\x -> mkBlock madl chan (D x) r') i2col'))
+                                               in res
                                     Queue_t -> let i = ((inp madl) inttr) !! 0
                                                    chanindi = (chMap madl) BM.! i
-                                               in ["INVAR idle" ++ show chanind ++ " = ((" ++ "q" ++ show compind ++ "_ind = 0 & idle" ++ show chanindi ++ ") | (q" ++ show compind ++ "_ind > 0 & q" ++ show compind ++ "_state[" ++ show (((qSize madl) ("q" ++ show compind ++ "_state")) - 1) ++ "] = " ++ (printDExpr madl expr) ++ " & block" ++ show chanind ++ "))"] ++
+                                                   qs = ((qSize madl) ("q" ++ show compind ++ "_state"))
+                                                   qlast = "q" ++ show compind ++ "_state[" ++ show (qs - 1) ++ "]"
+                                                   expr' = case expr of
+                                                              (D n) -> n
+                                                              _ -> error "mkIdle: unable to extract an integer out of a DExpr"
+                                                   ocol = (c_g madl) chan
+                                                   ocol' = ocol L.\\ [expr']
+                                                   res = map (\x -> "(q" ++ show compind ++ "_ind > 0 & !(" ++ qlast ++ " = " ++ show expr' ++ ") & block" ++ show chanind ++ "_" ++ show x ++ " & (" ++ qlast ++ " = " ++ show x ++ "))") ocol'
+                                                   res' = foldr (\a b -> case b of [] -> a; _ -> a ++ " | " ++ b) [] res
+                                                   blocks = L.nub $ L.concat $ map (\x -> mkBlock madl chan (D x) r') ocol'
+                                                   res'' = case res' of
+                                                              "" -> res'
+                                                              _ -> " & " ++ res'
+                                               in ["INVAR idle" ++ show chanind ++ "_" ++ chancol ++ " = (" ++ "q" ++ show compind ++ "_ind = 0 & idle" ++ show chanindi ++ "_" ++ show expr' ++ res'' ++ ")"] ++
                                                   (mkIdle madl i expr r') ++
-                                                  (mkBlock madl chan (X ("q" ++ show compind ++ "state[" ++ show ((qSize madl) ("q" ++ show compind ++ "_state")) ++ "]")) r')
+                                                  blocks
+                                                  --(mkBlock madl chan (X ("q" ++ show compind ++ "state[" ++ show ((qSize madl) ("q" ++ show compind ++ "_state")) ++ "]")) r')
                                     Sink_t -> error "mkIdle: sinks do not have idle equations"
-                                    Source_t -> ["INVAR idle" ++ show chanind ++ " = " ++ (printBExpr madl (mkSrcIdle expr ((c_g madl) chan)))]
+                                    Source_t -> ["INVAR idle" ++ show chanind ++ "_" ++ chancol ++ " = " ++ (printBExpr madl (mkSrcIdle expr ((c_g madl) chan)))]
                                     Switch_t -> let i = ((inp madl) inttr) !! 0
                                                     chanindi = (chMap madl) BM.! i
-                                                in ["INVAR idle" ++ show chanind ++ " = idle" ++ show chanindi] ++
+                                                in ["INVAR idle" ++ show chanind ++ "_" ++ chancol ++ " = idle" ++ show chanindi ++ "_" ++ chancol] ++
                                                    (mkIdle madl i expr r')
 
 {-
@@ -941,13 +1049,19 @@ makeInvarSpec net = let srcs = getAllSourceIDs net
 makeInvar :: ColoredNetwork -> String
 makeInvar net = let srcs = getAllSourceIDs net
                     madl = getMaDL net
-                    b = map (\x -> let inp = varName net x "data"
-                                   in foldr (\w w' -> case w' of "" -> w; _ -> w ++ "\n" ++ w') "" (filter (\z -> z /= []) (mkBlock madl (L.head (getOutChannels net x)) (X inp) []))) srcs
-                in "\n\n" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") b)
+                    b = map (\x -> let o = L.head ((outp madl) x)
+                                       cols = (c_g madl) o
+                                       blocks = L.nub $ L.concat $ L.nub $ map (\y -> (mkBlock madl o (D y) [])) cols
+                                   in {-foldr (\w w' -> case w' of "" -> w; _ -> w ++ "\n" ++ w') ""-} (filter (\z -> z /= []) blocks)) srcs
+                    b' = (L.nub $ L.concat b)
+                in "\n\n" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") b')
 
 makeInvarSpec :: ColoredNetwork -> String
 makeInvarSpec net = let srcs = getAllSourceIDs net
                         madl = getMaDL net
                         chMap = chanMap net
-                        b = map (\x -> let c = L.head $ getOutChannels net x in "INVARSPEC !block" ++ (show (chMap BM.! c))) srcs
+                        b = L.nub $ L.concat $ map (\x -> let c = L.head $ getOutChannels net x
+                                                              cols = (c_g madl) c
+                                                              invspecs = map (\y -> "INVARSPEC !block" ++ (show (chMap BM.! c)) ++ "_" ++ show y) cols
+                                                          in invspecs) srcs
                     in "\n\n" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") b)
