@@ -1070,6 +1070,6 @@ makeInvarSpec net = let srcs = getAllSourceIDs net
                         chMap = chanMap net
                         b = L.nub $ L.concat $ map (\x -> let c = L.head $ getOutChannels net x
                                                               cols = (c_g madl) c
-                                                              invspecs = map (\y -> "INVARSPEC !block" ++ (show (chMap BM.! c)) ++ "_" ++ show y) cols
+                                                              invspecs = map (\y -> "!block" ++ (show (chMap BM.! c)) ++ "_" ++ show y) cols
                                                           in invspecs) srcs
-                    in "\n\n" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") b)
+                    in "\n\nINVARSPEC (" ++ (foldr (\z z' -> case z' of "" -> z; _ -> z ++ " | " ++ z') "" $ filter (\x -> x /= "") b) ++ ")"
