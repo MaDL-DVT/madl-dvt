@@ -12,6 +12,7 @@ module Examples.SmallAutomatonNetwork (san) where
 import Madl.Network
 import Madl.MsgTypes
 import Examples.TypesAndFunctions
+import Data.Map as Map
 
 import Utils.Text
 
@@ -38,8 +39,8 @@ san = mkNetwork (NSpec components channels ports) where
     sourceT = C $ Source "sourceT" token
     reqQ = C $ Queue "requestQ" 2
     rspQ = C $ Queue "responseQ" 2
-    automatonS = C $ Automaton "automatonS" 2 1 2 transitionsS
-    automatonT = C $ Automaton "automatonT" 2 1 2 transitionsT
+    automatonS = C $ Automaton "automatonS" 2 1 2 transitionsS Map.empty
+    automatonT = C $ Automaton "automatonT" 2 1 2 transitionsT Map.empty
 
     transitionsS = [AutomatonT 0 1 0 (fatal 28 "unimplemented") (\i _ -> i == 0) (Just 0) (fatal 29 "unimplemented") (\ _ _ -> Just (0, head $ getColors req))
         , AutomatonT 1 0 1 (fatal 30 "unimplemented") (\i _ -> i == 1) Nothing (fatal 31 "unimplemented") (\_ _ -> Nothing)]
