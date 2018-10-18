@@ -124,7 +124,7 @@ data BlockVariables = BlockVars {
 automatonDead :: XColoredNetwork c -> ComponentID -> BlockVariables -> Formula
 automatonDead net cID _vars = case getComponent net cID of
     -- An automaton is deadlocked if it has a deadstate
-    (Automaton _ ins _ n ts) -> exists [0..n-1] deadState where
+    (Automaton _ ins _ n ts _) -> exists [0..n-1] deadState where
         -- A deadstate is a state such that
         -- 1. The automaton is currently in this state
         -- 2. All outgoing transition of this state are dead
@@ -173,7 +173,7 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
         --   the automaton is dead
         -- todo(tssb): This doesn't cover the situation where some transition does accept the given color from the given channel,
         --               but this transition can never be triggered. Possible unsoundness?
-        Automaton _ _ _ _ ts -> conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
+        Automaton _ _ _ _ ts _ -> conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
             f = automatonDead net cID vars
             colorNeverExcepted color = all (\AutomatonT{eventFunction=event} -> not $ event port color) ts
         _ -> block_any loc net xID colors vars
@@ -377,7 +377,7 @@ idle_firstcall' loc net xID colors vars =
         --Queue{} -> conjunct' (lit' $ containsNoneLiteral net cID colors') -- Buffer is empty
         --                     (idle_all' (src 244) net (inChan 0) colors' vars fm) -- Incoming channel is idle
         -- An automaton is idle for a set of colors, if all of these colors are never produced by the automaton, or if the automaton is dead
-        Automaton _ ins _ _ ts -> disjunct (fromBool $ all colorNeverProduced currColors) (automatonDead net cID vars) where
+        Automaton _ ins _ _ ts _-> disjunct (fromBool $ all colorNeverProduced currColors) (automatonDead net cID vars) where
             colorNeverProduced color = all (\t -> all (\i -> all (doesNotProduce t i) (inColors i)) [0..ins-1]) ts where
                 doesNotProduce AutomatonT{eventFunction=e,packetTransformationFunction=f} i c = not (e i c) || (case f i c of Nothing -> True; Just (o, c') -> (o, c') /= (port, color))
         _ -> idle_all loc net xID colors vars
@@ -549,7 +549,7 @@ irdy_any source net xID currColorSet vars =
             inport = port `mod` 2
             other = 1 - inport
             matched' p = if inport == 0 then matched p else flip (matched p)
-        Automaton _ ins _ _ ts -> existsMaybe [(i, tNr, t) | i <- [0..ins-1], (tNr, t) <- zip [0..] ts] selected_and_irdy where
+        Automaton _ ins _ _ ts _ -> existsMaybe [(i, tNr, t) | i <- [0..ins-1], (tNr, t) <- zip [0..] ts] selected_and_irdy where
             selected_and_irdy (i, tNr, AutomatonT{startState=s,eventFunction=eps,packetTransformationFunction=ph}) = case filter correctTrigger $ inColors i of
                 [] -> Nothing
                 cs -> Just $ conjunct (conjunct (Lit $ InState cID s) (Lit $ TSelect cID i tNr)) (irdy_any (src 399) net (inChan i) cs vars)
@@ -643,7 +643,7 @@ trdy_any source net xID currColorSet vars =
                     conjunct (trdy_any (src 472) net (outChan $ 2*p + port) c' vars) (trdy_any (src 473) net (outChan $ 2*p + other) c vars)
             other = 1 - port
             matched' p = if port == 0 then matched p else flip (matched p)
-        Automaton _ _ _ _ ts -> existsMaybe (zip [0..] ts) selected_and_trdy where
+        Automaton _ _ _ _ ts _ -> existsMaybe (zip [0..] ts) selected_and_trdy where
             selected_and_trdy (tNr, AutomatonT{startState=s,eventFunction=eps,packetTransformationFunction=ph}) = case filter (eps port) currColors of
                 [] -> Nothing
                 cs -> Just $ conjunct (conjunct (Lit $ InState cID s) (Lit $ TSelect cID port tNr)) (exists cs trdy) where

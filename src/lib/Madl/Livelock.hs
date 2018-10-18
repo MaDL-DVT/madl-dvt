@@ -48,7 +48,7 @@ searchLivelock net seen color inChannel = if emptyColorSet color then Nothing
             FControlJoin _ _ -> Nothing
             Match _ _ -> Nothing
             MultiMatch _ _ -> Nothing
-            Automaton _ _ _ _ _-> Nothing
+            Automaton _ _ _ _ _ _-> Nothing
             Joitch _ _ -> Nothing
 
             -- We propagate with the data flow starting from sources, we should not somehow reach sources again.

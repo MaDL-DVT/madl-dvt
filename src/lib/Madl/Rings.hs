@@ -66,7 +66,7 @@ findRingsRecurse net inChan color start@(startC, startCol) ring ins outs = if (e
             FControlJoin _ _ -> []
             Match _ _ -> []
             MultiMatch _ _ -> []
-            Automaton _ _ _ _ _-> []
+            Automaton _ _ _ _ _ _-> []
             Joitch _ _ -> []
 
             -- Errors

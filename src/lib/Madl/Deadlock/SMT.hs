@@ -117,7 +117,7 @@ export_q_var_to_smt x i = case getComponent x i of
             name_m = smt_match_arbiter_m x i
             name_d = smt_match_arbiter_d x i
             (matchIns, dataIns) = splitAt (getNrOutputs x i) (getInChannels x i)
-    Automaton _ nrIns _ n ts -> unlines[
+    Automaton _ nrIns _ n ts _ -> unlines[
         unwords[smt_fun "Int" name_s, smt_assert_inrange name_s (0, n-1)],
         unwords[smt_fun "Int" name_c, smt_assert_inrange name_c (0, nrIns-1)],
         unwords[smt_fun "Int" name_t, smt_assert_inrange name_t (0, length ts-1)]] where

@@ -1134,7 +1134,9 @@ translateProcess (Process header contentsSrc) context spec = addPorts ports spec
     outputNames = concatMap (paramChannelNames context) outputs
     MacroHeader _ inputs outputs = removeSourceInfo header
 
-    automaton = M.C $ M.Automaton "Process" nrIns nrOuts n transitions
+    -- | next line fills in the fields of the datastructure for automaton
+    -- components. 
+    automaton = M.C $ M.Automaton "Process" nrIns nrOuts n transitions stateMap
     nrIns = length $ filter (\(_, dest) -> dest == "Process") ports
     nrOuts = length $ filter (\(source, _) -> source == "Process") ports
     n = Map.size stateMap

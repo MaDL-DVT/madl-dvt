@@ -280,7 +280,7 @@ matrix network = concatMap getEquation $ getComponentsWithID network where
             splitChannels (c1:c2:cs) = (c1:cs', c2:cs'') where
                 (cs', cs'') = splitChannels cs
 
-        Automaton _ _ _ n ts -> [(Map.empty, Map.fromList stateEquation)]
+        Automaton _ _ _ n ts _ -> [(Map.empty, Map.fromList stateEquation)]
                 -- (AutomatonState node i, 1) = 1* A.i (A.s in the paper)
                 -- [(One, -1) | i == 0]) | i <- [0..n-1]] = - (s == s0)
             ++ [(Map.filter (/= 0) $ Map.fromListWith (+) (transitionEquation i), Map.fromList $ (AutomatonState node i, 1) : [(One, -1) | i == 0]) | i <- [0..n-1]]

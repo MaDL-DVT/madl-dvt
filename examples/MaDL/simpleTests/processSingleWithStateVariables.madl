@@ -1,0 +1,36 @@
+const red;
+const blue;
+enum rb_t {red;blue;};
+
+process mainProcess (chan in) => chan out {
+
+   state INIT () {
+      trans {
+         red d <- in;
+         next GO(d);
+      };
+      trans {
+         blue d <- in;
+         next GO(d);
+      };
+   };
+
+   state GO (rb_t stVar) {
+      trans {
+         stVar -> out;
+         next INIT();
+      };
+   };
+
+};
+
+chan src_o := Source(rb_t);
+
+chan proc_o := mainProcess(src_o);
+
+Sink(Queue(1,proc_o));
+
+
+
+
+

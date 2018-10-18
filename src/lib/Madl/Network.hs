@@ -179,6 +179,13 @@ type XFlattenedNetwork c = Network (XComponent c) (XChannel c)
 -- | A flattened macro network where the names of components and channels are of an arbitrary type
 type XFlattenedMacroNetwork c = MacroNetwork (XComponent c) (XChannel c)
 
+
+-- | A process state consists of a name of this state, and a list of argument instantiations
+type PState = (Text, [Color])
+-- | Maps process state to identifier number
+type PStateNrMap = Map PState Int
+
+
 -- | Class for grouping the MadlNetwork and MadlMacroNetwork.
 class INetwork n (ComponentOrMacro Channel) Channel => IMadlNetwork n
 instance IMadlNetwork Network
@@ -282,10 +289,11 @@ data XComponent c =
     -- | Finite State Machine
     | Automaton {
         componentName :: c,
-        nrOfInputs :: Int, -- ^ number of incoming channels
-        nrOfOutputs :: Int, -- ^ number of outgoing channels
-        nrOfStates :: Int, -- ^ amount of states
-        transitions :: [AutomatonTransition] -- ^ list of transitions
+        nrOfInputs    :: Int, -- ^ number of incoming channels
+        nrOfOutputs   :: Int, -- ^ number of outgoing channels
+        nrOfStates    :: Int, -- ^ amount of states
+        transitions   :: [AutomatonTransition], -- ^ list of transitions
+        sateMap       :: PStateNrMap -- ^ map between state names and state ID's
     }
     -- | Switch for a pair of incoming packets. Parameter 'predicates' determines how the packets are routed.
     --   For each pair of incoming packets, exactly one of the predicates must evaluate to @True@.
@@ -516,7 +524,7 @@ prop net (inputs, (MultiMatch _ f), outputs) = foldlAllMaybe updateOutput net $ 
 prop net ([xIn], LoadBalancer{}, xs) = foldlAllMaybe balancing net xs where
     balancing :: XColoredNetwork c -> ChannelID -> Maybe (XColoredNetwork c)
     balancing net' xOut = updateType net' xOut (getColorSet net' xIn)
-prop net (xIns, (Automaton _ _ _ _ ts), xOuts) = foldlAllMaybe transforming net (zip [0..] xOuts) where
+prop net (xIns, (Automaton _ _ _ _ ts _), xOuts) = foldlAllMaybe transforming net (zip [0..] xOuts) where
     transforming :: XColoredNetwork c -> (Int, ChannelID) -> Maybe (XColoredNetwork c)
     transforming net' (port, xOut) = updateType net' xOut . map snd $ filter ((== port) . fst) resultingColors
     resultingColors :: [(Int, Color)]
@@ -709,7 +717,7 @@ instance Flattened (XComponent [Text]) (XComponent Text) where
     unflatten c@(Match _ fun) = Match (getNameText c) fun
     unflatten c@(MultiMatch _ fun) = MultiMatch (getNameText c) fun
     unflatten c@LoadBalancer{} = LoadBalancer (getNameText c)
-    unflatten c@(Automaton _ ins outs n ts) = Automaton (getNameText c) ins outs n ts
+    unflatten c@(Automaton _ ins outs n ts stm) = Automaton (getNameText c) ins outs n ts stm
     unflatten c@(Joitch _ preds) = Joitch (getNameText c) preds
     unflatten c@(GuardQueue _ cap) = GuardQueue (getNameText c) cap
     flatten (Source name msg) = Source [name] msg
@@ -728,7 +736,7 @@ instance Flattened (XComponent [Text]) (XComponent Text) where
     flatten (Match name fun) = Match [name] fun
     flatten (MultiMatch name fun) = MultiMatch [name] fun
     flatten (LoadBalancer name) = LoadBalancer [name]
-    flatten (Automaton name ins outs n ts) = Automaton [name] ins outs n ts
+    flatten (Automaton name ins outs n ts stm) = Automaton [name] ins outs n ts stm
     flatten (Joitch name preds) = Joitch [name] preds
     flatten (GuardQueue name cap) = GuardQueue [name] cap
 instance Flattened b' b => Flattened (XMacroInstance b' [Text]) (XMacroInstance b Text) where
@@ -1347,7 +1355,7 @@ getRequiredPorts FControlJoin{} = ((== 2), (== 1))
 getRequiredPorts Match{} = ((== 2), (== 2))
 getRequiredPorts MultiMatch{} = ((>= 2), (>= 1))
 getRequiredPorts LoadBalancer{} = ((== 1), (>= 2))
-getRequiredPorts (Automaton _ ins outs _ _) = ((== ins), (== outs))
+getRequiredPorts (Automaton _ ins outs _ _ _) = ((== ins), (== outs))
 getRequiredPorts Joitch{} = ((== 2), (>= 2))
 getRequiredPorts GuardQueue{} = ((== 2), (== 1))
 
@@ -1425,7 +1433,7 @@ validArguments network (node, comp) = case comp of
         typeUnions = foldr typeUnion nul
         (mtypes, dtypes) = splitAt (getNrOutputs network node) (inputTypes network node)
     LoadBalancer{} -> Nothing
-    Automaton _ ins outs n ts ->
+    Automaton _ ins outs n ts _ ->
         if ins <= 0 then Just (err ["Invalid nr of inputs: " ++show ins])
         else if outs <= 0 then Just (err ["Invalid nr of outputs: " ++ show outs])
         else if n <= 0 then Just (err ["Invalid nr of states: " ++ show n])
