@@ -835,7 +835,7 @@ ppState (txt, c) = (show txt)++","++(show c)
 
 ppStateMap1 :: PStateNrMap -> String
 ppStateMap1 pStateMap = 
-   let f key x = "STATE "++(ppState key)++","++(show x)++";\n"
+   let f key x = "STATE "++(ppState key)++","++(show x)++";"
        mapped = Data.Map.mapWithKey f pStateMap
    in concat $ Data.Map.elems mapped
 
