@@ -48,8 +48,9 @@ module Madl.Network (
     inputTypes, outputTypes,
     getAllQueues, getAllSwitches,getAllSources,getAllSinks,getAllMerges,
     getAllQueuesWithID,getAllSwitchesWithID,getAllSourcesWithID,getAllSourceIDs,
-    getAllMergesWithID,getAllSinksWithID,getAllFJoinsWithID,
-    getAllFunctionsWithID,
+    getAllMergesWithID,getAllSinksWithID,getAllFJoinsWithID,getAllProcessesWithID,
+    getAutomatonStateMap,getAllProcesses,getAutomatonStateMapWithProcessName,
+    getAllFunctionsWithID,prettyPrintStateMap,
     -- ** Channel Queries
     getChannelIDs, getChannels, getChannelsWithID,
     getChannel, getChannelContext,
@@ -91,6 +92,8 @@ import Data.Maybe
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Traversable()
+import qualified Data.Map as Data.Map
+
 
 import Utils.Map
 import Utils.Text
@@ -293,7 +296,7 @@ data XComponent c =
         nrOfOutputs   :: Int, -- ^ number of outgoing channels
         nrOfStates    :: Int, -- ^ amount of states
         transitions   :: [AutomatonTransition], -- ^ list of transitions
-        sateMap       :: PStateNrMap -- ^ map between state names and state ID's
+        stateMap       :: PStateNrMap -- ^ map between state names and state ID's
     }
     -- | Switch for a pair of incoming packets. Parameter 'predicates' determines how the packets are routed.
     --   For each pair of incoming packets, exactly one of the predicates must evaluate to @True@.
@@ -806,6 +809,40 @@ getAllFJoinsWithID net = filter (isFJoin . snd) (getComponentsWithID net)
 -- | Get all Functions with ID of a network
 getAllFunctionsWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(ComponentID, XComponent c)]
 getAllFunctionsWithID net = filter (isFunction . snd) (getComponentsWithID net)
+
+-- | Get all processes with ID of a network
+getAllProcessesWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(ComponentID, XComponent c)]
+getAllProcessesWithID net = filter (isAutomaton . snd) (getComponentsWithID net)
+
+-- | Get all processes without ID
+getAllProcesses :: INetwork n (XComponent c) b => n (XComponent c) b -> [XComponent c]
+getAllProcesses net = filter isAutomaton (getComponents net)
+
+-- | Get the state map of an automaton
+getAutomatonStateMap :: (XComponent c) -> PStateNrMap
+getAutomatonStateMap comp = case comp of 
+     Automaton{stateMap = x} -> x
+     _ -> Data.Map.empty
+
+-- | Get state map with process name
+getAutomatonStateMapWithProcessName ::  XComponent c -> Maybe (c, PStateNrMap)
+getAutomatonStateMapWithProcessName comp = case comp of 
+   Automaton{componentName = name,stateMap = x} -> Just (name,x)
+   _ -> Nothing
+
+ppState :: PState -> String
+ppState (txt, c) = (show txt)++","++(show c)
+
+ppStateMap1 :: PStateNrMap -> String
+ppStateMap1 pStateMap = 
+   let f key x = "STATE "++(ppState key)++","++(show x)++";\n"
+       mapped = Data.Map.mapWithKey f pStateMap
+   in concat $ Data.Map.elems mapped
+
+prettyPrintStateMap :: (Show c) => Maybe (c, PStateNrMap) -> String
+prettyPrintStateMap stMapWithName = case stMapWithName of
+    Just (name, stMap) -> "PROCESS "++(show name)++","++(ppStateMap1 stMap)
+    Nothing -> ""
 
 -- | Get all queues with ID of a network
 getAllQueuesWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(ComponentID, XComponent c)]
