@@ -7,7 +7,7 @@ Description : Data structure for madl networks.
 Copyright   : (c) Eindhoven University of Technology
 Authors: Sanne Wouda 2015-2016, Tessa Belder 2015-2016, Julien Schmaltz 2015-2017
 
-This module the data structure for madl networks. Furthermore it contains 
+This module the data structure for madl networks. Furthermore it contains
 queries for these networks, and network transformation functions.
 -}
 module Madl.Network (
@@ -159,11 +159,11 @@ largestConnectedComponent = maximum . (map length) . (map FGL.nodes) . bcc . rem
 -- MaDLNetwork data types
 -------------------------------------
 
--- | A madl network is a network with 'ComponentOrMacro' as component type, 
+-- | A madl network is a network with 'ComponentOrMacro' as component type,
 --  and 'Channel' as channel type.
 --  The "Text" argument to XMadlNetwork is later a parameter.
 type MadlNetwork = XMadlNetwork Text
--- | A madl macro network is a macro network with 'ComponentOrMacro' as 
+-- | A madl macro network is a macro network with 'ComponentOrMacro' as
 --  component type, and 'Channel' as channel type
 type MadlMacroNetwork = XMadlMacroNetwork Text
 -- | A madl network where the names of components and channels are of an arbitrary type
@@ -330,7 +330,7 @@ data AutomatonTransition = AutomatonT {
     outPort :: Maybe Int,
     phi :: Maybe (MFunctionDisj),
     packetTransformationFunction :: Int -> Color -> Maybe (Int, Color) -- ^ port-sensitive packet transformation
-} 
+}
 
 -- JS: noway to show for eventFunction nor packetTransformationFunction
 instance Show AutomatonTransition where
@@ -460,7 +460,7 @@ emptySpecificationSource = SpecSrc {
 
 -- TODO(snnw): add type information to queues as well
 --
--- | A ColoredNetwork is a network with components and where each channel has 
+-- | A ColoredNetwork is a network with components and where each channel has
 --   been annotated with an overapproximation of the colors of the packets
 --   that can be transfered through that channel.
 type ColoredNetwork = XColoredNetwork Text
@@ -596,8 +596,8 @@ class MayBeQueue c where
     isSource       :: c -> Bool
     isCJoin        :: c -> Bool
     isFJoin        :: c -> Bool
-    isFork         :: c -> Bool    
-    isSwitch       :: c -> Bool 
+    isFork         :: c -> Bool
+    isSwitch       :: c -> Bool
     isMerge        :: c -> Bool
     isLoadBalancer :: c -> Bool
     isGuardQueue   :: c -> Bool
@@ -782,7 +782,7 @@ getComponentsWithID :: INetwork n a b => n a b -> [(ComponentID, a)]
 getComponentsWithID net = map (\i -> (i, component net i)) (components net)
 
 -- | Get all queues of a network
-getAllQueues :: INetwork n (XComponent c) b => n (XComponent c) b -> [XComponent c] 
+getAllQueues :: INetwork n (XComponent c) b => n (XComponent c) b -> [XComponent c]
 getAllQueues net = filter isQueue (getComponents net)
 
 -- | Get all switches of a network
@@ -820,21 +820,21 @@ getAllProcesses net = filter isAutomaton (getComponents net)
 
 -- | Get the state map of an automaton
 getAutomatonStateMap :: (XComponent c) -> PStateNrMap
-getAutomatonStateMap comp = case comp of 
+getAutomatonStateMap comp = case comp of
      Automaton{stateMap = x} -> x
      _ -> Data.Map.empty
 
 -- | Get state map with process name
 getAutomatonStateMapWithProcessName ::  XComponent c -> Maybe (c, PStateNrMap)
-getAutomatonStateMapWithProcessName comp = case comp of 
+getAutomatonStateMapWithProcessName comp = case comp of
    Automaton{componentName = name,stateMap = x} -> Just (name,x)
    _ -> Nothing
 
 ppState :: PState -> String
-ppState (txt, c) = (show txt)++","++(show c)
+ppState (txt', c) = (show txt')++","++(show c)
 
 ppStateMap1 :: PStateNrMap -> String
-ppStateMap1 pStateMap = 
+ppStateMap1 pStateMap =
    let f key x = "STATE "++(ppState key)++","++(show x)++";"
        mapped = Data.Map.mapWithKey f pStateMap
    in concat $ Data.Map.elems mapped
@@ -853,7 +853,7 @@ getAllSwitchesWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(C
 getAllSwitchesWithID net = filter (isSwitch . snd) (getComponentsWithID net)
 
 -- | Get all sources with ID of a network.
--- Note: PatientSources are included. 
+-- Note: PatientSources are included.
 getAllSourcesWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(ComponentID, XComponent c)]
 getAllSourcesWithID net = filter (isSource . snd) (getComponentsWithID net)
 
@@ -1114,7 +1114,7 @@ networkTypes = Set.toList . foldr (addTypes) Set.empty . getComponents where
 
 getStructFields :: ColorSet -> [Text]
 getStructFields (ColorSet cs) = let cs' = Set.toList cs
-                                in Set.toList $ Set.unions $ map (\x -> getStructFields' x) cs' 
+                                in Set.toList $ Set.unions $ map (\x -> getStructFields' x) cs'
   where getStructFields' :: Color -> Set Text
         getStructFields' (Color _ (Left (VStruct h))) = let ks = Set.fromList $ Hash.keys h
                                                             vs = map (\x -> let Left c = x in c)
@@ -1129,7 +1129,7 @@ networkStructFields :: INetwork n (XComponent c) b => n (XComponent c) b -> [Tex
 networkStructFields = Set.toList . foldr (addStructFields) Set.empty . getComponents where
     addStructFields :: XComponent c -> Set Text -> Set Text
     addStructFields comp names = Set.union names $ case comp of
-        Automaton{} -> Set.empty  
+        Automaton{} -> Set.empty
         ControlJoin{} -> Set.empty
         DeadSink{} -> Set.empty
         FControlJoin _ p -> mfboolFields p
@@ -1553,7 +1553,7 @@ deriveColorTests =
 
 -- | Tests to check if channel colors are calculated correctly for the source component.
 testDeriveSourceColor :: [Test]
-testDeriveSourceColor = map makeTest [req, reqAndRsp, reqAndRspD, 
+testDeriveSourceColor = map makeTest [req, reqAndRsp, reqAndRspD,
                                       dataA, complex, struct_ab_grby,
                                       struct_A_green] where
     makeTest :: ColorSet -> Test
@@ -1591,9 +1591,9 @@ testDerivePatientSourceColor = map makeTest [req, reqAndRsp, reqAndRspD] where
 
 -- | Tests to check if channel colors are calculated correctly for the function component.
 testDeriveFunctionColor :: [Test]
-testDeriveFunctionColor = map makeTest 
-                                [(req, toRSP, rsp), 
-                                 (reqAndRsp, switchReqRsp, reqAndRsp), 
+testDeriveFunctionColor = map makeTest
+                                [(req, toRSP, rsp),
+                                 (reqAndRsp, switchReqRsp, reqAndRsp),
                                  (reqAndRspD, reqToRsp, rspD),
                                  (struct_ab_grby, mkAGreen, struct_A_green),
                                  (struct_A_B, mkGreenBlue_RedYellow, struct_A_blue_B_yellow)] where
