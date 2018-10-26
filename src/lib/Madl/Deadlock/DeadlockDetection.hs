@@ -19,6 +19,10 @@ import Data.List (delete, partition)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.IntMap as IM
+import qualified Data.Graph as G
+import qualified Data.List as L
+import qualified Data.Array as A
+import qualified Data.Bimap as BM
 
 import Utils.Map
 import Utils.Text
@@ -119,8 +123,111 @@ data BlockVariables = BlockVars {
     nfqsX :: [ComponentID] -- ^ Queues that can never be full
 }
 
+procTrans :: [ChannelID] -> [ChannelID] -> AutomatonTransition -> (Int,Int,[ChannelID],[ChannelID])
+procTrans ins outs (AutomatonT s e inid _ _ outid _ _) = (s, e, [ins !! inid], outs')
+  where outs' = case outid of
+                  Just o -> [outs !! o]
+                  _ -> []
+
+procAut :: (Show c) => XColoredNetwork c -> ComponentID -> [(Int,Int,[ChannelID],[ChannelID])]
+procAut net comp = case getComponent net comp of
+                      (Automaton _ _ _ _ ts _) -> map (\t -> procTrans ins outs t) ts
+                      _ -> error "procTrans: Wrong component type"
+  where ins = getInChannels net comp
+        outs = getOutChannels net comp
+
+allStates :: [(Int,Int,[ChannelID],[ChannelID])] -> [Int]
+allStates tr = let i = map (\(x,_,_,_) -> x) tr
+                   t = map (\(_,x,_,_) -> x) tr
+                   res = L.nub (i ++ t)
+               in res
+
+removeTrans :: ChannelID -> [(Int,Int,[ChannelID],[ChannelID])] -> [(Int,Int,[ChannelID],[ChannelID])]
+removeTrans cid ts = filter (\(_,_,i,o) -> not (elem cid i) && not (elem cid o)) ts
+
+getBounds :: [(Int,Int)] -> (Int,Int)
+getBounds xs = let lb = map (\(l,_) -> l) xs
+                   rb = map (\(_,r) -> r) xs
+                   b = L.nub $ lb ++ rb
+               in (minimum b, maximum b)
+
+
+autToSCC :: [(Int,Int,[ChannelID],[ChannelID])] -> [(Int,Int,[Int])]
+autToSCC ts = let ts' = map (\(i,o,_,_) -> (i,o)) ts
+                  g = A.assocs $ G.buildG (getBounds ts') ts'
+                  g' = map (\(x,xs) -> (x,x,xs)) g
+              in g'
+
+getSCC :: [(Int,Int,[Int])] -> [[Int]]
+getSCC ts = map (\t -> G.flattenSCC t) $ G.stronglyConnComp ts
+
+removeTrivial :: [(Int,Int,[Int])] -> [[Int]] -> [[Int]]
+removeTrivial ts scc = filter (\x -> if length x == 1 then check ts x else True) scc
+
+check :: [(Int,Int,[Int])] -> [Int] -> Bool
+check ts t = let t' = head t
+                 x = filter (\(a,_,_) -> a == t') ts
+                 x' = head (map (\(_,_,y) -> y) x)
+                 res = (x' /= []) && ((L.intersect x' t) /= [])
+             in res
+
+sccWithout :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> [[Int]]
+sccWithout net comp chan = let aut = procAut net comp
+                               aut' = removeTrans chan aut
+                               aut'' = autToSCC aut'
+                               scc = getSCC $ autToSCC aut'
+                               res = removeTrivial aut'' scc
+                           in res
+
+sccFormula :: (Show c) => XColoredNetwork c -> ChannelID -> [Int] -> [Int] -> BM.Bimap (Int,Int) ([ChannelID],[ChannelID]) -> Formula
+sccFormula net chan scc states tm = let f = concat (map (\x -> map (\y -> if elem y scc then T else makeDead (tm BM.! (x,y))) states) scc)
+                                        f' = AND (Set.fromList f)
+                                    in f'
+    where makeDead :: ([ChannelID],[ChannelID]) -> Formula
+          makeDead ([],[]) = error "makeDead: both input and output channels are absent"
+          makeDead (x,[]) = idleLiteral' (src 188) net (head x) (getColorSet net (head x))
+          makeDead ([],x) = blockLiteral' (src 189) net (head x) (getColorSet net (head x))
+          makeDead (x,y) = OR (Set.fromList ([idleLiteral' (src 188) net (head x) (getColorSet net (head x))] ++ [blockLiteral' (src 189) net (head y) (getColorSet net (head y))]))
+
 -- | Given an automaton, produces a formula that evaluates to `True` iff this
 --   automaton is deadlocked
+automatonDead :: (Show c) => XColoredNetwork c -> ComponentID -> BlockVariables -> Formula
+automatonDead net cID _vars = case getComponent net cID of
+    -- An automaton is deadlocked if it has a deadstate
+    a@(Automaton _ ins _ n ts _) -> OR (Set.fromList ([exists [0..n-1] deadState] ++ f'))  where
+        -- A deadstate is a state such that
+        -- 1. The automaton is currently in this state
+        -- 2. All outgoing transition of this state are dead
+        deadState s = conjunct (Lit $ InState cID s) (forall (filter (\AutomatonT{startState=t}  -> t == s) ts) transitionDead)
+        -- A transition if dead if it is dead for all possible incoming colors
+        -- from all incoming channels of the automata
+        transitionDead :: AutomatonTransition -> Formula
+        transitionDead t = forall [0..ins-1] (\i -> forallMaybe (inColors i) (transitionDeadFor t i))
+        -- A transition is dead for a certain incoming color `c` from a certain channel `x` iff
+        -- either 'x' is idle for 'c'
+        --    or if this transition produces a message of color 'd' on channel 'o', and 'o' is blocked for 'd'
+        -- If this transition cannot be triggered by color 'c' on channel 'x', then this equation is not applicable
+        transitionDeadFor AutomatonT{eventFunction=e,packetTransformationFunction=f} i color = if not $ e i color then Nothing else
+            Just $ disjunct (idleLiteral' (src 100) net (inChan i) color) outputBlocked where
+                outputBlocked :: Formula
+                outputBlocked = case f i color of
+                    Nothing -> F
+                    Just (o, c) -> blockLiteral' (src 101) net (outChan o) c
+    _ -> fatal 94 "AutomatonDead should only be called on automata."
+    where
+        outChan = lookupM' (src 105) $ getOutChannels net cID
+        inChan  = lookupM' (src 106) $ getInChannels net cID
+        inColors = getColors . snd . getChannel net . inChan
+        ins = getInChannels net cID
+        outs = getOutChannels net cID
+        aut = L.nub $ procAut net cID
+        states = allStates aut
+        transMap = BM.fromList (map (\(a,b,c,d) -> ((a,b),(c,d))) aut)
+        chanscc = map (\x -> (x,sccWithout net cID x)) (ins ++ outs)
+        f = map (\(c,sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net c scc states transMap) sccs)))) chanscc
+        f' = (map (\(_,x) -> x) f)
+
+{-
 automatonDead :: XColoredNetwork c -> ComponentID -> BlockVariables -> Formula
 automatonDead net cID _vars = case getComponent net cID of
     -- An automaton is deadlocked if it has a deadstate
@@ -148,6 +255,7 @@ automatonDead net cID _vars = case getComponent net cID of
         outChan = lookupM' (src 105) $ getOutChannels net cID
         inChan  = lookupM' (src 106) $ getInChannels net cID
         inColors = getColors . snd . getChannel net . inChan
+-}
 
 -- | Produces a block equation for the target component of a channel.
 block_firstcall' :: (Show c) => Source -> XColoredNetwork c -> ChannelID -> Maybe ColorSet -> BlockVariables -> Formula
@@ -364,7 +472,7 @@ idleLiteral' :: IsColorSet a => Source -> XColoredNetwork c -> ChannelID -> a ->
 idleLiteral' loc net colors = Lit . idleLiteral loc net colors
 
 -- | Produces an idle equation for the initiator component of a channel.
-idle_firstcall' :: Source -> XColoredNetwork c -> ChannelID -> Maybe ColorSet -> BlockVariables -> Formula
+idle_firstcall' :: (Show c) => Source -> XColoredNetwork c -> ChannelID -> Maybe ColorSet -> BlockVariables -> Formula
 idle_firstcall' loc net xID colors vars =
     case getComponent net cID of
         Queue{} -> disjunct empty_and_idle some_other_packet_blocked_at_head where
