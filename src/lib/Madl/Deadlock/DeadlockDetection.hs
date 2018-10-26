@@ -180,7 +180,7 @@ sccWithout net comp chan = let aut = procAut net comp
                            in res
 
 sccFormula :: (Show c) => XColoredNetwork c -> ChannelID -> [Int] -> [Int] -> BM.Bimap (Int,Int) ([ChannelID],[ChannelID]) -> Formula
-sccFormula net chan scc states tm = let f = concat (map (\x -> map (\y -> if elem x scc then T else makeDead (tm BM.! (x,y))) states) scc)
+sccFormula net chan scc states tm = let f = concat (map (\x -> map (\y -> if elem y scc then T else makeDead (tm BM.! (x,y))) states) scc)
                                         f' = AND (Set.fromList f)
                                     in f'
     where makeDead :: ([ChannelID],[ChannelID]) -> Formula
