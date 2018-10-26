@@ -1,0 +1,31 @@
+const token_t; 
+
+macro process_bug_issue_385(chan x__OUT, chan y__OUT) => chan o { 
+let o := Vars(buffo__OUT);
+chan buffo__OUT := Queue(1, testProcess_fsm__o)[buffo];
+// Enter function declarations here.
+process testProcess_fsm (chan x, chan y) => chan o {
+state S0 ( ) {
+trans {
+    token_t d <- x;
+    token_t -> o;
+    next S0();
+
+};
+trans {
+    token_t d <- y;
+    next S1();
+
+};
+};
+state S1 ( ) {
+trans {
+    token_t d <- x;
+    next S1();
+
+};
+};
+};
+chan testProcess_fsm__o := testProcess_fsm(x__OUT, y__OUT)[testProcess_fsm];
+
+ }; 

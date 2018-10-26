@@ -1,0 +1,46 @@
+const token_t; 
+
+const red; 
+
+const blue; 
+
+enum enum_t{ 
+     red; 
+     blue; 
+}; 
+
+macro process_bug_issue_48(chan in__OUT) => chan out { 
+let out := Vars(buffout__OUT);
+chan buffout__OUT := Queue(1, testProcess_fsm__out)[buffout];
+// Enter function declarations here.
+process testProcess_fsm (chan in) => chan out {
+state S0 ( ) {
+trans {
+    red d <- in;
+    next S1();
+
+};
+trans {
+    blue d <- in;
+    next S2();
+
+};
+};
+state S1 ( ) {
+trans {
+    red -> out;
+    next S0();
+
+};
+};
+state S2 ( ) {
+trans {
+    blue -> out;
+    next S0();
+
+};
+};
+};
+chan testProcess_fsm__out := testProcess_fsm(in__OUT)[testProcess_fsm];
+
+ }; 
