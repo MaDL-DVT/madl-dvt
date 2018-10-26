@@ -1,0 +1,9 @@
+const token_t; 
+
+uses process_bug_issue_385;
+chan srcX__OUT := Source(token_t)[srcX];
+chan qX__OUT := Queue(2, srcX__OUT)[qX];
+chan srcY__OUT := Source(token_t)[srcY];
+chan qY__OUT := Queue(2, srcY__OUT)[qY];
+Sink(testProcess__o)[snk5];
+chan testProcess__o := process_bug_issue_385(qX__OUT, qY__OUT)[testProcess];

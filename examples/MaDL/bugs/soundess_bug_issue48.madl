@@ -1,0 +1,27 @@
+const token_t; 
+
+const red; 
+
+const blue; 
+
+enum enum_t{ 
+     red; 
+     blue; 
+}; 
+
+uses process_bug_issue_48;
+chan src1__OUT := Source(red)[src1];
+chan q2__OUT := Queue(2, src1__OUT)[q2];
+Sink(cjn4__OUT)[snk3];
+chan srcDummy__OUT := Source(token_t)[srcDummy];
+chan cjn4__OUT := CtrlJoin(q5__OUT, q6__OUT)[cjn4];
+chan q5__OUT := Queue(2, sw7__OUTB)[q5];
+chan q6__OUT := Queue(2, srcDummy__OUT)[q6];
+pred sw7_p (p: enum_t) { 
+    p == red; 
+// Set of enumeration values = {red, blue} 
+}; 
+chan sw7__OUTA, sw7__OUTB := Switch(q9__OUT, sw7_p, otherwise)[sw7];
+Sink(sw7__OUTA)[snk8];
+chan q9__OUT := Queue(2, testProcess__out)[q9];
+chan testProcess__out := process_bug_issue_48(q2__OUT)[testProcess];
