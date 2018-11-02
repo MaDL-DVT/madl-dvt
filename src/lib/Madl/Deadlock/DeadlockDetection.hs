@@ -16,6 +16,7 @@ module Madl.Deadlock.DeadlockDetection (
 
 import Data.Foldable (toList)
 import Data.List (delete, partition)
+import Data.Maybe (fromJust)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.IntMap as IM
@@ -179,15 +180,27 @@ sccWithout net comp chan = let aut = procAut net comp
                                res = removeTrivial aut'' scc
                            in res
 
-sccFormula :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> [Int] -> [Int] -> BM.Bimap (Int,Int) ([ChannelID],[ChannelID]) -> Formula
-sccFormula net comp chan scc states tm = let f = concat (map (\x -> map (\y -> if (elem y scc) || (not $ elem (x,y) (BM.keys tm)) then T else makeDead (tm BM.! (x,y))) states) scc)
-                                             f' = AND (Set.fromList f)
-                                         in AND (Set.fromList ([OR (Set.fromList (map (\x -> Lit $ InState comp x) states))] ++ [f']))
-    where makeDead :: ([ChannelID],[ChannelID]) -> Formula
-          makeDead ([],[]) = error "makeDead: both input and output channels are absent"
-          makeDead (x,[]) = idleLiteral' (src 188) net (head x) (getColorSet net (head x))
-          makeDead ([],x) = blockLiteral' (src 189) net (head x) (getColorSet net (head x))
-          makeDead (x,y) = OR (Set.fromList ([idleLiteral' (src 188) net (head x) (getColorSet net (head x))] ++ [blockLiteral' (src 189) net (head y) (getColorSet net (head y))]))
+sccFormula :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> [Int] -> [Int] -> BM.Bimap (Int,Int) ([ChannelID],[ChannelID]) -> [AutomatonTransition] -> Formula
+sccFormula net comp chan scc states tm ts = let
+                                                f = concat (map (\x -> map (\y -> let (chani,chano) = tm BM.! (x,y)
+                                                                                      incol = map (\a -> let (ColorSet b) = getColorSet net a in b) chani
+                                                                                      outcol = map (\a -> let (ColorSet b) = getColorSet net a in b) chano
+                                                                                      incol' = if incol /= [] then Set.toList (head incol) else []
+                                                                                      outcol' = if outcol /= [] then Set.toList (head outcol) else []
+                                                                                      funs = filter (\(AutomatonT a b _ _ _ _ _ _) -> a == x && b == y) ts
+                                                                                      iport = let (AutomatonT _ _ i _ _ _ _ _) = (head funs) in i
+                                                                                      oport = let (AutomatonT _ _ _ _ _ o _ _) = (head funs) in o
+                                                                                      funs' = map (\a -> eventFunction a) funs
+                                                                                      incol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b iport a) funs')) incol'
+                                                                                      outcol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b (fromJust oport) a) funs')) outcol'
+                                                                                  in if (elem y scc) || (not $ elem (x,y) (BM.keys tm)) then T else makeDead (tm BM.! (x,y)) (incol'',outcol'')) states) scc)
+                                                f' = AND (Set.fromList f)
+                                            in AND (Set.fromList ([OR (Set.fromList (map (\x -> Lit $ InState comp x) states))] ++ [f']))
+    where makeDead :: ([ChannelID],[ChannelID]) -> ([Color],[Color]) ->  Formula
+          makeDead ([],[]) _ = error "makeDead: both input and output channels are absent"
+          makeDead (x,[]) (m,_) = Lit $ IdleAll (src 188) (head x) (Just $ ColorSet (Set.fromList m))
+          makeDead ([],x) (_,m) = Lit $ BlockAny (src 189) (head x) (Just $ ColorSet (Set.fromList m))
+          makeDead (x,y) (m,m') = OR (Set.fromList ([Lit $ IdleAll (src 188) (head x) (Just $ ColorSet (Set.fromList m))] ++ [Lit $ BlockAny (src 189) (head y) (Just $ ColorSet (Set.fromList m'))]))
 
 -- | Given an automaton, produces a formula that evaluates to `True` iff this
 --   automaton is deadlocked
@@ -224,7 +237,7 @@ automatonDead net cID _vars = case getComponent net cID of
         states = allStates aut
         transMap = BM.fromList (map (\(a,b,c,d) -> ((a,b),(c,d))) aut)
         chanscc = map (\x -> (x,sccWithout net cID x)) (ins ++ outs)
-        f = map (\(c,sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc states transMap) sccs)))) chanscc
+        f = map (\(c,sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc states transMap (transitions (getComponent net cID))) sccs)))) chanscc
         f' = (map (\(_,x) -> x) f)
 
 {-
