@@ -124,34 +124,36 @@ data BlockVariables = BlockVars {
     nfqsX :: [ComponentID] -- ^ Queues that can never be full
 }
 
-procTrans :: [ChannelID] -> [ChannelID] -> AutomatonTransition -> (Int,Int,[ChannelID],[ChannelID])
-procTrans ins outs (AutomatonT s e inid _ _ outid _ _) = (s, e, [ins !! inid], outs')
+procTrans :: [ChannelID] -> [ChannelID] -> AutomatonTransition -> (Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))
+procTrans ins outs (AutomatonT s e inid _ f outid _ _) = (s, e, [ins !! inid], outs',(inid,outid,f))
   where outs' = case outid of
                   Just o -> [outs !! o]
                   _ -> []
 
-procAut :: (Show c) => XColoredNetwork c -> ComponentID -> [(Int,Int,[ChannelID],[ChannelID])]
+procAut :: (Show c) => XColoredNetwork c -> ComponentID -> [(Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))]
 procAut net comp = case getComponent net comp of
                       (Automaton _ _ _ _ ts _) -> map (\t -> procTrans ins outs t) ts
                       _ -> error "procTrans: Wrong component type"
   where ins = getInChannels net comp
         outs = getOutChannels net comp
 
-allStates :: [(Int,Int,[ChannelID],[ChannelID])] -> [Int]
-allStates tr = let i = map (\(x,_,_,_) -> x) tr
-                   t = map (\(_,x,_,_) -> x) tr
+allStates :: [(Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))] -> [Int]
+allStates tr = let i = map (\(x,_,_,_,_) -> x) tr
+                   t = map (\(_,x,_,_,_) -> x) tr
                    res = L.nub (i ++ t)
                in res
 
-removeTrans :: ChannelID -> [(Int,Int,[ChannelID],[ChannelID])] -> [(Int,Int,[ChannelID],[ChannelID])]
-removeTrans cid ts = filter (\(_,_,i,o) -> not (elem cid i) && not (elem cid o)) ts
+colorSetToColors :: ColorSet -> [Color]
+colorSetToColors cols = let (ColorSet c) = cols in Set.toList c
+
+removeTrans :: (Show c) => XColoredNetwork c -> (ChannelID,Color) -> [(Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))] -> [(Int,Int,[ChannelID],[ChannelID])]
+removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) (filter (\(_,_,i,o,(g,h,f)) -> (if ( (elem cid i) && i /= []) then ((length (colorSetToColors (getColorSet net (i !! 0)))) > 1) || (not (f g x)) else True) && (if ((elem cid o) && o /= []) then ((length (colorSetToColors (getColorSet net (o !! 0)))) > 1) || (not (f (fromJust h) x)) else True)) ts))
 
 getBounds :: [(Int,Int)] -> (Int,Int)
 getBounds xs = let lb = map (\(l,_) -> l) xs
                    rb = map (\(_,r) -> r) xs
                    b = L.nub $ lb ++ rb
                in (minimum b, maximum b)
-
 
 autToSCC :: [(Int,Int,[ChannelID],[ChannelID])] -> [(Int,Int,[Int])]
 autToSCC ts = let ts' = map (\(i,o,_,_) -> (i,o)) ts
@@ -172,28 +174,28 @@ check ts t = let t' = head t
                  res = (x' /= []) && ((L.intersect x' t) /= [])
              in res
 
-sccWithout :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> [[Int]]
-sccWithout net comp chan = let aut = procAut net comp
-                               aut' = removeTrans chan aut
-                               aut'' = autToSCC aut'
-                               scc = getSCC $ autToSCC aut'
-                               res = removeTrivial aut'' scc
-                           in res
+sccWithout :: (Show c) => XColoredNetwork c -> ComponentID -> (ChannelID,Color) -> [[Int]]
+sccWithout net comp (chan,x) = let aut = procAut net comp
+                                   aut' = removeTrans net (chan,x) aut
+                                   aut'' = if aut' == [] then [] else autToSCC aut'
+                                   scc = if aut' == [] then [] else getSCC $ autToSCC aut'
+                                   res = removeTrivial aut'' scc
+                               in res
 
 sccFormula :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> [Int] -> [Int] -> BM.Bimap (Int,Int) ([ChannelID],[ChannelID]) -> [AutomatonTransition] -> Formula
 sccFormula net comp chan scc states tm ts = let
-                                                f = concat (map (\x -> map (\y -> let (chani,chano) = tm BM.! (x,y)
+                                                f = concat (map (\x -> map (\y -> let (chani,chano) = tm BM.! (y,x)
                                                                                       incol = map (\a -> let (ColorSet b) = getColorSet net a in b) chani
                                                                                       outcol = map (\a -> let (ColorSet b) = getColorSet net a in b) chano
                                                                                       incol' = if incol /= [] then Set.toList (head incol) else []
                                                                                       outcol' = if outcol /= [] then Set.toList (head outcol) else []
-                                                                                      funs = filter (\(AutomatonT a b _ _ _ _ _ _) -> a == x && b == y) ts
+                                                                                      funs = filter (\(AutomatonT a b _ _ _ _ _ _) -> a == y && b == x) ts
                                                                                       iport = let (AutomatonT _ _ i _ _ _ _ _) = (head funs) in i
                                                                                       oport = let (AutomatonT _ _ _ _ _ o _ _) = (head funs) in o
                                                                                       funs' = map (\a -> eventFunction a) funs
                                                                                       incol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b iport a) funs')) incol'
                                                                                       outcol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b (fromJust oport) a) funs')) outcol'
-                                                                                  in if (elem y scc) || (not $ elem (x,y) (BM.keys tm)) then T else makeDead (tm BM.! (x,y)) (incol'',outcol'')) states) scc)
+                                                                                  in {-error $ show (incol'',outcol'',x,y,ts)-}if (elem y scc) || (not $ elem (y,x) (BM.keys tm)) then T else makeDead (tm BM.! (y,x)) (incol'',outcol'')) states) scc)
                                                 f' = AND (Set.fromList f)
                                             in AND (Set.fromList ([OR (Set.fromList (map (\x -> Lit $ InState comp x) states))] ++ [f']))
     where makeDead :: ([ChannelID],[ChannelID]) -> ([Color],[Color]) ->  Formula
@@ -233,11 +235,13 @@ automatonDead net cID _vars = case getComponent net cID of
         inColors = getColors . snd . getChannel net . inChan
         ins = getInChannels net cID
         outs = getOutChannels net cID
-        aut = L.nub $ procAut net cID
+        aut = procAut net cID
         states = allStates aut
-        transMap = BM.fromList (map (\(a,b,c,d) -> ((a,b),(c,d))) aut)
-        chanscc = map (\x -> (x,sccWithout net cID x)) (ins ++ outs)
-        f = map (\(c,sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc states transMap (transitions (getComponent net cID))) sccs)))) chanscc
+        transMap = BM.fromList (map (\(a,b,c,d,_) -> ((a,b),(c,d))) aut)
+        chanswcols = map (\x -> let (ColorSet y) = getColorSet net x in (x,y)) (ins ++ outs)
+        chanswcols' = concat (map (\(x,y) -> map (\a -> (x,a)) (Set.toList y)) chanswcols)
+        chanscc = map (\x -> (x,sccWithout net cID x)) chanswcols'
+        f = map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc states transMap (transitions (getComponent net cID))) sccs)))) chanscc
         f' = (map (\(_,x) -> x) f)
 
 {-
