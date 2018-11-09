@@ -236,7 +236,7 @@ automatonDead net cID _vars = case getComponent net cID of
         ins = getInChannels net cID
         outs = getOutChannels net cID
         aut = procAut net cID
-        states = allStates aut
+        --states = allStates aut
         transMap = BM.fromList (map (\(a,b,c,d,_) -> ((a,b),(c,d))) aut)
         chanswcols = map (\x -> let (ColorSet y) = getColorSet net x in (x,y)) (ins ++ outs)
         chanswcols' = concat (map (\(x,y) -> map (\a -> (x,a)) (Set.toList y)) chanswcols)
