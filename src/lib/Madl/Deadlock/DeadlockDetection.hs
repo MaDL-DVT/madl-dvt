@@ -195,7 +195,7 @@ sccFormula net comp chan scc tm ts = let
                                                                                       funs' = map (\a -> eventFunction a) funs
                                                                                       incol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b iport a) funs')) incol'
                                                                                       outcol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b (fromJust oport) a) funs')) outcol'
-                                                                                  in if (elem y scc) || (not $ elem (y,x) (BM.keys tm)) then T else makeDead (tm BM.! (y,x)) (incol'',outcol'')) states) scc)
+                                                                                  in if (elem y scc) || (not $ elem (y,x) (BM.keys tm)) then T else makeDead (tm BM.! (y,x)) (incol'',outcol'')) scc) scc)
                                                 f' = AND (Set.fromList f)
                                             in AND (Set.fromList ([OR (Set.fromList (map (\x -> Lit $ InState comp x) scc))] ++ [f']))
     where makeDead :: ([ChannelID],[ChannelID]) -> ([Color],[Color]) ->  Formula
@@ -206,10 +206,12 @@ sccFormula net comp chan scc tm ts = let
 
 -- | Given an automaton, produces a formula that evaluates to `True` iff this
 --   automaton is deadlocked
-automatonDead :: (Show c) => XColoredNetwork c -> ComponentID -> BlockVariables -> Formula
-automatonDead net cID _vars = case getComponent net cID of
+automatonDead :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> BlockVariables -> Formula
+automatonDead net cID xID _vars = case getComponent net cID of
     -- An automaton is deadlocked if it has a deadstate
-    a@(Automaton _ ins _ n ts _) -> OR (Set.fromList ([exists [0..n-1] deadState] ++ f'))  where
+      -- JS: if an input channel of an automaton is directly connected to a source then it is the local source. 
+        -- for now we do not want to add SCC related expressions to it. The issue is that the channel is not relevant here. 
+    a@(Automaton _ ins _ n ts _) -> if (isSource (getComponent net (getInitiator net xID))) then OR (Set.fromList ([exists [0..n-1] deadState])) else OR (Set.fromList ([exists [0..n-1] deadState] ++ f')) where
         -- A deadstate is a state such that
         -- 1. The automaton is currently in this state
         -- 2. All outgoing transition of this state are dead
@@ -240,8 +242,8 @@ automatonDead net cID _vars = case getComponent net cID of
         chanswcols = map (\x -> let (ColorSet y) = getColorSet net x in (x,y)) (ins ++ outs)
         chanswcols' = concat (map (\(x,y) -> map (\a -> (x,a)) (Set.toList y)) chanswcols)
         chanscc = map (\x -> (x,sccWithout net cID x)) chanswcols'
-        f = map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc transMap (transitions (getComponent net cID))) sccs)))) chanscc
-        f' = (map (\(_,x) -> x) f)
+        f =  error $ show chanscc -- map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc transMap (transitions (getComponent net cID))) sccs)))) chanscc
+        f' = (map (\(_,x) -> x) (filter (\(id,_) -> id == xID) f))
 
 {-
 automatonDead :: XColoredNetwork c -> ComponentID -> BlockVariables -> Formula
@@ -298,7 +300,7 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
         -- todo(tssb): This doesn't cover the situation where some transition does accept the given color from the given channel,
         --               but this transition can never be triggered. Possible unsoundness?
         Automaton _ _ _ _ ts _ -> conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
-            f = automatonDead net cID vars
+            f = automatonDead net cID xID vars
             colorNeverExcepted color = all (\AutomatonT{eventFunction=event} -> not $ event port color) ts
         _ -> block_any loc net xID colors vars
     where
@@ -501,7 +503,7 @@ idle_firstcall' loc net xID colors vars =
         --Queue{} -> conjunct' (lit' $ containsNoneLiteral net cID colors') -- Buffer is empty
         --                     (idle_all' (src 244) net (inChan 0) colors' vars fm) -- Incoming channel is idle
         -- An automaton is idle for a set of colors, if all of these colors are never produced by the automaton, or if the automaton is dead
-        Automaton _ ins _ _ ts _-> disjunct (fromBool $ all colorNeverProduced currColors) (automatonDead net cID vars) where
+        Automaton _ ins _ _ ts _-> disjunct (fromBool $ all colorNeverProduced currColors) (automatonDead net cID xID vars) where
             colorNeverProduced color = all (\t -> all (\i -> all (doesNotProduce t i) (inColors i)) [0..ins-1]) ts where
                 doesNotProduce AutomatonT{eventFunction=e,packetTransformationFunction=f} i c = not (e i c) || (case f i c of Nothing -> True; Just (o, c') -> (o, c') /= (port, color))
         _ -> idle_all loc net xID colors vars
