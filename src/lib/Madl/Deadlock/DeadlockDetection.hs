@@ -195,7 +195,7 @@ sccFormula net comp chan scc states tm ts = let
                                                                                       funs' = map (\a -> eventFunction a) funs
                                                                                       incol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b iport a) funs')) incol'
                                                                                       outcol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b (fromJust oport) a) funs')) outcol'
-                                                                                  in {-error $ show (incol'',outcol'',x,y,ts)-}if (elem y scc) || (not $ elem (y,x) (BM.keys tm)) then T else makeDead (tm BM.! (y,x)) (incol'',outcol'')) states) scc)
+                                                                                  in error $ show scc--if (elem y scc) || (not $ elem (y,x) (BM.keys tm)) then T else makeDead (tm BM.! (y,x)) (incol'',outcol'')) states) scc)
                                                 f' = AND (Set.fromList f)
                                             in AND (Set.fromList ([OR (Set.fromList (map (\x -> Lit $ InState comp x) states))] ++ [f']))
     where makeDead :: ([ChannelID],[ChannelID]) -> ([Color],[Color]) ->  Formula
