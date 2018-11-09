@@ -241,7 +241,7 @@ automatonDead net cID _vars = case getComponent net cID of
         chanswcols = map (\x -> let (ColorSet y) = getColorSet net x in (x,y)) (ins ++ outs)
         chanswcols' = concat (map (\(x,y) -> map (\a -> (x,a)) (Set.toList y)) chanswcols)
         chanscc = map (\x -> (x,sccWithout net cID x)) chanswcols'
-        f = map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc states transMap (transitions (getComponent net cID))) sccs)))) chanscc
+        f = map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc scc transMap (transitions (getComponent net cID))) sccs)))) chanscc
         f' = (map (\(_,x) -> x) f)
 
 {-
