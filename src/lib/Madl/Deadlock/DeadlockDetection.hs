@@ -182,8 +182,8 @@ sccWithout net comp (chan,x) = let aut = procAut net comp
                                    res = removeTrivial aut'' scc
                                in res
 
-sccFormula :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> [Int] -> [Int] -> BM.Bimap (Int,Int) ([ChannelID],[ChannelID]) -> [AutomatonTransition] -> Formula
-sccFormula net comp chan scc states tm ts = let
+sccFormula :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> [Int] -> BM.Bimap (Int,Int) ([ChannelID],[ChannelID]) -> [AutomatonTransition] -> Formula
+sccFormula net comp chan scc tm ts = let
                                                 f = concat (map (\x -> map (\y -> let (chani,chano) = tm BM.! (y,x)
                                                                                       incol = map (\a -> let (ColorSet b) = getColorSet net a in b) chani
                                                                                       outcol = map (\a -> let (ColorSet b) = getColorSet net a in b) chano
@@ -195,9 +195,9 @@ sccFormula net comp chan scc states tm ts = let
                                                                                       funs' = map (\a -> eventFunction a) funs
                                                                                       incol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b iport a) funs')) incol'
                                                                                       outcol'' = filter (\a -> foldr (\k l -> k || l) False (map (\b -> b (fromJust oport) a) funs')) outcol'
-                                                                                  in error $ show scc--if (elem y scc) || (not $ elem (y,x) (BM.keys tm)) then T else makeDead (tm BM.! (y,x)) (incol'',outcol'')) states) scc)
+                                                                                  in if (elem y scc) || (not $ elem (y,x) (BM.keys tm)) then T else makeDead (tm BM.! (y,x)) (incol'',outcol'')) states) scc)
                                                 f' = AND (Set.fromList f)
-                                            in AND (Set.fromList ([OR (Set.fromList (map (\x -> Lit $ InState comp x) states))] ++ [f']))
+                                            in AND (Set.fromList ([OR (Set.fromList (map (\x -> Lit $ InState comp x) scc))] ++ [f']))
     where makeDead :: ([ChannelID],[ChannelID]) -> ([Color],[Color]) ->  Formula
           makeDead ([],[]) _ = error "makeDead: both input and output channels are absent"
           makeDead (x,[]) (m,_) = Lit $ IdleAll (src 188) (head x) (Just $ ColorSet (Set.fromList m))
@@ -236,12 +236,11 @@ automatonDead net cID _vars = case getComponent net cID of
         ins = getInChannels net cID
         outs = getOutChannels net cID
         aut = procAut net cID
-        --states = allStates aut
         transMap = BM.fromList (map (\(a,b,c,d,_) -> ((a,b),(c,d))) aut)
         chanswcols = map (\x -> let (ColorSet y) = getColorSet net x in (x,y)) (ins ++ outs)
         chanswcols' = concat (map (\(x,y) -> map (\a -> (x,a)) (Set.toList y)) chanswcols)
         chanscc = map (\x -> (x,sccWithout net cID x)) chanswcols'
-        f = map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc scc transMap (transitions (getComponent net cID))) sccs)))) chanscc
+        f = map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc transMap (transitions (getComponent net cID))) sccs)))) chanscc
         f' = (map (\(_,x) -> x) f)
 
 {-
