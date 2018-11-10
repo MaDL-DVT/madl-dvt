@@ -124,6 +124,38 @@ data BlockVariables = BlockVars {
     nfqsX :: [ComponentID] -- ^ Queues that can never be full
 }
 
+
+{-- 
+
+reminder about the data type for transition
+
+data AutomatonTransition = AutomatonT {
+    startState :: Int, -- ^ start-state
+    endState :: Int, -- ^ end-state
+    inPort :: Int, -- ^ input port
+    epsilon :: MFunctionBool,
+    eventFunction :: Int -> Color -> Bool, -- ^ port-sensitive event
+    outPort :: Maybe Int,
+    phi :: Maybe (MFunctionDisj),
+    packetTransformationFunction :: Int -> Color -> Maybe (Int, Color) -- ^ port-sensitive packet transformation
+}
+
+
+Function procTrans reformats somehow transitions. At the end a transition has the following format:
+- start state
+- end state
+- a list of input ports
+- a list of output channels
+- id of an input channel
+- id of an output channel
+- event function / port sensitive event function
+
+
+JS: we probably need to keep the packet TransformationFunction as well because 
+the event function only works for input ports (that's my guess now).
+
+
+--}
 procTrans :: [ChannelID] -> [ChannelID] -> AutomatonTransition -> (Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))
 procTrans ins outs (AutomatonT s e inid _ f outid _ _) = (s, e, [ins !! inid], outs',(inid,outid,f))
   where outs' = case outid of
@@ -146,8 +178,29 @@ allStates tr = let i = map (\(x,_,_,_,_) -> x) tr
 colorSetToColors :: ColorSet -> [Color]
 colorSetToColors cols = let (ColorSet c) = cols in Set.toList c
 
+
+
+{-- 
+JS: my current understanding is that removeTrans as written now does not 
+remove any write actions. The reason is that we are using the event function (f)
+to decide whether the write action should be remove or not. My guess is that the 
+event function only works for read action. For write actions, we need to check 
+for a given (channel x,colour c) pair whether there exists a colour writing
+colour x on channel c. To make this check we should use the packetTransformation 
+function. 
+--}
 removeTrans :: (Show c) => XColoredNetwork c -> (ChannelID,Color) -> [(Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))] -> [(Int,Int,[ChannelID],[ChannelID])]
-removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) (filter (\(_,_,i,o,(g,h,f)) -> (if ( (elem cid i) && i /= []) then ((length (colorSetToColors (getColorSet net (i !! 0)))) > 1) || (not (f g x)) else True) && (if ((elem cid o) && o /= []) then ((length (colorSetToColors (getColorSet net (o !! 0)))) > 1) || (not (f (fromJust h) x)) else True)) ts))
+removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) -- ts)
+  (filter (\(_,_,i,o,(g,h,f)) -> 
+    (if ((elem cid i) && i /= []) then 
+      ((length (colorSetToColors (getColorSet net (i !! 0)))) > 1) 
+      || (not (f g x)) 
+      else True) 
+    && 
+    (if ((elem cid o)) then -- && o /= []) then 
+     ((length (colorSetToColors (getColorSet net (o !! 0)))) > 1)  && --- || 
+     (not (f (fromJust h) x)) else True )) -- (not (f (fromJust h) x)) else True)) 
+  ts))
 
 getBounds :: [(Int,Int)] -> (Int,Int)
 getBounds xs = let lb = map (\(l,_) -> l) xs
@@ -242,7 +295,7 @@ automatonDead net cID xID _vars = case getComponent net cID of
         chanswcols = map (\x -> let (ColorSet y) = getColorSet net x in (x,y)) (ins ++ outs)
         chanswcols' = concat (map (\(x,y) -> map (\a -> (x,a)) (Set.toList y)) chanswcols)
         chanscc = map (\x -> (x,sccWithout net cID x)) chanswcols'
-        f =  map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc transMap (transitions (getComponent net cID))) sccs)))) chanscc
+        f = error $ show chanscc -- map (\((c,_),sccs) -> (c, OR (Set.fromList (if sccs == [] then [F] else map (\scc -> sccFormula net cID c scc transMap (transitions (getComponent net cID))) sccs)))) chanscc
         f' = (map (\(_,x) -> x) (filter (\(id,_) -> id == xID) f))
 
 {-
