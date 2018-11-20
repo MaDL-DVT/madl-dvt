@@ -58,6 +58,7 @@ chanMap :: ColoredNetwork -> BM.Bimap ChannelID Int
 chanMap net = let cids = getChannelIDs net
               in BM.fromList (L.zip cids [0..(L.length cids)])
 
+
 --Takes a network, a componentID and returns a set of colors that it can work with. If the component is neither source, nor queue, nor sink, then an empty list is returned.
 compColors :: ColoredNetwork -> ComponentID -> [Color]
 compColors net cid = case (getComponent net cid) of
@@ -163,6 +164,54 @@ makeBIVAR :: ColoredNetwork -> ChannelID -> String -> String
 makeBIVAR net cid r = let chMap = chanMap net
                       in "\t" ++ r ++ " : boolean;"
 
+
+makeIrdyTrdy :: ColoredNetwork -> String
+makeIrdyTrdy net = let chans = getChannelIDs net
+                       cm = chanMap net
+                       madl = getMaDL net
+                       res = map (\x -> let orig = getInitiator net x
+                                            targ = getTarget net x
+                                            iirdy = "DEFINE chan_" ++ (show (cm BM.! x)) ++ "_i_irdy := " ++ (printBExpr madl (mkBexprOIrdy madl orig x)) ++ ";"
+                                            itrdy = "DEFINE chan_" ++ (show (cm BM.! x)) ++ "_i_trdy := " ++ (printBExpr madl (mkBexprOTrdy madl orig x)) ++ ";"
+                                            idata = "DEFINE chan_" ++ (show (cm BM.! x)) ++ "_i_data := " ++ (printDExpr madl (mkDexprO madl orig x)) ++ ";"
+                                            oirdy = "DEFINE chan_" ++ (show (cm BM.! x)) ++ "_o_irdy := " ++ (printBExpr madl (mkBexprIIrdy madl targ x)) ++ ";"
+                                            otrdy = "DEFINE chan_" ++ (show (cm BM.! x)) ++ "_o_trdy := " ++ (printBExpr madl (mkBexprITrdy madl targ x)) ++ ";"
+                                            odata = "DEFINE chan_" ++ (show (cm BM.! x)) ++ "_o_data := " ++ (printDExpr madl (mkDexprI madl targ x)) ++ ";"
+                                            res' = iirdy ++ "\n" ++ itrdy ++ "\n" ++ idata ++ "\n" ++ oirdy ++ "\n" ++ otrdy ++ "\n" ++ odata
+                                        in res') chans
+                   in foldr (\a b -> a ++ "\n" ++ b) "" res
+
+
+bexprMap :: ColoredNetwork -> BM.Bimap BExpr String
+bexprMap net = let chans = getChannelIDs net
+                   cm = chanMap net
+                   madl = getMaDL net
+                   res = map (\x -> let orig = getInitiator net x
+                                        targ = getTarget net x
+                                        iirdy = ((mkBexprOIrdy madl orig x),"chan_" ++ (show (cm BM.! x)) ++ "_i_irdy")
+                                        itrdy = ((mkBexprOTrdy madl orig x),"chan_" ++ (show (cm BM.! x)) ++ "_i_trdy")
+                                        --idata = ("chan_" ++ (show (cm BM.! x)) ++ "_i_data",(mkDexprO madl orig x)) ++ ";"
+                                        oirdy = ((mkBexprIIrdy madl targ x),"chan_" ++ (show (cm BM.! x)) ++ "_o_irdy")
+                                        otrdy = ((mkBexprITrdy madl targ x),"chan_" ++ (show (cm BM.! x)) ++ "_o_trdy")
+                                        --odata = "DEFINE chan_" ++ (show (cm BM.! x)) ++ "_o_data := " ++ (printDExpr madl (mkDexprI madl targ x)) ++ ";"
+                                        res' = [iirdy,itrdy,oirdy,otrdy]
+                                        res'' = filter (\(z,_) -> elem z (L.nub $ map (\w -> fst w) res')) res'
+                                    in res'') chans
+               in BM.fromList (concat res)
+
+dexprMap :: ColoredNetwork -> BM.Bimap DExpr String
+dexprMap net = let chans = getChannelIDs net
+                   cm = chanMap net
+                   madl = getMaDL net
+                   res = map (\x -> let orig = getInitiator net x
+                                        targ = getTarget net x
+                                        idata = ((mkDexprO madl orig x),"chan_" ++ (show (cm BM.! x)) ++ "_i_data")
+                                        odata = ((mkDexprI madl targ x),"chan_" ++ (show (cm BM.! x)) ++ "_o_data")
+                                        res' = [idata,odata]
+                                        res'' = filter (\(z,_) -> elem z (L.nub $ map (\w -> fst w) res')) res'
+                                    in res'') chans
+               in BM.fromList (concat res)
+
 --Takes a network and makes a VAR block
 makeVAR :: ColoredNetwork -> String
 makeVAR net = let srcs = getAllSourceIDs net
@@ -183,13 +232,13 @@ makeVAR net = let srcs = getAllSourceIDs net
                                                     (map (\x -> stateDecl net x) srcs) ++
                                                     (map (\x -> stateDecl net x) qs) ++
                                                     (map (\x -> stateDecl net x) mrgs) ++
-                                                    (map (\x -> qInd net x) qs) ++
+                                                    (map (\x -> qInd net x) qs)) {- ++
                                                     (L.concat $ map (\x -> let (ColorSet c) = getColorSet net x
                                                                                c' = S.toList c
                                                                            in map (\y -> makeBIVAR net x ("block" ++ show (chMap BM.! x) ++ "_" ++ show (tm BM.! y))) c') chans) ++
                                                     (L.concat $ map (\x -> let (ColorSet c) = getColorSet net x
                                                                                c' = S.toList c
-                                                                           in map (\y -> makeBIVAR net x ("idle" ++ show (chMap BM.! x) ++ "_" ++ show (tm BM.! y))) c') chans))
+                                                                           in map (\y -> makeBIVAR net x ("idle" ++ show (chMap BM.! x) ++ "_" ++ show (tm BM.! y))) c') chans))-}
 
 --Takes a network and makes an INIT block
 makeINIT :: ColoredNetwork -> String
@@ -204,11 +253,50 @@ makeINIT net = let srcs = getAllSourceIDs net
 makeSMV :: ColoredNetwork -> String
 makeSMV net = "MODULE main\n" ++
               makeVAR net ++ "\n" ++
+              makeIrdyTrdy net ++ "\n" ++
               "ASSIGN\n" ++
               makeINIT net ++
-              makeNEXT net ++
+              makeNEXT net ++ "\n\n" ++
+              makeJUSTICE net ++ "\n" ++
+              makeINVAR net ++ "\n\n" ++
+              makeLTLSpec net{-++
               makeInvar net ++
-              makeInvarSpec net
+              makeInvarSpec net-}
+
+makeJUSTICE :: ColoredNetwork -> String
+makeJUSTICE net = let cm = compMap net
+                      tm = typeMap net
+                      srcs = getAllSourceIDs net
+                      snks = getAllSinkIDs net
+                      mrgs = getAllMergeIDs net
+                      jsrcs = map (\x -> "JUSTICE src" ++ (show $ cm BM.! x) ++ "_irdy;") srcs
+                      jsrcs' = concat $ map (\x -> let (ColorSet cols) = getColorSet net ((getOutChannels net x) !! 0)
+                                                       cols' = S.toList cols
+                                                   in map (\y -> "JUSTICE src" ++ (show $ cm BM.! x) ++ "_data = " ++ (show $ tm BM.! y) ++ ";") cols') srcs
+                      jsnks = map (\x -> "JUSTICE snk" ++ (show $ cm BM.! x) ++ "_trdy;") snks
+                      jsnks' = concat $ map (\x -> let (ColorSet cols) = getColorSet net ((getInChannels net x) !! 0)
+                                                       cols' = S.toList cols
+                                                   in map (\y -> "JUSTICE snk" ++ (show $ cm BM.! x) ++ "_data = " ++ (show $ tm BM.! y) ++ ";") cols') snks
+                      jmrgs = map (\x -> "JUSTICE mrg" ++ (show $ cm BM.! x) ++ "_sel = 1;\nJUSTICE mrg" ++ (show $ cm BM.! x) ++ "_sel = 2;") mrgs
+                  in foldr (\x y -> x ++ "\n" ++ y) "" (jsrcs ++ jsrcs' ++ jsnks ++ jsnks' ++ jmrgs)
+
+makeINVAR :: ColoredNetwork -> String
+makeINVAR net = let cm = compMap net
+                    srcs = getAllSourceIDs net
+                    mrgs = getAllMergeIDs net
+                    isrcs = map (\x -> "INVAR (src" ++ (show $ cm BM.! x) ++ "_state != 0) -> (src" ++ (show $ cm BM.! x) ++ "_irdy & (src" ++ (show $ cm BM.! x) ++ "_data = src" ++ (show $ cm BM.! x) ++ "_state));") srcs
+                    imrgs = map (\x -> "INVAR (mrg" ++ (show $ cm BM.! x) ++ "_state != 0) -> (mrg" ++ (show $ cm BM.! x) ++ "_sel = mrg" ++ (show $ cm BM.! x) ++ "_state);") mrgs
+                in foldr (\x y -> x ++ "\n" ++ y) "" (isrcs ++ imrgs)
+
+makeLTLSpec :: ColoredNetwork -> String
+makeLTLSpec net = let chans = getChannelIDs net
+                      schans = filter (\x -> case getComponent net (getInitiator net x) of
+                                                (Source _ _) -> True
+                                                _ -> False) chans
+                      cm = chanMap net
+                      res = map (\x -> "LTLSPEC G(chan_" ++ (show $ cm BM.! x) ++ "_i_irdy -> F chan_" ++ (show $ cm BM.! x) ++ "_i_trdy)") schans
+                      res' = foldr (\x y -> x ++ "\n" ++ y) "" res
+                   in res'
 
 showChannels :: ColoredNetwork -> String
 showChannels net = (show $ chanMap net) ++ "\n" ++ (show net)
@@ -241,13 +329,13 @@ data BExpr =    B Bool
               | NotFull V
               | Conj BExpr BExpr
               | Disj BExpr BExpr
-              | Equals DExpr DExpr deriving Show
+              | Equals DExpr DExpr deriving (Show,Eq,Ord)
 data DExpr =    D Int
               | X String
               | GetLast V
 --              | AssignD DExpr
-              | If BExpr DExpr DExpr deriving Show
-data V = V String deriving Show
+              | If BExpr DExpr DExpr deriving (Show,Eq,Ord)
+data V = V String deriving (Show,Eq,Ord)
 
 --join, fork, function, merge, queue, sink, source, switch
 data T = Join_t | Fork_t | Function_t | Merge_t | Queue_t | Sink_t | Source_t | Switch_t deriving Eq
@@ -448,7 +536,7 @@ mkBexprOIrdy madl cid chan = case ((t madl) cid) of
                                 Join_t -> Conj (mkBexprIIrdy madl cid (((inp madl) cid) !! 0)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
                                 Fork_t -> Conj (mkBexprIIrdy madl cid (L.head ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head $ filter (\x -> x /= chan) ((outp madl) cid)))
                                 Function_t -> mkBexprIIrdy madl cid (L.head ((inp madl) cid))
-                                Merge_t -> Disj (mkBexprIIrdy madl cid (((inp madl) cid) !! 0)) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
+                                Merge_t -> Disj (Conj (mkBexprIIrdy madl cid (((inp madl) cid) !! 0)) (Equals (X ((intName madl) cid "sel")) (D 1))) (Conj (mkBexprIIrdy madl cid (((inp madl) cid) !! 1)) (Equals (X ((intName madl) cid "sel")) (D 2)))
                                 Queue_t -> NotEmpty (V $ (stName madl) cid)
                                 Sink_t -> error "mkBexprOIrdy: unexpected component type"
                                 Source_t -> Y ((intName madl) cid "irdy")
@@ -462,10 +550,10 @@ mkBexprITrdy madl cid chan = case ((t madl) cid) of
                                 Function_t -> mkBexprOTrdy madl cid (((outp madl) cid) !! 0)
                                 Join_t -> Conj (mkBexprIIrdy madl cid (L.head $ filter (\x -> x /= chan) ((inp madl) cid))) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))
                                 Merge_t -> if (chan /= (((inp madl) cid) !! 1))
-                                           then Conj (Conj (Equals (X ((intName madl) cid "")) (D 1)) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
-                                           else Conj (Conj (Equals (X ((intName madl) cid "")) (D 2)) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 0))
+                                           then Conj (Conj (Equals (X ((intName madl) cid "")) (D 1)) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 0))
+                                           else Conj (Conj (Equals (X ((intName madl) cid "")) (D 2)) (mkBexprOTrdy madl cid (L.head ((outp madl) cid)))) (mkBexprIIrdy madl cid (((inp madl) cid) !! 1))
                                 Queue_t -> NotFull (V $ (stName madl) cid)
-                                Sink_t -> Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
+                                Sink_t -> {-B True-}Conj (Y ((intName madl) cid "trdy")) (Equals (mkDexprO madl ((initiator madl) chan) chan) (mkDexprI madl cid chan))
                                 Switch_t -> Disj (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 0)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 0))) (Conj (mkBexprOIrdy madl cid (((outp madl) cid) !! 1)) (mkBexprOTrdy madl cid (((outp madl) cid) !! 1)))
                                 Source_t -> error "mkBexprITrdy: unexpected component type"
 
@@ -485,6 +573,7 @@ mkDexprO madl cid chan = case ((t madl) cid) of
                             Sink_t -> error "mkDexprO: unexpected component type"
                             Queue_t -> GetLast (V $ (stName madl) cid)
                             Function_t -> mkFun madl cid ((c_g madl) chan)
+                            Merge_t -> If (Equals (X ((intName madl) cid "sel")) (D 1)) (mkDexprI madl cid (((inp madl) cid) !! 0)) (mkDexprI madl cid (((inp madl) cid) !! 1))
                             _ -> mkDexprI madl cid (L.head ((inp madl) cid))
 
 
@@ -579,91 +668,100 @@ getID name = let digits = filter (\x -> C.isDigit x) name
 ((src_state = 0) | (src_state = src_data)) & src_irdy & !src_trdy : src_data;
 TRUE : src_state;
 -}
-makeSrcNEXT :: MaDL -> String -> String
-makeSrcNEXT madl sname = let expr = mkExpr madl
-                             arg = nameToArg expr sname
-                             oirdy = printBExpr madl $ getSrcOIrdy arg
-                             otrdy = printBExpr madl $ getSrcOTrdy arg
-                             odata = printDExpr madl $ getSrcOData arg
-                         in "\tnext(" ++ sname ++ ") := case\n" ++
-                            "\t\t\t\t((" ++ sname ++ " = 0) & ((" ++ oirdy ++ " & " ++ otrdy ++ ") | !" ++ oirdy ++ ")) | ((" ++ sname ++ " = " ++ odata ++ ") & " ++ oirdy ++ " & " ++ otrdy ++ ") : 0;\n" ++
-                            "\t\t\t\t(" ++ sname ++ " = 0 | (" ++ sname ++ " = " ++ odata ++ ")) & " ++ oirdy ++ " & !" ++ otrdy ++ " : " ++ odata ++ ";\n"  ++
-                            "\t\t\t\tTRUE : " ++ sname ++ ";\n" ++
-                            "\t\t\tesac;"
+makeSrcNEXT :: ColoredNetwork -> MaDL -> String -> String
+makeSrcNEXT net madl sname = let expr = mkExpr madl
+                                 arg = nameToArg expr sname
+                                 bm = bexprMap net
+                                 dm = dexprMap net
+                                 oirdy = bm BM.! (getSrcOIrdy arg)
+                                 otrdy = bm BM.! (getSrcOTrdy arg)
+                                 odata = dm BM.! (getSrcOData arg)
+                             in "\tnext(" ++ sname ++ ") := case\n" ++
+                                "\t\t\t\t((" ++ sname ++ " = 0) & ((" ++ oirdy ++ " & " ++ otrdy ++ ") | !" ++ oirdy ++ ")) | ((" ++ sname ++ " = " ++ odata ++ ") & " ++ oirdy ++ " & " ++ otrdy ++ ") : 0;\n" ++
+                                "\t\t\t\t(" ++ sname ++ " = 0 | (" ++ sname ++ " = " ++ odata ++ ")) & " ++ oirdy ++ " & !" ++ otrdy ++ " : " ++ odata ++ ";\n"  ++
+                                "\t\t\t\tTRUE : " ++ sname ++ ";\n" ++
+                                "\t\t\tesac;"
 
 
-makeQNEXT :: MaDL -> String -> String
-makeQNEXT madl sname = let expr = mkExpr madl
-                           arg = nameToArg expr sname
-                           iirdy = printBExpr madl $ getQIIrdy arg
-                           itrdy = printBExpr madl $ getQITrdy arg
-                           oirdy = printBExpr madl $ getQOIrdy arg
-                           otrdy = printBExpr madl $ getQOTrdy arg
-                           idata = printDExpr madl $ getQIData arg
-                           odata = printDExpr madl $ getQOData arg
-                           qsize = ((qSize madl) sname)
-                           cells = (map (\x -> makeQCell madl sname x) [0..qsize - 1]) ++ [(makeQInd madl sname)]
-                       in foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" cells
+makeQNEXT :: ColoredNetwork -> MaDL -> String -> String
+makeQNEXT net madl sname = let expr = mkExpr madl
+                               arg = nameToArg expr sname
+                               bm = bexprMap net
+                               dm = dexprMap net
+                               iirdy = bm BM.! (getQIIrdy arg)
+                               itrdy = bm BM.! (getQITrdy arg)
+                               oirdy = bm BM.! (getQOIrdy arg)
+                               otrdy = bm BM.! (getQOTrdy arg)
+                               idata = dm BM.! (getQIData arg)
+                               odata = dm BM.! (getQOData arg)
+                               qsize = ((qSize madl) sname)
+                               cells = (map (\x -> makeQCell net madl sname x) [0..qsize - 1]) ++ [(makeQInd net madl sname)]
+                           in foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" cells
 
 
-makeQInd :: MaDL -> String -> String
-makeQInd madl sname = let expr = mkExpr madl
-                          arg = nameToArg expr sname
-                          iirdy = printBExpr madl $ getQIIrdy arg
-                          itrdy = printBExpr madl $ getQITrdy arg
-                          oirdy = printBExpr madl $ getQOIrdy arg
-                          otrdy = printBExpr madl $ getQOTrdy arg
-                          idata = printDExpr madl $ getQIData arg
-                          odata = printDExpr madl $ getQOData arg
-                      in "\tnext(q" ++ show (getID sname) ++ "_ind) := case\n" ++
-                         "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : q" ++ show (getID sname) ++ "_ind + 1;\n" ++
-                         "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++  ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : q" ++ show (getID sname) ++ "_ind - 1;\n" ++
-                         "\t\t\t\tTRUE : q" ++ show (getID sname) ++ "_ind;\n" ++
-                         "\t\t\tesac;"
+makeQInd :: ColoredNetwork -> MaDL -> String -> String
+makeQInd net madl sname = let expr = mkExpr madl
+                              arg = nameToArg expr sname
+                              bm = bexprMap net
+                              dm = dexprMap net
+                              iirdy = bm BM.! (getQIIrdy arg)
+                              itrdy = bm BM.! (getQITrdy arg)
+                              oirdy = bm BM.! (getQOIrdy arg)
+                              otrdy = bm BM.! (getQOTrdy arg)
+                              idata = dm BM.! (getQIData arg)
+                              odata = dm BM.! (getQOData arg)
+                          in "\tnext(q" ++ show (getID sname) ++ "_ind) := case\n" ++
+                             "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : q" ++ show (getID sname) ++ "_ind + 1;\n" ++
+                             "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++  ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : q" ++ show (getID sname) ++ "_ind - 1;\n" ++
+                             "\t\t\t\tTRUE : q" ++ show (getID sname) ++ "_ind;\n" ++
+                             "\t\t\tesac;"
 
 
-makeQCell :: MaDL -> String -> Int -> String
-makeQCell madl sname cell = let expr = mkExpr madl
-                                arg = nameToArg expr sname
-                                iirdy = printBExpr madl $ getQIIrdy arg
-                                itrdy = printBExpr madl $ getQITrdy arg
-                                oirdy = printBExpr madl $ getQOIrdy arg
-                                otrdy = printBExpr madl $ getQOTrdy arg
-                                idata = printDExpr madl $ getQIData arg
-                                odata = printDExpr madl $ getQOData arg
-                            in case cell of
-                                  0 -> "\tnext(" ++ sname ++ "[0]) := case\n" ++
-                                       "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
-                                       "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (q" ++ show (getID sname) ++ "_ind" ++ " = 1) : 0;\n" ++
-                                       "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
-                                       "\t\t\t\tTRUE: " ++ sname ++ "[0];\n" ++
-                                       "\t\t\tesac;\n"
-                                  _ -> "\tnext(" ++ sname ++ "[" ++ show cell ++ "]) := case\n" ++
-                                       "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ sname ++ "[" ++ show (cell - 1) ++ "]" ++ ";\n" ++
-                                       "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (" ++ show cell ++ " = " ++ show (((qSize madl) sname) - 1) ++ ") : 0;\n" ++
-                                       "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : (" ++ show cell ++ " <= q" ++ show (getID sname) ++ "_ind - 1)? " ++ sname ++ "[" ++ show (cell - 1) ++ "] : " ++ sname ++ "[" ++ show cell ++ "]" ++ ";\n" ++
-                                       "\t\t\t\tTRUE: " ++ sname ++ "[" ++ show cell ++ "];\n" ++
-                                       "\t\t\tesac;\n"
+makeQCell :: ColoredNetwork -> MaDL -> String -> Int -> String
+makeQCell net madl sname cell = let expr = mkExpr madl
+                                    arg = nameToArg expr sname
+                                    bm = bexprMap net
+                                    dm = dexprMap net
+                                    iirdy = bm BM.! (getQIIrdy arg)
+                                    itrdy = bm BM.! (getQITrdy arg)
+                                    oirdy = bm BM.! (getQOIrdy arg)
+                                    otrdy = bm BM.! (getQOTrdy arg)
+                                    idata = dm BM.! (getQIData arg)
+                                    odata = dm BM.! (getQOData arg)
+                                in case cell of
+                                     0 -> "\tnext(" ++ sname ++ "[0]) := case\n" ++
+                                          "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
+                                          "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (q" ++ show (getID sname) ++ "_ind" ++ " = 1) : 0;\n" ++
+                                          "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ idata ++ ";\n" ++
+                                          "\t\t\t\tTRUE: " ++ sname ++ "[0];\n" ++
+                                          "\t\t\tesac;\n"
+                                     _ -> "\tnext(" ++ sname ++ "[" ++ show cell ++ "]) := case\n" ++
+                                          "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & !(" ++ oirdy ++ " & " ++ otrdy ++ ") : " ++ sname ++ "[" ++ show (cell - 1) ++ "]" ++ ";\n" ++
+                                          "\t\t\t\t!(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") & (" ++ show cell ++ " = " ++ show (((qSize madl) sname) - 1) ++ ") : 0;\n" ++
+                                          "\t\t\t\t(" ++ iirdy ++ " & " ++ itrdy ++ ") & (" ++ oirdy ++ " & " ++ otrdy ++ ") : (" ++ show cell ++ " <= q" ++ show (getID sname) ++ "_ind - 1)? " ++ sname ++ "[" ++ show (cell - 1) ++ "] : " ++ sname ++ "[" ++ show cell ++ "]" ++ ";\n" ++
+                                          "\t\t\t\tTRUE: " ++ sname ++ "[" ++ show cell ++ "];\n" ++
+                                          "\t\t\tesac;\n"
 
-makeMrgNEXT :: MaDL -> String -> String
-makeMrgNEXT madl sname = let expr = mkExpr madl
-                             arg = nameToArg expr sname
-                             i0irdy = printBExpr madl $ getMrgI0Irdy arg
-                             i0trdy = printBExpr madl $ getMrgI0Trdy arg
-                             i1irdy = printBExpr madl $ getMrgI1Irdy arg
-                             i1trdy = printBExpr madl $ getMrgI1Trdy arg
-                             oirdy = printBExpr madl $ getMrgOIrdy arg
-                             otrdy = printBExpr madl $ getMrgOTrdy arg
-                             mname = "mrg" ++ show (getID sname) ++ "_sel"
-                         in "\tnext(" ++ sname ++ ") := case\n" ++
-                            --((state = 0) | (state = sel)) & ((i0i & i0t & !sel) | (i1i & i1t & sel)) -> 0
-                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & ((" ++ i0irdy ++ " & " ++ i0trdy ++ " & (" ++ mname ++ " = 1)) | (" ++ i1irdy ++ " & " ++ i1trdy ++ " & (" ++ mname ++ " = 2))) : 0;\n" ++
-                            --((state = 0) | (state = sel)) & (!(i0i & i01) & !sel) -> 1
-                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & (" ++ mname ++ " = 1)) : 1;\n" ++
-                            --((state = 0) | (state = sel)) & (!(i0i & i01) & sel) -> 2
-                            "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (!(" ++ i0irdy ++ " & " ++ i1irdy ++ ") & (" ++ mname ++ " = 2)) : 2;\n" ++
-                            "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++
-                            "\t\t\tesac;\n"
+makeMrgNEXT :: ColoredNetwork -> MaDL -> String -> String
+makeMrgNEXT net madl sname = let expr = mkExpr madl
+                                 arg = nameToArg expr sname
+                                 bm = bexprMap net
+                                 i0irdy = bm BM.! (getMrgI0Irdy arg)
+                                 i0trdy = bm BM.! (getMrgI0Trdy arg)
+                                 i1irdy = bm BM.! (getMrgI1Irdy arg)
+                                 i1trdy = bm BM.! (getMrgI1Trdy arg)
+                                 oirdy = bm BM.! (getMrgOIrdy arg)
+                                 otrdy = bm BM.! (getMrgOTrdy arg)
+                                 mname = "mrg" ++ show (getID sname) ++ "_sel"
+                             in "\tnext(" ++ sname ++ ") := case\n" ++
+                                --((state = 0) | (state = sel)) & ((i0i & i0t & !sel) | (i1i & i1t & sel)) -> 0
+                                "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & ((" ++ i0irdy ++ " & " ++ i0trdy ++ " & (" ++ mname ++ " = 1)) | (" ++ i1irdy ++ " & " ++ i1trdy ++ " & (" ++ mname ++ " = 2))) : 0;\n" ++
+                                --((state = 0) | (state = sel)) & (!(i0i & i01) & !sel) -> 1
+                                "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (" ++ i0irdy ++ " & !" ++ i0trdy ++ " & (" ++ mname ++ " = 1)) : 1;\n" ++
+                                --((state = 0) | (state = sel)) & (!(i0i & i01) & sel) -> 2
+                                "\t\t\t\t((" ++ sname ++ " = 0) | (" ++ sname ++ " = " ++ mname ++ ")) & (" ++ i1irdy ++ " & !" ++ i1trdy ++ " & (" ++ mname ++ " = 2)) : 2;\n" ++
+                                "\t\t\t\tTRUE: " ++ sname ++ ";\n" ++
+                                "\t\t\tesac;\n"
 {-
 mkBlock :: MaDL -> ChannelID -> DExpr -> BExpr
 mkBlock madl cid expr = let targ = (target madl) cid
@@ -1039,9 +1137,9 @@ makeNEXT :: ColoredNetwork -> String
 makeNEXT net = let madl = getMaDL net
                    expr = mkExpr madl
                    nxts = map (\x -> case getType x of
-                                        Source_t -> makeSrcNEXT madl x
-                                        Queue_t -> makeQNEXT madl x
-                                        Merge_t -> makeMrgNEXT madl x
+                                        Source_t -> makeSrcNEXT net madl x
+                                        Queue_t -> makeQNEXT net madl x
+                                        Merge_t -> makeMrgNEXT net madl x
                                         _ -> "") $ getAllNames expr
                in foldr (\z z' -> case z' of "" -> z; _ -> z ++ "\n" ++ z') "" $ filter (\x -> x /= "") nxts
 {-
