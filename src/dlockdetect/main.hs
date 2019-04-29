@@ -32,6 +32,7 @@ import Madl.Invariants (getInvariants,showInvariants2)
 import Madl.Cycles
 import Madl.Rings (findRings, showRing, combineRings, getRingInvariants)
 import Madl.Livelock (findPossibleLivelocks)
+import Madl.SimplifyFSM
 --import Madl.SourceInformation
 
 
@@ -157,13 +158,16 @@ exeOptions =
                     Just n -> if all isDigit n && (read n :: Int) > 0 then read n :: Int
                                 else fatal 94 $ "Unvalid argument: bmc-inc depth " ++n)}})
             "search-depth")
-        "NuXmv invariant proof with bmc-inc search."    
+        "NuXmv invariant proof with bmc-inc search."
     , Option "" ["showrings"]
         (NoArg (\opts -> opts {showRings = True}))
         "Display detailed ring information."
     , Option "" ["no-rings"]
         (NoArg (\opts -> opts {detectRings = False}))
         "Disable ring detection."
+    , Option "" ["replace-automata"]
+        (NoArg (\opts -> opts {replaceAutomata = True}))
+        "Replace automata."
     , Option "" ["no-livelock"]
         (NoArg (\opts -> opts {detectLivelock = False}))
         "Disable livelock detection."
@@ -180,7 +184,7 @@ main = do
         Just _ -> return ()
     newVal <- getEnv "MWB_PATH_NUXMV"
     putStrLn $ "MWB_PATH_NUXMV = "++newVal
-    mwb_path_z <- lookupEnv "MWB_PATH_Z3"  
+    mwb_path_z <- lookupEnv "MWB_PATH_Z3"
     _ <- case mwb_path_z of
         Nothing -> setEnv "MWB_PATH_Z3" "/usr/local/bin"
         Just _ -> return ()
@@ -205,81 +209,83 @@ main = do
                 Left err -> fatal 191 err
                 Right net -> return net
     -- Print some output for the users not to wait in front of a blank screen
-    putStrLn $ "Reading network completed."            
-    let comps = getComponents network                 
+    putStrLn $ "Reading network completed."
+    network' <- if (replaceAutomata options) then return (updateNetwork network) else return network
+    putStrLn $ show network'
+    let comps = getComponents network'
     -- Print some general network statistics.
     when (argVerbose options == ON) $ putStrLn $ "#Components: " ++ (show $ length comps)
     when (argVerbose options == ON) $ putStrLn $ "#Queues: " ++ (show $ length (filter isQueue comps))
     when (argVerbose options == ON) $ putStrLn $ "#Automata: " ++ (show $ length (filter isAutomaton comps))
     when (argVerbose options == ON) $ putStrLn $ "#Forks: " ++ (show $ length  (filter isFork comps))
     when (argVerbose options == ON) $ putStrLn $ "#CtrlJoins: " ++ (show $ length (filter isCJoin comps) )
-    when (argVerbose options == ON) $ putStrLn $ "#Switches: " ++ (show $ length  (filter isSwitch comps))      
-    when (argVerbose options == ON) $ putStrLn $ "#Merges: " ++ (show $ length  (filter isMerge comps))      
-    when (argVerbose options == ON) $ putStrLn $ "#Functions: " ++ (show $ length  (filter isFunction comps)) 
-    when (argVerbose options == ON) $ putStrLn $ "#LoadBalancers: " ++ (show $ length  (filter isLoadBalancer comps))           
-    when (argVerbose options == ON) $ putStrLn $ "#Largest cc: " ++ (show $ largestConnectedComponent network)
+    when (argVerbose options == ON) $ putStrLn $ "#Switches: " ++ (show $ length  (filter isSwitch comps))
+    when (argVerbose options == ON) $ putStrLn $ "#Merges: " ++ (show $ length  (filter isMerge comps))
+    when (argVerbose options == ON) $ putStrLn $ "#Functions: " ++ (show $ length  (filter isFunction comps))
+    when (argVerbose options == ON) $ putStrLn $ "#LoadBalancers: " ++ (show $ length  (filter isLoadBalancer comps))
+    when (argVerbose options == ON) $ putStrLn $ "#Largest cc: " ++ (show $ largestConnectedComponent network')
     when (showChannelTypes options) $ putStrLn "ChannelTypes:"
-    when (showChannelTypes options) $ mapM_ (putStrLn . show) (getChannelsWithID network)
-    when (showChannelConnections options) $ mapM_ (putStrLn . show . withInitAndTarget network) (getChannelIDs network)
-    when (showChannelConnections options) $ mapM_ (putStrLn . show) (getComponentsWithID network)
+    when (showChannelTypes options) $ mapM_ (putStrLn . show) (getChannelsWithID network')
+    when (showChannelConnections options) $ mapM_ (putStrLn . show . withInitAndTarget network') (getChannelIDs network')
+    when (showChannelConnections options) $ mapM_ (putStrLn . show) (getComponentsWithID network')
     --when (showChannelSource options) $ case sourceinfo of
     --    Nothing -> return ()
     --    Just srcinfo -> do
     --        putStrLn "ChannelSource:"
     --        mapM_ (putStrLn . uncurry showSource) (Hash.assocs $ channelSource srcinfo)
     when (argCycleCheck options) $ putStrLn $ "Checking for combinatorial cycles."
-    let cycles = {-# SCC "CheckingForCycles" #-} if argCycleCheck options then checkCycles noColorNetwork else [] 
-                where noColorNetwork = removeColors network
+    let cycles = {-# SCC "CheckingForCycles" #-} if argCycleCheck options then checkCycles noColorNetwork else []
+                where noColorNetwork = removeColors network'
     putStrLn $ "The network contains " ++ show (length cycles) ++ " cycles."
-    when (argVerbose options == ON) $ putStrLn $ "Cycles:\n" 
+    when (argVerbose options == ON) $ putStrLn $ "Cycles:\n"
     when (argVerbose options == ON) $ mapM_ (putStrLn . show) cycles
 
     -- Search possible livelocks
     when (detectLivelock options) $ putStrLn $ "Checking for livelocks."
-    let liveLock = if detectLivelock options then findPossibleLivelocks network else Nothing
-    when (detectLivelock options) $ putStrLn $ case liveLock of 
+    let liveLock = if detectLivelock options then findPossibleLivelocks network' else Nothing
+    when (detectLivelock options) $ putStrLn $ case liveLock of
         Nothing -> "No possible livelocks found."
         Just loop -> "Found possible livelock." ++ if (argVerbose options == ON)
-            then "\n" ++ (show $ map (\(chan, col) -> (channelName $ fst $ snd3 $ getChannelContext network chan, col)) loop)
+            then "\n" ++ (show $ map (\(chan, col) -> (channelName $ fst $ snd3 $ getChannelContext network' chan, col)) loop)
             else ""
 
     -- Detect rings
-    let rings = if detectRings options then findRings network else []
+    let rings = if detectRings options then findRings network' else []
     when (detectRings options) $ putStrLn $ "Found " ++ show (length rings) ++ " base rings."
-    when (detectRings options) $ when (showRings options) $ mapM_ (putStrLn . (showRing network)) rings
-    let combRings = if detectRings options then combineRings network rings else []
+    when (detectRings options) $ when (showRings options) $ mapM_ (putStrLn . (showRing network')) rings
+    let combRings = if detectRings options then combineRings network' rings else []
     when (detectRings options) $ putStrLn $ "Found " ++ (show $ (length combRings)) ++ " combined rings."
-    when (detectRings options) $ when (showRings options) $ mapM_ (putStrLn . (showRing network)) (filter (\r -> not $ elem r rings) combRings)
+    when (detectRings options) $ when (showRings options) $ mapM_ (putStrLn . (showRing network')) (filter (\r -> not $ elem r rings) combRings)
 
     -- Get ring invariants from combined rings
-    let ringInvs = if detectRings options then getRingInvariants network combRings else []
+    let ringInvs = if detectRings options then getRingInvariants network' combRings else []
     when (detectRings options) $ putStrLn $ "Found " ++ (show $ length ringInvs) ++ " ring invariants."
-    when (detectRings options) $ when (showRings options) $ putStrLn $ utxt (showInvariants2 ringInvs network)
+    when (detectRings options) $ when (showRings options) $ putStrLn $ utxt (showInvariants2 ringInvs network')
 
     putStrLn ("Computing network invariants ... ")
-    -- Invariants are not computed if there is either no forks or no joins. 
+    -- Invariants are not computed if there is either no forks or no joins.
 --    let invs = {-# SCC "GenerateInvariants" #-} if argUseInvariants options && (length  (filter isFork comps) > 0 && length (filter isCJoin comps) > 0) then getInvariants network else []
-    let invs = {-# SCC "GenerateInvariants" #-} if argUseInvariants options then getInvariants network else []
+    let invs = {-# SCC "GenerateInvariants" #-} if argUseInvariants options then getInvariants network' else []
     putStrLn $ "Found " ++ show (length invs) ++ " invariants."
     when (argVerbose options == ON) $ putStrLn $ "Invariants: \n"
-    when (argVerbose options == ON) $ putStrLn $ utxt (showInvariants2 invs network)
+    when (argVerbose options == ON) $ putStrLn $ utxt (showInvariants2 invs network')
 
     putStrLn $ "Computing never full queues ..."
-    nfqs <- {-# SCC "ComputeNeverFullQueues" #-} notFullQueues network (argSMTSolver options) (invs ++ ringInvs)
+    nfqs <- {-# SCC "ComputeNeverFullQueues" #-} notFullQueues network' (argSMTSolver options) (invs ++ ringInvs)
     putStrLn $ "Found " ++ show (length nfqs) ++ " queues that are never full."
     when (argVerbose options == ON) $ putStrLn ("Never full queues are: " ++ show nfqs)
     putStrLn $ "Running deadlock detection."
     -- Run deadlock detection using the options specified by the user
-    result <- runDeadlockDetection network options (invs ++ ringInvs) nfqs
+    result <- runDeadlockDetection network' options (invs ++ ringInvs) nfqs
     -- Handle the result of the deadlock detection
     case result of
         Left err -> putStrLn err
         Right (True,_) -> putStrLn "Deadlock!"
         Right (False,_) -> putStrLn "No deadlock found."
-    return () 
+    return ()
 
 withInitAndTarget :: Network a b -> ChannelID -> (ComponentID, ChannelID, ComponentID)
-withInitAndTarget network xID = (getInitiator network xID, xID, getTarget network xID)
+withInitAndTarget network' xID = (getInitiator network' xID, xID, getTarget network' xID)
 
 
 --showSource :: [Text] -> SourceInformation -> String

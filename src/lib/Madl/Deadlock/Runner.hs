@@ -48,7 +48,7 @@ import              Madl.Deadlock.SMT
 import              Madl.Deadlock.SMTSolvers
 
 -- | Determines which algorithms are executed.
-data RunMode = NuxmvModelOnly | ReachabilityOnly | SmtOnly | ReachabilityAfterSmt 
+data RunMode = NuxmvModelOnly | ReachabilityOnly | SmtOnly | ReachabilityAfterSmt
 -- | InPar
 -- | Determines whether all sources are checked for deadlocks, or if the algorithm is stopped after finding the first deadlock.
 data Sources = ALL | ONE
@@ -59,13 +59,13 @@ data Verbose = ON | OFF deriving (Eq)
 data CommandLineOptions = CommandLineOptions {
     argNetwork :: Either Text FilePath, -- ^ The network to be checked. Either predefined (Left), or input from madl file.
     argTypeCheck :: Bool, -- ^ States whether the provided madl input file should be typechecked. (Deprecated: non-typechecking is no longer supported)
-    argCycleCheck :: Bool, -- ^ States whether the provided mald input file should be searched for combinatorial cycles. 
+    argCycleCheck :: Bool, -- ^ States whether the provided mald input file should be searched for combinatorial cycles.
     argRunMode :: RunMode, -- ^ The algorithms to execute.
     argKeepSMTModel :: Bool, -- ^ Determines whether the produced SMT files are removed after usage.
     argSMTSolver :: SmtSolver, -- ^ Determines which SMT solver is used.
     argSources :: Sources, -- ^ Determines when to stop checking for deadlocks.
     argVerbose :: Verbose, -- ^ Determines which information is provided to the user.
-    argFullQueues :: Bool, -- ^ Allows user to turn on optimisation searching for never full queues. 
+    argFullQueues :: Bool, -- ^ Allows user to turn on optimisation searching for never full queues.
     argNuxmvOptions :: ReachabilityOptions, -- ^ The options to use for reachability analysis.
     argUseInvariants :: Bool, -- ^ Determines whether invariants are calculated.
     showChannelTypes  :: Bool, -- ^ Determines whether channel types are displayed
@@ -73,7 +73,8 @@ data CommandLineOptions = CommandLineOptions {
     showChannelConnections :: Bool, -- ^ Determines whether channel connections are displayed
     showRings :: Bool, -- ^ Determines whether ring information is displayed
     detectRings :: Bool, -- ^ Determines whether ring detection is done
-    detectLivelock :: Bool -- ^ Determines whether livelock detection is done
+    detectLivelock :: Bool, -- ^ Determines whether livelock detection is done
+    replaceAutomata :: Bool
 
 }
 
@@ -100,7 +101,8 @@ defaultOptions = CommandLineOptions {
     showChannelConnections = False,
     showRings = False,
     detectRings = True,
-    detectLivelock = True    
+    detectLivelock = True,
+    replaceAutomata = False
 }
 
 
@@ -164,7 +166,7 @@ spec net = disjunctive $ literals net
 runDeadlockDetection :: ColoredNetwork -> CommandLineOptions -> [Invariant Int] -> [ComponentID] -> IO (Either String (Bool, Maybe SMTModel))
 runDeadlockDetection net options invs nfqs =
     -- Export invariants to their SMT expression
-    let (smtinvs, qs, vars) = export_invariants_to_smt net show_p invs    
+    let (smtinvs, qs, vars) = export_invariants_to_smt net show_p invs
 
         -- formula for the nuXmv model
         spec' = spec net
@@ -193,7 +195,7 @@ runDeadlockDetection net options invs nfqs =
 
         -- deadlock analysis in parallel
         smtPar :: IO (Either String (Bool, Maybe SMTModel))
-        smtPar = do 
+        smtPar = do
                 eq_lst' <- eq_lst
                 foldr f (return $ Right (False,Nothing)) eq_lst' where
                 eq_lst :: IO [Either String (Bool, Maybe SMTModel)]
@@ -213,7 +215,7 @@ runDeadlockDetection net options invs nfqs =
 
                 src_lst :: [(ComponentID, XComponent Text)]
                 src_lst = filter (filter_out_dead_source . snd) (getComponentsWithID net)
-                filter_out_dead_source i = case i of 
+                filter_out_dead_source i = case i of
                                             (Source _ t) | not (emptyColorSet t) -> True
                                             _ -> False
 
@@ -238,8 +240,8 @@ runDeadlockDetection net options invs nfqs =
             name = utxt . getName . getComponent net
             blockLit = BlockSource i in
                 do
-                    when (argVerbose options == ON) $ putStrLn ("Starting deadlock detection for source " ++ name i)                    
---                    nfqs' <- nfqs -- (js) this takes quite a lot of time ! I would turn in off for now.                     
+                    when (argVerbose options == ON) $ putStrLn ("Starting deadlock detection for source " ++ name i)
+--                    nfqs' <- nfqs -- (js) this takes quite a lot of time ! I would turn in off for now.
                     when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model ... ")
                     let ret  = {-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
                     let file = "deadlock_" ++ name i ++ ".smt2"
@@ -250,7 +252,7 @@ runDeadlockDetection net options invs nfqs =
                                                         let (smt',qs2,vars2) = export_formula_to_SMT net qs' vars' show_p (Just bi) f
                                                         hPutStrLn h $ smt'
                                                         return (qs2, vars2))
-                           (qs, vars) (Map.toList ret)         
+                           (qs, vars) (Map.toList ret)
                     hPutStrLn h $ "(assert " ++ export_literal_to_SMT net show_p blockLit ++ ")"
                     hPutStrLn h $ "(check-sat)\n(get-model)"
                     when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model completed. ")
@@ -285,5 +287,3 @@ runDeadlockDetection net options invs nfqs =
 -- | Like 'Control.Monad.filterM', but applying the function to the individual list items in parallel (in chunks).
 par_filterM :: (Functor m, Par.MonadParallel m) => (a -> m Bool) -> [a] -> m [a]
 par_filterM f list = concat <$> Par.mapM (filterM f) (chunksOf (length list `quot` numCapabilities) list)
-
-

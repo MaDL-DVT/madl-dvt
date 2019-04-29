@@ -336,7 +336,13 @@ data AutomatonTransition = AutomatonT {
 instance Show AutomatonTransition where
     show (AutomatonT{startState=start,endState=end,inPort=ip,epsilon=eps,outPort=op,phi=ph}) = "(" ++ intercalate ", " [show start, show end, show ip, show eps, show op, show ph] ++ ")"
 instance Eq AutomatonTransition where
-    (==) _ _ = fatal 291 "Cannot determine equality between automaton transition"
+    (==) (AutomatonT p q ip eps _ op ph _) (AutomatonT p' q' ip' eps' _ op' ph' _) = p == p' &&
+                                                                                                   q == q' &&
+                                                                                                   ip == ip' &&
+                                                                                                   eps == eps' &&
+                                                                                                   op == op' &&
+                                                                                                   ph == ph'
+      --fatal 291 "Cannot determine equality between automaton transition"
 
 -- | A macro instance component of a madl network
 type MacroInstance b = XMacroInstance b Text

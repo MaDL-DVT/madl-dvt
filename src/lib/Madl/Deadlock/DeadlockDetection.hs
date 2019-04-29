@@ -147,7 +147,7 @@ colorSetToColors :: ColorSet -> [Color]
 colorSetToColors cols = let (ColorSet c) = cols in Set.toList c
 
 removeTrans :: (Show c) => XColoredNetwork c -> (ChannelID,Color) -> [(Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))] -> [(Int,Int,[ChannelID],[ChannelID])]
-removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) (filter (\(_,_,i,o,(g,h,f)) -> (if ( (elem cid i) && i /= []) then ((length (colorSetToColors (getColorSet net (i !! 0)))) > 1) || (not (f g x)) else True) && (if ((elem cid o) && o /= []) then ((length (colorSetToColors (getColorSet net (o !! 0)))) > 1) || (not (f (fromJust h) x)) else True)) ts))
+removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) (filter (\(_,_,i,o,(g,h,f)) -> (if ((elem cid i) && i /= []) then ((length (colorSetToColors (getColorSet net (i !! 0)))) > 1) || (not (f g x)) else True) && (if ((elem cid o) && o /= []) then ((length (colorSetToColors (getColorSet net (o !! 0)))) > 1) || (not (f (fromJust h) x)) else True)) ts))
 
 getBounds :: [(Int,Int)] -> (Int,Int)
 getBounds xs = let lb = map (\(l,_) -> l) xs
@@ -209,8 +209,8 @@ sccFormula net comp chan scc tm ts = let
 automatonDead :: (Show c) => XColoredNetwork c -> ComponentID -> ChannelID -> BlockVariables -> Formula
 automatonDead net cID xID _vars = case getComponent net cID of
     -- An automaton is deadlocked if it has a deadstate
-      -- JS: if an input channel of an automaton is directly connected to a source then it is the local source. 
-        -- for now we do not want to add SCC related expressions to it. The issue is that the channel is not relevant here. 
+      -- JS: if an input channel of an automaton is directly connected to a source then it is the local source.
+        -- for now we do not want to add SCC related expressions to it. The issue is that the channel is not relevant here.
     a@(Automaton _ ins _ n ts _) -> if (isSource (getComponent net (getInitiator net xID))) then OR (Set.fromList ([exists [0..n-1] deadState])) else OR (Set.fromList ([exists [0..n-1] deadState] ++ f')) where
         -- A deadstate is a state such that
         -- 1. The automaton is currently in this state

@@ -11,7 +11,7 @@ module Madl.Base(
     -- * Network class
     INetwork,
     -- * Data Types
-    Network, MacroNetwork,
+    Network(..), MacroNetwork,
     ChannelID, ComponentID,
     ComponentContext, ChannelContext, DisconnectedChannelContext,
     CGraph,
@@ -367,7 +367,7 @@ checkNetworkInputs cs xs = and $ concatMap checkComponent cs where
 
 -- | Create a network from a list of component contexts and a list of channels
 mkNetwork :: (Show b) => [([Int], a, [Int])] -> [b] -> Network a b
-mkNetwork cs xs
+mkNetwork cs xs 
     | checkNetworkInputs cs xs = net
     | otherwise = fatal 276 "channel pointers out of range" where
         net = NetworkImpl cMap (connectedXmap (assignXPorts cMap xMap))

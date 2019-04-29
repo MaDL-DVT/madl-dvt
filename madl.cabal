@@ -32,6 +32,7 @@ library
                   Madl.Islands,
                   Madl.MetaIslands,
                   Madl.Rings,
+                  Madl.SimplifyFSM,
                   Madl.SourceInformation,
                   Madl.Invariants,
                   Echelon.Echelon,
