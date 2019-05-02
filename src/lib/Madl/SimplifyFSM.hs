@@ -62,14 +62,15 @@ getCompName cid cm = let (_,x,_) = cm IM.! (componentIDtoInt cid)
                      in componentName x
 
 
-getITransColor :: ColoredNetwork -> AutomatonTransition -> ChannelID -> Color
-getITransColor net (AutomatonT _ _ _ infun _ _ _ _) chan = let (ColorSet cols) = getColorSet net chan
-                                                               cols' = S.toList cols
-                                                               res = (filter (\x -> eval (makeVArguments [x]) infun) cols')
-                                                               res' = if res == []
-                                                                      then error "getITransColor: Can not derive the color"
-                                                                      else res !! 0
-                                                           in res'
+getITransColor :: ColoredNetwork -> AutomatonTransition -> ComponentID -> ChannelID -> Color
+getITransColor net (AutomatonT _ _ _ infun _ _ _ _) comp chan = let (ColorSet cols) = getColorSet net chan
+                                                                    cols' = S.toList cols
+                                                                    ins = getInChannels net comp
+                                                                    res = (filter (\x -> eval (makeVArguments (L.replicate (L.length ins) x)) infun) cols')
+                                                                    res' = if res == []
+                                                                           then error "getITransColor: Can not derive the color"
+                                                                           else res !! 0
+                                                                in res'
 
 getOTransColor :: ColoredNetwork -> AutomatonTransition -> Color
 getOTransColor net (AutomatonT _ _ _ _ _ _ outfun _) = case outfun of
@@ -112,7 +113,7 @@ replaceFSM net comp = case (getComponent net comp) of
                                                                         Nothing -> filter (\(a,b) -> (a /= fsmname) && (b /= fsmname)) ports
                                                              (NSpec fsmcomps fsmchans fsmports) = translateFSM net comp
                                                              spec = (NSpec (comps' ++ fsmcomps) (chans' ++ fsmchans) (ports' ++ fsmports))
-                                                         in error $ show spec --channelTypes $ Madl.Network.mkNetwork spec
+                                                         in channelTypes $ Madl.Network.mkNetwork spec
                         _ -> error "replaceFSM: Automaton expected"
 
 
@@ -131,7 +132,7 @@ translateFSM net comp =
                                     outs = getOutChannels net comp
                                     rind = getRedundantInpID net comp
                                     ins = case rind of
-                                            Just rind' -> filter (\x -> (ins' !! rind') /= x) ins'
+                                            Just rind' -> let rm = ins' !! rind' in filter (\x -> x /= rm) ins'
                                             Nothing -> ins'
                                     t_init = initTemplate net comp
                                     t_ins = map (\x -> inputTemplate net comp x) ins
@@ -139,7 +140,7 @@ translateFSM net comp =
                                     t_state = map (\x -> stateTemplate net comp x) [0..n-1]
                                     t_trans = map (\x -> case x of
                                                            (AutomatonT p q inp _ _ Nothing _ _) -> let chan = ins !! inp
-                                                                                                       col = getITransColor net x chan
+                                                                                                       col = getITransColor net x comp chan
                                                                                                    in transitionITemplate net comp chan col p q
                                                            (AutomatonT p q inp _ _ (Just outp) _ _) -> case rind of
                                                                                                          Just rind' -> if (rind' == inp)
@@ -147,12 +148,12 @@ translateFSM net comp =
                                                                                                                                 ocol = getOTransColor net x
                                                                                                                             in transitionOTemplate net comp ochan ocol p q
                                                                                                                        else let ichan = ins !! inp
-                                                                                                                                icol = getITransColor net x ichan
+                                                                                                                                icol = getITransColor net x comp ichan
                                                                                                                                 ochan = outs !! outp
                                                                                                                                 ocol = getOTransColor net x
                                                                                                                             in transitionIOTemplate net comp ichan icol ochan ocol p q
                                                                                                          Nothing -> let ichan = ins !! inp
-                                                                                                                        icol = getITransColor net x ichan
+                                                                                                                        icol = getITransColor net x comp ichan
                                                                                                                         ochan = outs !! outp
                                                                                                                         ocol = getOTransColor net x
                                                                                                                     in transitionIOTemplate net comp ichan icol ochan ocol p q) ts
@@ -202,8 +203,8 @@ countInputTrans net comp chan col = case (getComponent net comp) of
                                                                          ins = getInChannels net comp
                                                                          trans' = case rinp of
                                                                                     Just rinp' -> filter (\(AutomatonT _ _ inport _ _ _ _ _) -> (inport /= rinp') && (inport == (MB.fromJust $ L.elemIndex chan ins))) trans
-                                                                                    Nothing -> trans
-                                                                         res = filter (\(AutomatonT _ _ _ infun _ _ _ _) -> (eval (makeVArguments [col]) infun)) trans'
+                                                                                    Nothing -> filter (\(AutomatonT _ _ inport _ _ _ _ _) -> (inport == (MB.fromJust $ L.elemIndex chan ins))) trans
+                                                                         res = filter (\(AutomatonT _ _ _ infun _ _ _ _) -> (eval (makeVArguments (L.replicate (L.length ins) col)) infun)) trans'
                                                                      in L.length res
                                       _ -> error "countInputTrans: Automaton expected"
 
@@ -223,8 +224,8 @@ getTransInIndex net comp chan col t = case (getComponent net comp) of
                                                                            ins = getInChannels net comp
                                                                            trans' = case rinp of
                                                                                       Just rinp' -> filter (\(AutomatonT _ _ inport _ _ _ _ _) -> (inport /= rinp') && (inport == (MB.fromJust $ L.elemIndex chan ins))) trans
-                                                                                      Nothing -> trans
-                                                                           res = filter (\(AutomatonT _ _ _ infun _ _ _ _) -> (eval (makeVArguments [col]) infun)) trans'
+                                                                                      Nothing -> filter (\(AutomatonT _ _ inport _ _ _ _ _) -> (inport == (MB.fromJust $ L.elemIndex chan ins))) trans
+                                                                           res = filter (\(AutomatonT _ _ _ infun _ _ _ _) -> (eval (makeVArguments (L.replicate (L.length ins) col)) infun)) trans'
                                                                        in MB.fromJust $ L.elemIndex t res
                                         _ -> error "countInputTrans: Automaton expected"
 
@@ -289,7 +290,7 @@ inputTemplate net comp chan = case (getComponent net comp) of
                                                                             then L.concat (map (\x -> [(Channel (inpChanName "sw" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) Nothing))]) cols')
                                                                             else []
                                                                     chans' = L.concat (map (\x -> if (countInputTrans net comp chan x) > 1
-                                                                                                  then [(Channel (inpChanName "lb" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) (Just i))) | i <- [0..((L.length cols') - 1)]]
+                                                                                                  then [(Channel (inpChanName "lb" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) (Just i))) | i <- [0..((countInputTrans net comp chan x) - 1)]]
                                                                                                   else []) cols')
                                                                     lbs' = filter (\w -> case w of (DeadSink _) -> False; _ -> True) (L.concat lbs)
                                                                     ports = if (L.length cols > 1)
@@ -300,13 +301,13 @@ inputTemplate net comp chan = case (getComponent net comp) of
                                                                     ports' = if (L.length cols > 1)
                                                                              then L.concat (map (\x -> [(inpCompName "sw" fsmind (channelIDtoInt chan) Nothing,inpChanName "sw" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) Nothing)]) cols')
                                                                              else []
-                                                                    ports'' = L.concat (map (\x -> if (countInputTrans net comp chan x) > 1
+                                                                    ports'' = L.concat (map (\x -> if (L.length cols > 1) && (countInputTrans net comp chan x) > 1
                                                                                                    then [(inpChanName "sw" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) Nothing,inpCompName "lb" fsmind (channelIDtoInt chan) (Just $ MB.fromJust (L.elemIndex x cols')))]
-                                                                                                   else if (countInputTrans net comp chan x) == 0
+                                                                                                   else if (L.length cols > 1) && (countInputTrans net comp chan x) == 0
                                                                                                         then [(inpChanName "sw" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) Nothing,inpCompName "ds" fsmind (channelIDtoInt chan) (Just $ MB.fromJust (L.elemIndex x cols')))]
                                                                                                         else []) cols')
                                                                     ports''' = L.concat (map (\x -> if (countInputTrans net comp chan x) > 1
-                                                                                                    then [(inpCompName "lb" fsmind (channelIDtoInt chan) (Just $ MB.fromJust (L.elemIndex x cols')),inpChanName "lb" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) (Just i)) | i <- [0..((L.length cols') - 1)]]
+                                                                                                    then [(inpCompName "lb" fsmind (channelIDtoInt chan) (Just $ MB.fromJust (L.elemIndex x cols')),inpChanName "lb" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex x cols')) (Just i)) | i <- [0..((countInputTrans net comp chan x) - 1)]]
                                                                                                     else []) cols')
                                                                 in NSpec (switch ++ (L.concat lbs)) (chans ++ chans') (ports ++ ports' ++ ports'' ++ ports''')
                                                            else error "inputTemplate: The given channel is not an input channel of the given automaton"
@@ -318,15 +319,20 @@ transitionITemplate net comp chan col p q = case (getComponent net comp) of
                                               (Automaton _ _ _ _ t _) -> let fsmind = getFSMIndex net comp
                                                                              (ColorSet cols) = getColorSet net chan
                                                                              cols' = S.toList cols
-                                                                             t' = (filter (\(AutomatonT p' q' inport infun _ _ _ _) -> p == p' && q == q' && (eval (makeVArguments [col]) infun)) t) !! 0
-                                                                             ind = MB.fromJust $ L.elemIndex t' t
+                                                                             ins = getInChannels net comp
+                                                                             t' = (filter (\(AutomatonT p' q' inport infun _ outport _ _) -> outport == Nothing && p == p' && q == q' && ((ins !! inport) == chan) && (eval (makeVArguments (L.replicate (L.length ins) col)) infun)) t) !! 0
+                                                                             t''' = if (filter (\(AutomatonT p' q' inport infun _ outport _ _) -> ((ins !! inport) == chan) &&
+                                                                                                                                            (eval (makeVArguments (L.replicate (L.length ins) col)) infun)) t) == []
+                                                                                    then error "transitionIOTemplate: Error while computing t'''"
+                                                                                    else (filter (\(AutomatonT p' q' inport infun _ _ _ _) -> ((ins !! inport) == chan) && (eval (makeVArguments (L.replicate (L.length ins) col)) infun)) t)
+                                                                             ind = MB.fromJust $ L.elemIndex t' t'''
                                                                              outs = getInputTemplateOuts net comp chan col
                                                                              o = outs !! ind
                                                                              incoming = filter (\(AutomatonT _ q' _ _ _ _ _ _) -> q == q') t
                                                                              inind = MB.fromJust $ L.elemIndex t' incoming
                                                                              outgoing = filter (\(AutomatonT p' _ _ _ _ _ _ _) -> p == p') t
                                                                              outind = MB.fromJust $ L.elemIndex t' outgoing
-                                                                             sins = getStateTemplateIns net comp p
+                                                                             sins = getStateTemplateIns net comp q
                                                                              souts = getStateTemplateOuts net comp p
                                                                              comps = [ControlJoin (transCompName "jn" fsmind p q (Just (channelIDtoInt chan,MB.fromJust (L.elemIndex col cols'))) Nothing)]
                                                                              ports = [(souts !! outind,transCompName "jn" fsmind p q (Just (channelIDtoInt chan,MB.fromJust (L.elemIndex col cols'))) Nothing),(o,transCompName "jn" fsmind p q (Just (channelIDtoInt chan,MB.fromJust (L.elemIndex col cols'))) Nothing),(transCompName "jn" fsmind p q (Just (channelIDtoInt chan,MB.fromJust (L.elemIndex col cols'))) Nothing,sins !! inind)]
@@ -376,23 +382,60 @@ transitionIOTemplate net comp ichan icol ochan ocol p q =
                                    icols' = S.toList icols
                                    (ColorSet ocols) = getColorSet net ochan
                                    ocols' = S.toList ocols
-                                   t' = (filter (\(AutomatonT p' q' _ _ _ _ outfun _) -> p == p' && q == q' && ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol)) t) !! 0
-                                   ind = MB.fromJust $ L.elemIndex t' t
+                                   {-t' = (filter (\(AutomatonT p' q' _ _ _ outport outfun _) -> p == p' &&
+                                                                                               q == q' &&
+                                                                                               (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                               ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol)) t) !! 0-}
+                                   ind = MB.fromJust $ L.elemIndex t'' t_out
                                    colind = MB.fromJust $ L.elemIndex ocol ocols'
+                                   inputs = getInChannels net comp
+                                   outputs = getOutChannels net comp
                                    ins = getOutputTemplateIns net comp ochan
                                    i = ins !! (ind * (L.length ocols') + colind)
-                                   t'' = if (filter (\(AutomatonT p' q' inport infun _ _ _ _) -> p == p' && q == q' && (eval (makeVArguments [icol]) infun)) t) == []
+                                   t'' = if (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> p == p' && --transitions from p to q that involve x(d)
+                                                                                                            q == q' &&
+                                                                                                            outfun /= Nothing &&
+                                                                                                            (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                            ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
+                                                                                                            ((inputs !! inport) == ichan) &&
+                                                                                                            (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t) == []
                                          then error "transitionIOTemplate: Error while computing t''"
-                                         else (filter (\(AutomatonT p' q' inport infun _ _ _ _) -> p == p' && q == q' && (eval (makeVArguments [icol]) infun)) t) !! 0
-                                   ind' = MB.fromJust $ L.elemIndex t'' t
+                                         else (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> p == p' &&
+                                                                                                              q == q' &&
+                                                                                                              outfun /= Nothing &&
+                                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                              ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
+                                                                                                              ((inputs !! inport) == ichan) &&
+                                                                                                              (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t) !! 0
+                                   t_in = if (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> ((inputs !! inport) == ichan) &&
+                                                                                                             --(case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                             --((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
+                                                                                                             (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t) == []
+                                          then error "transitionIOTemplate: Error while computing t'''"
+                                          else (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> ((inputs !! inport) == ichan) &&
+                                                                                                               --(case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                               --((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
+                                                                                                               (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t)
+                                   t_out = if (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> --((inputs !! inport) == ichan) &&
+                                                                                                              outfun /= Nothing &&
+                                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                              ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) {-&&
+                                                                                                              (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)-}) t) == []
+                                           then error "transitionIOTemplate: Error while computing t'''"
+                                           else (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> --((inputs !! inport) == ichan) &&
+                                                                                                                outfun /= Nothing &&
+                                                                                                                (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                                ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) {-&&
+                                                                                                                (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)-}) t)
+                                   ind' = MB.fromJust $ L.elemIndex t'' t_in
                                    outs' = getInputTemplateOuts net comp ichan icol
-                                   o = outs' !! ind'
+                                   o = outs' !! ind' --input of the output template
                                    incoming = filter (\(AutomatonT _ q' _ _ _ _ _ _) -> q == q') t
-                                   inind = MB.fromJust $ L.elemIndex t' incoming
+                                   inind = MB.fromJust $ L.elemIndex t'' incoming
                                    outgoing = filter (\(AutomatonT p' _ _ _ _ _ _ _) -> p == p') t
-                                   outind = MB.fromJust $ L.elemIndex t' outgoing
-                                   sins = getStateTemplateIns net comp p
-                                   souts = getStateTemplateOuts net comp p
+                                   outind = MB.fromJust $ L.elemIndex t'' outgoing
+                                   sins = getStateTemplateIns net comp q --input of the next state
+                                   souts = getStateTemplateOuts net comp p --output of the previous state
                                    comps = [Fork (transCompName "frk" fsmind p q (Just (channelIDtoInt ichan, MB.fromJust (L.elemIndex icol icols'))) (Just (channelIDtoInt ochan, MB.fromJust (L.elemIndex ocol ocols')))),
                                             Function (transCompName "fun" fsmind p q (Just (channelIDtoInt ichan, MB.fromJust (L.elemIndex icol icols'))) (Just (channelIDtoInt ochan, MB.fromJust (L.elemIndex ocol ocols')))) (color2mfunction ocol) (ColorSet (S.singleton ocol)),
                                             ControlJoin (transCompName "jn" fsmind p q (Just (channelIDtoInt ichan,MB.fromJust (L.elemIndex icol icols'))) (Just (channelIDtoInt ochan,MB.fromJust (L.elemIndex ocol ocols'))))]
@@ -418,7 +461,11 @@ transitionOTemplate net comp ochan ocol p q =
     (Automaton _ _ _ _ t _) -> let fsmind = getFSMIndex net comp
                                    (ColorSet ocols) = getColorSet net ochan
                                    ocols' = S.toList ocols
-                                   t' = (filter (\(AutomatonT p' q' _ _ _ _ outfun _) -> p == p' && q == q' && ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol)) t) !! 0
+                                   outputs = getOutChannels net comp
+                                   t' = (filter (\(AutomatonT p' q' _ _ _ outport outfun _) -> p == p' &&
+                                                                                              q == q' &&
+                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                              ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol)) t) !! 0
                                    ind = MB.fromJust $ L.elemIndex t' t
                                    colind = MB.fromJust $ L.elemIndex ocol ocols'
                                    ins = getOutputTemplateIns net comp ochan
@@ -427,7 +474,7 @@ transitionOTemplate net comp ochan ocol p q =
                                    inind = MB.fromJust $ L.elemIndex t' incoming
                                    outgoing = filter (\(AutomatonT p' _ _ _ _ _ _ _) -> p == p') t
                                    outind = MB.fromJust $ L.elemIndex t' outgoing
-                                   sins = getStateTemplateIns net comp p
+                                   sins = getStateTemplateIns net comp q
                                    souts = getStateTemplateOuts net comp p
                                    comps = [Fork (transCompName "frk" fsmind p q Nothing (Just (channelIDtoInt ochan, MB.fromJust (L.elemIndex ocol ocols')))),
                                             Function (transCompName "fun" fsmind p q Nothing (Just (channelIDtoInt ochan, MB.fromJust (L.elemIndex ocol ocols')))) (color2mfunction ocol) (ColorSet (S.singleton ocol))]
@@ -565,7 +612,7 @@ getInputTemplateOuts net comp chan col = let (ColorSet cols) = getColorSet net c
                                              res = if ((L.length cols') == 1) && (trans == 1)
                                                    then [(channelName $ fst $ getChannel net chan)]
                                                    else if trans > 1
-                                                        then [inpChanName "lb" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex col cols')) (Just i) | i <- [0..trans]]
+                                                        then [inpChanName "lb" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex col cols')) (Just i) | i <- [0..trans-1]]
                                                         else [inpChanName "sw" fsmind (channelIDtoInt chan) (MB.fromJust (L.elemIndex col cols')) Nothing]
                                          in res
 
