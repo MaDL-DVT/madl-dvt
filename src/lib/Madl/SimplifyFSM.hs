@@ -394,16 +394,14 @@ transitionIOTemplate net comp ichan icol ochan ocol p q =
                                    i = ins !! (ind * (L.length ocols') + colind)
                                    t'' = if (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> p == p' && --transitions from p to q that involve x(d)
                                                                                                             q == q' &&
-                                                                                                            outfun /= Nothing &&
-                                                                                                            (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                            (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> False) &&
                                                                                                             ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
                                                                                                             ((inputs !! inport) == ichan) &&
                                                                                                             (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t) == []
                                          then error "transitionIOTemplate: Error while computing t''"
                                          else (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> p == p' &&
                                                                                                               q == q' &&
-                                                                                                              outfun /= Nothing &&
-                                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> False) &&
                                                                                                               ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
                                                                                                               ((inputs !! inport) == ichan) &&
                                                                                                               (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t) !! 0
@@ -411,20 +409,18 @@ transitionIOTemplate net comp ichan icol ochan ocol p q =
                                                                                                              --(case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
                                                                                                              --((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
                                                                                                              (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t) == []
-                                          then error "transitionIOTemplate: Error while computing t'''"
+                                          then error "transitionIOTemplate: Error while computing t_in"
                                           else (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> ((inputs !! inport) == ichan) &&
                                                                                                                --(case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
                                                                                                                --((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) &&
                                                                                                                (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)) t)
                                    t_out = if (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> --((inputs !! inport) == ichan) &&
-                                                                                                              outfun /= Nothing &&
-                                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> False) &&
                                                                                                               ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) {-&&
                                                                                                               (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)-}) t) == []
-                                           then error "transitionIOTemplate: Error while computing t'''"
+                                           then error "transitionIOTemplate: Error while computing t_out"
                                            else (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> --((inputs !! inport) == ichan) &&
-                                                                                                                outfun /= Nothing &&
-                                                                                                                (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                                                (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> False) &&
                                                                                                                 ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) {-&&
                                                                                                                 (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)-}) t)
                                    ind' = MB.fromJust $ L.elemIndex t'' t_in
@@ -464,9 +460,18 @@ transitionOTemplate net comp ochan ocol p q =
                                    outputs = getOutChannels net comp
                                    t' = (filter (\(AutomatonT p' q' _ _ _ outport outfun _) -> p == p' &&
                                                                                               q == q' &&
-                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> True) &&
+                                                                                              (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> False) &&
                                                                                               ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol)) t) !! 0
-                                   ind = MB.fromJust $ L.elemIndex t' t
+                                   t_out = if (filter (\(AutomatonT p' q' _ _ _ outport outfun _) -> --((inputs !! inport) == ichan) &&
+                                                                                                     (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> False) &&
+                                                                                                     ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) {-&&
+                                                                                                              (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)-}) t) == []
+                                           then error "transitionIOTemplate: Error while computing t_out"
+                                           else (filter (\(AutomatonT p' q' _ _ _ outport outfun _) -> --((inputs !! inport) == ichan) &&
+                                                                                                       (case outport of Just outport' -> (outputs !! outport') == ochan; _ -> False) &&
+                                                                                                       ((eval (makeVArguments []) (MB.fromJust outfun)) == ocol) {-&&
+                                                                                                                (eval (makeVArguments (L.replicate (L.length inputs) icol)) infun)-}) t)
+                                   ind = MB.fromJust $ L.elemIndex t' t_out
                                    colind = MB.fromJust $ L.elemIndex ocol ocols'
                                    ins = getOutputTemplateIns net comp ochan
                                    i = ins !! (ind * (L.length ocols') + colind)
