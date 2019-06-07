@@ -344,7 +344,7 @@ idleStates net cID ps = case getComponent net cID of
                                                                setpreds = Set.fromList preds
                                                                setps = Set.fromList ps
                                                            in if setpreds /= setps
-                                                              then Set.toList (Set.union setpreds setps)
+                                                              then idleStates net cID (Set.toList (Set.union setpreds setps))
                                                               else ps
                                _ -> fatal 94 "AutomatonDead should only be called on automata."
 
@@ -418,7 +418,7 @@ deadTransition net cID trans col = case getComponent net cID of
                                                                                                                icol' = ColorSet (Set.fromList [icol])
                                                                                                                idleInp = Lit (IdleAll (src 0) inChan (Just icol'))
                                                                                                                fs = OR (Set.fromList [idleState,idleInp])
-                                                                                                           in fs
+                                                                                                           in {-error $ show (map (\x -> (x,idleStates net cID [x])) [0..(n-1)]) -}fs
                                                                   (AutomatonT s s' inp _ _ (Just outp) _ _) -> let inps = getInChannels net cID
                                                                                                                    inChan = inps !! inp
                                                                                                                    inCols = getColorSet net inChan
@@ -433,7 +433,7 @@ deadTransition net cID trans col = case getComponent net cID of
                                                                                                                    idleInp = Lit (IdleAll (src 0) inChan (Just icol'))
                                                                                                                    blockOut = Lit (BlockAny (src 0) outChan (Just ocol'))
                                                                                                                    fs = OR (Set.fromList [idleState,idleInp,blockOut])
-                                                                                                               in fs
+                                                                                                               in {-error $ show (map (\x -> (x,idleStates net cID [x])) [0..(n-1)]) -}fs
 
                                      _ -> fatal 94 "AutomatonDead should only be called on automata."
 
@@ -483,7 +483,7 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
         --               but this transition can never be triggered. Possible unsoundness?
         Automaton _ _ _ _ ts _ -> let (ColorSet cols) = colors'
                                       cols' = Set.toList cols
-                                      fs = OR $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
+                                      fs = AND $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
                                   in fs
                                                {-conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
             f = automatonDead net cID vars
