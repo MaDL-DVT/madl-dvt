@@ -114,6 +114,11 @@ expand_literal _ _ (All_Not_At_Head{}) = Nothing
 expand_literal _ _ (Select{}) = Nothing
 expand_literal _ _ (MSelect{}) = Nothing
 expand_literal _ _ (InState{}) = Nothing
+expand_literal net _ (IdleState cID s) = Just $ idleState net cID s
+expand_literal net _ (DeadTrans cID n) = let fsm = getComponent net cID
+                                             ts = transitions fsm
+                                             tr = ts !! n
+                                         in Just $ deadTransition net cID tr
 expand_literal _ _ (TSelect{}) = Nothing
 expand_literal _ _ (Sum_Compare{}) = Nothing
 
@@ -157,9 +162,9 @@ the event function only works for input ports (that's my guess now).
 
 --}
 procTrans :: [ChannelID] -> [ChannelID] -> AutomatonTransition -> (Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))
-procTrans ins outs (AutomatonT s e inid _ f outid _ _) = (s, e, [ins !! inid], outs',(inid,outid,f))
+procTrans ins outs (AutomatonT s e inid _ f outid _ _) = (s, e, [debugInd ins inid "10"], outs',(inid,outid,f))
   where outs' = case outid of
-                  Just o -> [outs !! o]
+                  Just o -> [debugInd outs o "11"]
                   _ -> []
 
 procAut :: (Show c) => XColoredNetwork c -> ComponentID -> [(Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))]
@@ -179,6 +184,11 @@ colorSetToColors :: ColorSet -> [Color]
 colorSetToColors cols = let (ColorSet c) = cols in Set.toList c
 
 
+debugInd :: [a] -> Int -> String -> a
+debugInd xs i s = if (L.length xs) <= i
+                  then error ("incorrect index: " ++ s)
+                  else xs !! i
+
 
 {--
 JS: my current understanding is that removeTrans as written now does not
@@ -190,7 +200,7 @@ colour x on channel c. To make this check we should use the packetTransformation
 function.
 --}
 removeTrans :: (Show c) => XColoredNetwork c -> (ChannelID,Color) -> [(Int,Int,[ChannelID],[ChannelID],(Int,Maybe Int,(Int -> Color -> Bool)))] -> [(Int,Int,[ChannelID],[ChannelID])]
-removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) (filter (\(_,_,i,o,(g,h,f)) -> (if ((elem cid i) && i /= []) then ((length (colorSetToColors (getColorSet net (i !! 0)))) > 1) || (not (f g x)) else True) && (if ((elem cid o) && o /= []) then ((length (colorSetToColors (getColorSet net (o !! 0)))) > 1) || (not (f (fromJust h) x)) else True)) ts))
+removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) (filter (\(_,_,i,o,(g,h,f)) -> (if ((elem cid i) && i /= []) then ((length (colorSetToColors (getColorSet net (debugInd i 0 "12")))) > 1) || (not (f g x)) else True) && (if ((elem cid o) && o /= []) then ((length (colorSetToColors (getColorSet net (debugInd o 0 "13")))) > 1) || (not (f (fromJust h) x)) else True)) ts))
 --removeTrans net (cid,x) ts = (L.nub $ map (\(q,w,e,r,_) -> (q,w,e,r)) -- ts)
 {-  (filter (\(_,_,i,o,(g,h,f)) ->
     (if ((elem cid i) && i /= []) then
@@ -351,22 +361,52 @@ idleStates net cID ps = case getComponent net cID of
 idleStateFormula :: XColoredNetwork c -> ComponentID -> Int -> Formula
 idleStateFormula net cID p = case getComponent net cID of
                                (Automaton _ _ _ n ts _) -> if p <= n
-                                                           then let idles = AND $ Set.fromList $ map (\x -> NOT $ Lit $ InState cID x) $ idleStates net cID [p]
-                                                                in idles
+                                                           then if (L.length (idleStates net cID [p])) == n
+                                                                then F
+                                                                else AND $ Set.fromList $ map (\x -> NOT $ Lit $ InState cID x) $ idleStates net cID [p] {-if (n - (L.length (idleStates net cID [p]))) > (L.length (idleStates net cID [p]))
+                                                                     then AND $ Set.fromList $ map (\x -> NOT $ Lit $ InState cID x) $ idleStates net cID [p]
+                                                                     else let ps = Set.toList $ Set.difference (Set.fromList [0..(n)]) (Set.fromList (idleStates net cID [p]))
+                                                                              idles = OR $ Set.fromList $ map (\x -> Lit $ InState cID x) $ ps
+                                                                          in idles-}
                                                            else error "getPredecessors: incorrect state"
                                _ -> fatal 94 "AutomatonDead should only be called on automata."
+
+{-
+data AutomatonTransition = AutomatonT {
+    startState :: Int, -- ^ start-state
+    endState :: Int, -- ^ end-state
+    inPort :: Int, -- ^ input port
+    epsilon :: MFunctionBool,
+    eventFunction :: Int -> Color -> Bool, -- ^ port-sensitive event
+    outPort :: Maybe Int,
+    phi :: Maybe (MFunctionDisj),
+    packetTransformationFunction :: Int -> Color -> Maybe (Int, Color) -- ^ port-sensitive packet transformation
+}
+-}
+
+getIncomingTransitions :: XColoredNetwork c -> ComponentID -> Int -> [AutomatonTransition]
+getIncomingTransitions net cID s = case getComponent net cID of
+                                        (Automaton _ _ _ _ ts _) -> filter (\tr@(AutomatonT _ s' _ _ _ _ _ _) -> s' == s) ts
+                                        _ -> fatal 94 "getIncomingTransitions should only be called on automata."
+
+
+getOutgoingTransitions :: XColoredNetwork c -> ComponentID -> Int -> [AutomatonTransition]
+getOutgoingTransitions net cID s = case getComponent net cID of
+                                        (Automaton _ _ _ _ ts _) -> filter (\tr@(AutomatonT s' _ _ _ _ _ _ _) -> s' == s) ts
+                                        _ -> fatal 94 "getOutgoingTransitions should only be called on automata."
+
 
 getInputTransitions :: XColoredNetwork c -> ComponentID -> Int -> Color -> [AutomatonTransition]
 getInputTransitions net cID inp col = case getComponent net cID of
                                         (Automaton _ _ _ _ ts _) -> let inChans = getInChannels net cID
-                                                                        inp' = inChans !! inp
+                                                                        inp' = debugInd inChans inp "1"
                                                                     in filter (\tr@(AutomatonT _ _ i _ _ _ _ _) -> i == inp && (col == (getITransColor net tr cID inp'))) ts
                                         _ -> fatal 94 "AutomatonDead should only be called on automata."
 
 getOutputTransitions :: XColoredNetwork c -> ComponentID -> Int -> Color -> [AutomatonTransition]
 getOutputTransitions net cID outp col = case getComponent net cID of
                                           (Automaton _ _ _ _ ts _) -> let outChans = getOutChannels net cID
-                                                                          oup' = outChans !! outp
+                                                                          oup' = debugInd outChans outp "2"
                                                                       in filter (\tr@(AutomatonT _ _ _ _ _ o _ _) -> case o of
                                                                                                                        Just o' -> o' == outp && (col == (getOTransColor net tr))
                                                                                                                        _ -> False) ts
@@ -381,7 +421,7 @@ getITransColor net tr@(AutomatonT _ _ _ infun _ _ _ _) comp chan = let --incols 
                                                                        ins = getInChannels net comp
                                                                        res = (filter (\x -> eval (makeVArguments []) (getLeftMatch infun) == x) cols')
                                                                        y = (eval (makeVArguments []) (getLeftMatch infun)) :: Color
-                                                                       res' = res !! 0
+                                                                       res' = debugInd res 0 "3"
                                                                    in res'
 
 getOTransColor :: XColoredNetwork c -> AutomatonTransition -> Color
@@ -406,43 +446,59 @@ getInTypes net comp chan = case (getComponent net comp) of
                                                          in cols
                              _ -> error "getInTypes: Automaton expected"
 
+idleState :: XColoredNetwork c -> ComponentID -> Int -> Formula
+idleState net cID p = case getComponent net cID of
+                               (Automaton _ _ _ n ts _) -> let incTs = getIncomingTransitions net cID p
+                                                               deadInc = AND $ Set.fromList (map (\tr -> Lit $ DeadTrans cID (fromJust $ L.elemIndex tr ts)) incTs)
+                                                           in AND $ Set.fromList [NOT $ Lit $ InState cID p,deadInc]
+{-                                                         if p <= n
+                                                           then if (L.length (idleStates net cID [p])) == n
+                                                                then F
+                                                                else AND $ Set.fromList $ map (\x -> NOT $ Lit $ InState cID x) $ idleStates net cID [p] {-if (n - (L.length (idleStates net cID [p]))) > (L.length (idleStates net cID [p]))
+                                                                     then AND $ Set.fromList $ map (\x -> NOT $ Lit $ InState cID x) $ idleStates net cID [p]
+                                                                     else let ps = Set.toList $ Set.difference (Set.fromList [0..(n)]) (Set.fromList (idleStates net cID [p]))
+                                                                              idles = OR $ Set.fromList $ map (\x -> Lit $ InState cID x) $ ps
+                                                                          in idles-}
+                                                           else error "idleState: incorrect state"-}
+                               _ -> fatal 94 "AutomatonDead should only be called on automata."
 
-deadTransition :: XColoredNetwork c -> ComponentID -> AutomatonTransition -> Color -> Formula
-deadTransition net cID trans col = case getComponent net cID of
-                                     (Automaton _ _ _ n _ _) -> case trans of
-                                                                  (AutomatonT s s' inp _ _ Nothing _ _) -> let inps = getInChannels net cID
-                                                                                                               inChan = inps !! inp
+deadTransition :: XColoredNetwork c -> ComponentID -> AutomatonTransition -> Formula
+deadTransition net cID trans = case getComponent net cID of
+                                 (Automaton _ _ _ n _ _) -> case trans of
+                                                              (AutomatonT s s' inp _ _ Nothing _ _) -> let inps = getInChannels net cID
+                                                                                                           inChan = debugInd inps inp "4"
+                                                                                                           inCols = getColorSet net inChan
+                                                                                                           iState = Lit $ IdleState cID s --idleState net cID s
+                                                                                                           icol = getITransColor net trans cID inChan
+                                                                                                           icol' = ColorSet (Set.fromList [icol])
+                                                                                                           idleInp = Lit (IdleAll (src 0) inChan (Just icol'))
+                                                                                                           fs = OR (Set.fromList [iState,idleInp])
+                                                                                                       in {-error $ show (map (\x -> (x,idleStates net cID [x])) [0..(n-1)]) -}fs
+                                                              (AutomatonT s s' inp _ _ (Just outp) _ _) -> let inps = getInChannels net cID
+                                                                                                               inChan = debugInd inps inp "5"
                                                                                                                inCols = getColorSet net inChan
-                                                                                                               idleState = idleStateFormula net cID s
                                                                                                                icol = getITransColor net trans cID inChan
                                                                                                                icol' = ColorSet (Set.fromList [icol])
+                                                                                                               ocol = getOTransColor net trans
+                                                                                                               ocol' = ColorSet (Set.fromList [ocol])
+                                                                                                               outs = getOutChannels net cID
+                                                                                                               outChan = debugInd outs outp "6"
+                                                                                                               outCols = getColorSet net outChan
+                                                                                                               iState = Lit $ IdleState cID s --idleState net cID s
                                                                                                                idleInp = Lit (IdleAll (src 0) inChan (Just icol'))
-                                                                                                               fs = OR (Set.fromList [idleState,idleInp])
+                                                                                                               blockOut = Lit (BlockAny (src 0) outChan (Just ocol'))
+                                                                                                               fs = OR (Set.fromList [iState,idleInp,blockOut])
                                                                                                            in {-error $ show (map (\x -> (x,idleStates net cID [x])) [0..(n-1)]) -}fs
-                                                                  (AutomatonT s s' inp _ _ (Just outp) _ _) -> let inps = getInChannels net cID
-                                                                                                                   inChan = inps !! inp
-                                                                                                                   inCols = getColorSet net inChan
-                                                                                                                   icol = getITransColor net trans cID inChan
-                                                                                                                   icol' = ColorSet (Set.fromList [icol])
-                                                                                                                   ocol = getOTransColor net trans
-                                                                                                                   ocol' = ColorSet (Set.fromList [ocol])
-                                                                                                                   outs = getOutChannels net cID
-                                                                                                                   outChan = outs !! outp
-                                                                                                                   outCols = getColorSet net outChan
-                                                                                                                   idleState = idleStateFormula net cID s
-                                                                                                                   idleInp = Lit (IdleAll (src 0) inChan (Just icol'))
-                                                                                                                   blockOut = Lit (BlockAny (src 0) outChan (Just ocol'))
-                                                                                                                   fs = OR (Set.fromList [idleState,idleInp,blockOut])
-                                                                                                               in {-error $ show (map (\x -> (x,idleStates net cID [x])) [0..(n-1)]) -}fs
 
-                                     _ -> fatal 94 "AutomatonDead should only be called on automata."
+                                 _ -> fatal 94 "AutomatonDead should only be called on automata."
+
 
 automatonBlockedChannel :: XColoredNetwork c -> ComponentID -> BlockVariables -> ChannelID -> Color -> Formula
 automatonBlockedChannel net cID _ chan col = case getComponent net cID of
     (Automaton _ ins _ n ts _) -> let ins = getInChannels net cID
                                       inInd = fromJust $ L.elemIndex chan ins
                                       inTrans = getInputTransitions net cID inInd col
-                                      fs = AND (Set.fromList $ map (\tr -> deadTransition net cID tr col) inTrans)
+                                      fs = AND (Set.fromList $ map (\tr -> Lit $ DeadTrans cID (fromJust $ L.elemIndex tr ts)) inTrans)
                                   in fs
     _ -> fatal 94 "AutomatonDead should only be called on automata."
 
@@ -452,7 +508,7 @@ automatonIdleChannel net cID _ chan col = case getComponent net cID of
     (Automaton _ ins _ n ts _) -> let outs = getOutChannels net cID
                                       outInd = fromJust $ L.elemIndex chan outs
                                       outTrans = getOutputTransitions net cID outInd col
-                                      fs = AND (Set.fromList $ map (\tr -> deadTransition net cID tr col) outTrans)
+                                      fs = AND (Set.fromList $ map (\tr -> deadTransition net cID tr) outTrans)
                                   in fs
     _ -> fatal 94 "AutomatonDead should only be called on automata."
 
@@ -483,7 +539,7 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
         --               but this transition can never be triggered. Possible unsoundness?
         Automaton _ _ _ _ ts _ -> let (ColorSet cols) = colors'
                                       cols' = Set.toList cols
-                                      fs = AND $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
+                                      fs = OR $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
                                   in fs
                                                {-conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
             f = automatonDead net cID vars

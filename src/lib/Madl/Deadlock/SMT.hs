@@ -145,6 +145,8 @@ bi_to_name x _show_p_t (IdleAll _ xID Nothing) = [smt_idle x xID]
 bi_to_name x show_p_t (IdleAll _ xID (Just cs)) = if empty cs
     then [smt_idle x xID ++ ".empty"]
     else map (\c -> smt_idle x xID ++ "." ++ show_p_t c) (getColors cs)
+bi_to_name x _ (IdleState cID p) = [smt_idle_state x cID p]
+bi_to_name x _ (DeadTrans cID n) = [smt_dead_trans x cID n]
 bi_to_name _ _ _ = fatal 111 "unreachable"
 
 -- | Declare variable(s) to represent the given literal
@@ -244,6 +246,8 @@ export_literal_to_SMT x _show_p_t (TSelect i c t)  = smt_and[chan_selected, tran
     chan_selected = smt_equals (export_value_to_smt c) (smt_automaton_arbiter_c x i)
     trans_selected = smt_equals (export_value_to_smt t) (smt_automaton_arbiter_t x i)
 export_literal_to_SMT x _show_p_t (InState i v)  = smt_equals (export_value_to_smt v) (smt_automaton_state x i)
+export_literal_to_SMT x _ (IdleState cID p) = smt_idle_state x cID p
+export_literal_to_SMT x _ (DeadTrans cID n) = smt_dead_trans x cID n
 export_literal_to_SMT x show_p_t (lit@BlockSource{}) = head $ bi_to_name x show_p_t lit
 export_literal_to_SMT x show_p_t (lit@BlockAny{}) = smt_or $ bi_to_name x show_p_t lit
 export_literal_to_SMT x show_p_t (lit@IdleAll{})  = smt_and $ bi_to_name x show_p_t lit
@@ -287,6 +291,8 @@ export_formula_to_SMT x qs vars show_p_t bi f = (ret_s,ret_qs,ret_vars) where
                 MSelect i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
                 TSelect i _ _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
                 InState i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                IdleState i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                DeadTrans i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
                 Is_Full q -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
                 Is_Not_Full q -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
                 ContainsNone q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
@@ -312,13 +318,19 @@ smt_idle net xID = "idle_" ++ utxt (channelName . fst . getChannel net $ xID)
 smt_block_source :: ColoredNetwork -> ComponentID -> String
 smt_block_source net cID = "block_src_" ++ utxt (getName $ getComponent net cID)
 
+smt_idle_state :: ColoredNetwork -> ComponentID -> Int -> String
+smt_idle_state net cID p = "idle_state_" ++ show p ++ "_" ++ utxt (getName $ getComponent net cID)
+
+smt_dead_trans :: ColoredNetwork -> ComponentID -> Int -> String
+smt_dead_trans net cID n = "dead_trans_" ++ show n ++ "_" ++ utxt (getName $ getComponent net cID)
+
 smt_queue, smt_loadbalancer_arbiter, smt_merge_arbiter, smt_match_arbiter_m, smt_match_arbiter_d, smt_guardqueue_q, smt_guardqueue_m :: ColoredNetwork -> ComponentID -> String
 smt_automaton_state, smt_automaton_arbiter_c, smt_automaton_arbiter_t :: ColoredNetwork -> ComponentID -> String
 -- For queue variables, we add "Q___" in front to make it easy at the UI level to find queue variables
 smt_queue x i = "Q___" ++ (utxt . getName $ getComponent x i) -- ++ "___" ++ (utxt $ channelName $ fst $ getChannel x ((getOutChannels x i)!!0))
 smt_loadbalancer_arbiter x i = "M___" ++ (utxt . getName $ getComponent x i)
 -- For merge variables, we add "M___" in front to make it easy at the UI level to find merge variables
-smt_merge_arbiter x i = "M___" ++ (utxt . getName $ getComponent x i) 
+smt_merge_arbiter x i = "M___" ++ (utxt . getName $ getComponent x i)
 smt_match_arbiter_m x i = (utxt . getName $ getComponent x i) ++ "_m"
 smt_match_arbiter_d x i = (utxt . getName $ getComponent x i) ++ "_d"
 smt_automaton_state x i = "P___" ++ (utxt . getName $ getComponent x i) ++ "_state"

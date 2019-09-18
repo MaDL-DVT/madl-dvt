@@ -73,6 +73,8 @@ data Literal
     | MSelect ComponentID (Int, Int) -- ^ MultiMatch arbiter has selected (matchInput, dataInput) @(Int, Int)@. @ComponentID@ should identify a multi-match.
     | InState ComponentID Int -- ^ Automaton is in state @Int@. @ComponentID@ should identify an automaton.
     | TSelect ComponentID Int Int -- ^ Automaton arbiter has selected input @Int@ and transition @Int@. @ComponentID@ should identify an automaton.
+    | IdleState ComponentID Int -- ^ Idleness of state @Int@ of the automaton
+    | DeadTrans ComponentID Int -- ^ Transition @Int@ of automaton @ComponentID@ is dead
     | Sum_Compare [(ComponentID, Maybe Color)] String Int -- ^ TODO(snnw, frkv) : explain what @Sum_Compare@ means.
     | BlockSource ComponentID -- ^ The outgoing channel of the source identified by @ComponentID@ satisfies @G!trdy@ for at least one of the colors produced by the source.
     | BlockAny Source ChannelID (Maybe ColorSet) -- ^ Channel satisfies @G!trdy@ for at least one of the given colors.
@@ -89,6 +91,8 @@ instance Ord Literal where
     MSelect l0 l1 <= MSelect r0 r1 = (l0, l1) <= (r0, r1)
     InState l0 l1 <= InState r0 r1 = (l0, l1) <= (r0, r1)
     TSelect l0 l1 l2 <= TSelect r0 r1 r2 = (l0, l1, l2) <= (r0, r1, r2)
+    IdleState l0 l1 <= IdleState r0 r1 = (l0, l1) <= (r0, r1)
+    DeadTrans l0 l1 <= DeadTrans r0 r1 = (l0, l1) <= (r0, r1)
     Sum_Compare l0 l1 l2 <= Sum_Compare r0 r1 r2 = (l0, l1, l2) <= (r0, r1, r2)
     BlockSource l <= BlockSource r = l <= r
     BlockAny _ l0 l1 <= BlockAny _ r0 r1 = (l0, l1) <= (r0, r1)
@@ -109,6 +113,10 @@ instance Ord Literal where
     _ <= MSelect{} = False
     InState{} <= _ = True
     _ <= InState{} = False
+    IdleState{} <= _ = True
+    _ <= IdleState{} = False
+    DeadTrans{} <= _ = True
+    _ <= DeadTrans{} = False
     TSelect{} <= _ = True
     _ <= TSelect{} = False
     Sum_Compare{} <= _ = True

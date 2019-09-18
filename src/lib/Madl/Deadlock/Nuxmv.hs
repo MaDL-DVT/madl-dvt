@@ -129,7 +129,9 @@ varDefinition net cID t = case getComponent net cID of
     Joitch{} -> []
     Automaton{componentName=name,nrOfStates=n,transitions=ts} ->
         [nuxmv_int_with_singleton State n (nuxmv_psvar name),
-         nuxmv_int_with_singleton Input (length ts) (nuxmv_ptvar name)]
+         nuxmv_int_with_singleton Input (length ts) (nuxmv_ptvar name)] -- ++
+        --[nuxmv_bool State (nuxmv_proc_stvar name i) | i <- [0..n-1]] ++
+        --[nuxmv_bool State (nuxmv_proc_deadvar name i) | i <- [0..(length ts)-1]]
     GuardQueue name size -> nuxmv_int State (size+1) (nuxmvQueueSizeVar name)
                         : ((nuxmv_int Input (getNrInputs net cID) $ merge_oracle name)
                         : mapMaybe fldVar (disjFields t) ++ map bvVar (bitVectors t)) where
@@ -357,8 +359,8 @@ assign net outs ins (node, (Queue baseName size)) i flds = nuxmv_next curVal . n
 assign net outs ins (node, (GuardQueue baseName size)) i flds = nuxmv_next curVal $ nuxmv_switch [
         (nuxmv_equals "0" (merge_oracle baseName), T.intercalate "" $ nuxmv_switch $ mapMaybe pushPop (IM.toList ins) ++ mapMaybe push (IM.toList ins) ++ [pop, none])
         ,(nuxmv_equals "1" (merge_oracle baseName), curVal)
-    ] 
-    
+    ]
+
     where
         pushPop :: (Int, Island ChannelID) -> Maybe (Text, Text)
         pushPop = exec True shiftVal outs
@@ -453,7 +455,7 @@ stateUpdate net (n, c@(GuardQueue _ size)) t islands =
         ins = IM.filter (islandHasChannel ib) islands
         outs :: IslandSet ChannelID
         outs = IM.filter (\i -> (islandHasChannel o i) && (not $ islandHasChannel ig i)) islands
-        
+
         [ib, ig] = getInChannels net n
         [o] = getOutChannels net n
 stateUpdate _ _ _ _ = []
@@ -489,6 +491,8 @@ syncModel (ReachabilityInput net defs spec invs) = T.unpack . T.unlines $
     getExtendedContext :: ChannelID -> a -> ChannelID
     getExtendedContext n _ = n
 
+--[nuxmv_bool State (nuxmv_proc_stvar name i) | i <- [0..n-1]]
+
 -- | Translate a literal to nuxmv
 nuxmvLiteral :: ColoredNetwork -> Literal -> [Text]
 -- TODO(snnw): FIFO queues
@@ -523,6 +527,10 @@ nuxmvLiteral _ (MSelect _ _) = [nuxmv_true] -- TODO(snnw) capture the multimatch
 nuxmvLiteral _ (TSelect _ _ _) = [nuxmv_true] -- TODO(snnw) capture the automaton arbiter state in nuxmv
 nuxmvLiteral net (InState cID s) = [nuxmv_equals (nuxmv_psvar name) (showT s)] where
     Automaton{componentName=name} = getComponent net cID
+nuxmvLiteral net (IdleState cID s) = [nuxmv_proc_stvar name s] where
+    Automaton{componentName=name} = getComponent net cID
+nuxmvLiteral net (DeadTrans cID s) = [nuxmv_proc_deadvar name s] where
+    Automaton{componentName=name} = getComponent net cID
 nuxmvLiteral _ (Sum_Compare _ _ _) = fatal 322 "Sum Compare is not supported in Nuxmv invarspec (invariants only)"
 
 -- | Declare variables for block and idle literals
@@ -530,7 +538,9 @@ nuxmvLiteralDecl :: ColoredNetwork -> Literal -> [Text]
 nuxmvLiteralDecl net l@BlockSource{} = map (nuxmv_bool State) (nuxmvLiteral net l)
 nuxmvLiteralDecl net l@BlockAny{} = map (nuxmv_bool State) (nuxmvLiteral net l)
 nuxmvLiteralDecl net l@IdleAll{} = map (nuxmv_bool State) (nuxmvLiteral net l)
-nuxmvLiteralDecl _ _ = fatal 318 "only blocks and idles are defined"
+nuxmvLiteralDecl net l@IdleState{} = map (nuxmv_bool State) (nuxmvLiteral net l)
+nuxmvLiteralDecl net l@DeadTrans{} = map (nuxmv_bool State) (nuxmvLiteral net l)
+nuxmvLiteralDecl _ _ = fatal 318 "only blocks, idles, state idles, and dead transitions are defined"
 
 -- | Produce an invar statement from a literal definition
 nuxmvLiteralDef :: ColoredNetwork -> (Literal, Formula) -> Text
@@ -557,7 +567,7 @@ generateInvariants net invs = mapMaybe invToNuxmv invs where
         else case inv of
             Invariant _ _ _ -> Just $ nuxmv_invar $ nuxmv_equals "0" (nuxmv_add $ invariantClauses inv)
             LeqInvariant _ _ _ -> Just $ nuxmv_invar $ nuxmv_atmost (nuxmv_add $ invariantClauses inv) "0"
-    
+
     invariantClauses inv = case inv of
         Invariant qMap aMap c -> concatMap (uncurry qToNuxmv) (Map.assocs qMap)
                                  ++ concatMap (uncurry aToNuxmv) (Map.assocs aMap)
@@ -649,7 +659,7 @@ callEngine engine = do
             BWD          -> "go\ncheck_invar -s backward\nprint_usage\nquit\n"
             FWDBWD       -> "go\ncheck_invar -s forward-backward\nprint_usage\nquit\n"
             BDDBMC depth -> "go\nbuild_boolean_model\nbmc_setup\ncheck_invar -s bdd-bmc -k " ++show depth ++"\nprint_usage\nquit\n"
-            BMCINC depth -> "go_bmc\ncheck_invar_bmc_inc -s forward -k "++show depth ++"\nshow_traces -p 4 -o trace.xml\nquit"            
+            BMCINC depth -> "go_bmc\ncheck_invar_bmc_inc -s forward -k "++show depth ++"\nshow_traces -p 4 -o trace.xml\nquit"
             IC3          -> "flatten_hierarchy\nencode_variables\nbuild_boolean_model\ncheck_invar_ic3 -v 1 -a 1 -g\nprint_usage\nquit\n"
             IC3M         -> "go_msat\ncheck_invar_ic3 -i\nprint_usage\nquit\n"
     let contents = case engine of
@@ -716,6 +726,12 @@ nuxmv_psvar = ("P_" <>)
 
 nuxmv_ptvar :: (IsString a, Monoid a) => a -> a
 nuxmv_ptvar = ("Pt_" <>)
+
+nuxmv_proc_stvar :: Text -> Int -> Text
+nuxmv_proc_stvar t n = T.intercalate "_" [txt "StIdle",t,showT n]
+
+nuxmv_proc_deadvar :: Text -> Int -> Text
+nuxmv_proc_deadvar t n = T.intercalate "_" [txt "DeadTrans",t,showT n]
 
 nuxmv_q_end, nuxmv_s_end :: IsString a => a
 nuxmv_q_end = "v"
