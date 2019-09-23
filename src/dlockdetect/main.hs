@@ -180,7 +180,7 @@ main = do
     putStrLn $ "Reading environment variables ..."
     mwb_path_n <- lookupEnv "MWB_PATH_NUXMV"
     _ <- case mwb_path_n of
-        Nothing -> setEnv "MWB_PATH_NUXMV" "/usr/local/bin"
+        Nothing -> setEnv "MWB_PATH_NUXMV" "/Applications/nuXmv-1.1.1-Darwin/bin/"
         Just _ -> return ()
     newVal <- getEnv "MWB_PATH_NUXMV"
     putStrLn $ "MWB_PATH_NUXMV = "++newVal
@@ -212,6 +212,7 @@ main = do
     putStrLn $ "Reading network completed."
     network' <- if (replaceAutomata options) then return (updateNetwork network) else return network
     putStrLn $ show network'
+    --putStrLn $ visualizeNet network
     let comps = getComponents network'
     -- Print some general network statistics.
     when (argVerbose options == ON) $ putStrLn $ "#Components: " ++ (show $ length comps)

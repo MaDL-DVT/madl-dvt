@@ -486,8 +486,8 @@ deadTransition net cID trans = case getComponent net cID of
                                                                                                                outCols = getColorSet net outChan
                                                                                                                iState = Lit $ IdleState cID s --idleState net cID s
                                                                                                                idleInp = Lit (IdleAll (src 0) inChan (Just icol'))
-                                                                                                               blockOut = Lit (BlockAny (src 0) outChan (Just ocol'))
-                                                                                                               fs = OR (Set.fromList [iState,idleInp,blockOut])
+                                                                                                               blockedOut = Lit (BlockAny (src 0) outChan (Just ocol'))
+                                                                                                               fs = OR (Set.fromList [iState,idleInp,blockedOut])
                                                                                                            in {-error $ show (map (\x -> (x,idleStates net cID [x])) [0..(n-1)]) -}fs
 
                                  _ -> fatal 94 "AutomatonDead should only be called on automata."
@@ -797,15 +797,15 @@ idle_all loc net xID colors vars =
         Function _ f _ -> idleLiteral' (src 286) net (inChan 0) preFunctionColors where --Idle for all colors that may be transformed to any of the given colors
             preFunctionColors = filter rightResult (inColors 0)
             rightResult c = eval (IM.singleton 0 c) f `elem` currColors
-        Source _ msg -> disjunct produces_wrong_colors some_other_packet_irdy_and_blocked where
-            produces_wrong_colors = fromBool . empty $ typeIntersection msg colors'
-            some_other_packet_irdy_and_blocked :: Formula
-            some_other_packet_irdy_and_blocked = exists otherColors (blockLiteral' (src 248) net xID) --todo(tssb) irdy part
-            otherColors = getColors $ typeDifference msg colors'
-        PatientSource _ msg -> disjunct produces_wrong_colors some_other_packet_irdy_and_blocked where
-            produces_wrong_colors = fromBool . empty $ typeIntersection msg colors'
-            some_other_packet_irdy_and_blocked = exists otherColors (blockLiteral' (src 252) net xID) --todo(tssb) irdy part
-            otherColors = getColors $ typeDifference msg colors'
+        Source _ msg -> produces_wrong_colors --disjunct produces_wrong_colors some_other_packet_irdy_and_blocked where
+            where produces_wrong_colors = fromBool . empty $ typeIntersection msg colors'
+            --some_other_packet_irdy_and_blocked :: Formula
+            --some_other_packet_irdy_and_blocked = exists otherColors (blockLiteral' (src 248) net xID) --todo(tssb) irdy part
+            --otherColors = getColors $ typeDifference msg colors'
+        PatientSource _ msg -> produces_wrong_colors --disjunct produces_wrong_colors some_other_packet_irdy_and_blocked where
+            where produces_wrong_colors = fromBool . empty $ typeIntersection msg colors'
+            --some_other_packet_irdy_and_blocked = exists otherColors (blockLiteral' (src 252) net xID) --todo(tssb) irdy part
+            --otherColors = getColors $ typeDifference msg colors'
         Sink{} -> fatal 328 "idle should not be called on Sink"
         DeadSink{} -> fatal 329 "idle should not be called on DeadSink"
         Match _ f -> disjunct (forall currColors (idle output)) (exists currColors (irdy_and_blocked $ not output)) where
