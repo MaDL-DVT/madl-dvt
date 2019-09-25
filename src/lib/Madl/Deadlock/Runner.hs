@@ -24,6 +24,7 @@ import qualified    Control.Monad.Parallel as Par (MonadParallel,mapM)
 import              Data.List.Split (chunksOf)
 import qualified    Data.Map            as Map
 import qualified    Data.Sequence       as Seq
+import qualified    Data.Set            as Set
 
 import              System.Directory (removeFile)
 import              System.Exit (exitFailure)
@@ -46,6 +47,16 @@ import              Madl.Deadlock.DeadlockDetection
 import              Madl.Deadlock.Nuxmv
 import              Madl.Deadlock.SMT
 import              Madl.Deadlock.SMTSolvers
+
+-- Error function
+fileName :: Text
+fileName = "Madl.Deadlock.Runner"
+
+fatal :: Int -> Text -> a
+fatal i s = error ("Fatal "++show i++" in " ++utxt fileName ++":\n  "++utxt s)
+
+src :: Int -> Source
+src i = (fileName, i)
 
 -- | Determines which algorithms are executed.
 data RunMode = NuxmvModelOnly | ReachabilityOnly | SmtOnly | ReachabilityAfterSmt
@@ -154,11 +165,15 @@ notFullQueues net solver invs = fmap (map fst) $ par_filterM isInfeasible (getCo
 
 -- some helpers used to calculate formulas for the nuxmv model
 literals :: ColoredNetwork -> Seq Formula
-literals net = Seq.fromList $ map (uncurry mkLiteral) (getComponentsWithID net)
+literals net = Seq.fromList $ map (\x -> AND (Set.fromList [NOT (Lit $ IdleAll (src 174) x (Just (getColorSet net x))),Lit (BlockAny (src 174) x (Just (getColorSet net x)))])) (getChannelIDs net)
+--literals net = Seq.fromList $ map (\(x,y) -> mkLiteral net x y) (getComponentsWithID net)
 
-mkLiteral :: ComponentID -> Component -> Formula
-mkLiteral i Source{} = Lit (BlockSource i)
-mkLiteral _ _ = F
+mkLiteral :: ColoredNetwork -> ComponentID -> Component -> Formula
+mkLiteral net i Source{} = let outs = getOutChannels net i
+                               out = outs !! 0
+                               cols = getColorSet net out
+                           in AND (Set.fromList [NOT (Lit $ IdleAll (src 174) out (Just cols)),Lit (BlockAny (src 174) out (Just cols))])
+mkLiteral _ _ _ = F
 
 spec :: ColoredNetwork -> Formula
 spec net = disjunctive $ literals net
@@ -199,7 +214,7 @@ runDeadlockDetection net options invs nfqs =
                 eq_lst' <- eq_lst
                 foldr f (return $ Right (False,Nothing)) eq_lst' where
                 eq_lst :: IO [Either String (Bool, Maybe SMTModel)]
-                eq_lst = Par.mapM detectDeadlock (map fst src_lst)
+                eq_lst = Par.mapM detectDeadlock (getChannelIDs net)
                 f :: (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel))
                 f res b' = do
                     res2 <- b'
@@ -221,12 +236,12 @@ runDeadlockDetection net options invs nfqs =
 
         -- deadlock analysis
         smtSeq :: IO (Either String (Bool, Maybe SMTModel))
-        smtSeq = foldr (uncurry doDeadlock) s (getComponentsWithID net) where
-                doDeadlock :: ComponentID -> Component -> IO (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel))
-                doDeadlock i e dl' = do
+        smtSeq = foldr (\x y -> doDeadlock x y) s (getChannelIDs net) where
+                doDeadlock :: ChannelID -> IO (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel))
+                doDeadlock i dl' = do
                     dl <- dl'
-                    case (dl, e) of
-                        (Right (False,Nothing), Source _ t ) | not (emptyColorSet t) -> detectDeadlock i
+                    case (dl,i) of
+                        (Right (False,Nothing),i') | not (emptyColorSet (getColorSet net i')) -> detectDeadlock i
                         _ -> return dl
                 s = return $ Right (False,Nothing)
 
@@ -235,25 +250,28 @@ runDeadlockDetection net options invs nfqs =
 
         -- Determine the block formula of the source. Export it to an SMT solver.
         -- Based on the result, update the set of live components or not.
-        detectDeadlock :: ComponentID -> IO (Either String (Bool, Maybe SMTModel))
+        detectDeadlock :: ChannelID -> IO (Either String (Bool, Maybe SMTModel))
         detectDeadlock i = let
-            name = utxt . getName . getComponent net
-            blockLit = BlockSource i in
+            name = utxt . getName . getChannel net
+            lit1 = IdleAll (src 174) i (Just (getColorSet net i))
+            lit2 = BlockAny (src 174) i (Just (getColorSet net i))
+            blockLit = (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) in
                 do
-                    when (argVerbose options == ON) $ putStrLn ("Starting deadlock detection for source " ++ name i)
+                    --when (argVerbose options == ON) $ putStrLn ("Starting deadlock detection for source " ++ name i)
 --                    nfqs' <- nfqs -- (js) this takes quite a lot of time ! I would turn in off for now.
-                    when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model ... ")
-                    let ret  = {-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
+                    --when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model ... ")
+                    let ret  = unfold_formula net (BlockVars live nfqs) (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) --{-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
                     let file = "deadlock_" ++ name i ++ ".smt2"
                     h <- openFile file WriteMode
                     hPutStrLn h $ "(set-logic QF_LIA)\n" ++ smtinvs
                     hPutStrLn h $ export_bi_var_to_smt net show_p (Map.keys ret)
+--export_formula_to_SMT :: ColoredNetwork -> (Set ComponentID) -> (Map ComponentID [Color], Set ComponentID) -> (Color -> String) -> Maybe Literal -> Formula -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
                     foldM_ (\(qs',vars') (bi, f) -> do
                                                         let (smt',qs2,vars2) = export_formula_to_SMT net qs' vars' show_p (Just bi) f
                                                         hPutStrLn h $ smt'
                                                         return (qs2, vars2))
                            (qs, vars) (Map.toList ret)
-                    hPutStrLn h $ "(assert " ++ export_literal_to_SMT net show_p blockLit ++ ")"
+                    hPutStrLn h $ "(assert " ++ "(and (not " ++ export_literal_to_SMT net show_p lit1 ++ ") " ++ export_literal_to_SMT net show_p lit2 ++ "))"
                     hPutStrLn h $ "(check-sat)\n(get-model)"
                     when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model completed. ")
                     when (argVerbose options == ON) $ putStrLn ("Calling SMT solver ... ")
@@ -263,10 +281,10 @@ runDeadlockDetection net options invs nfqs =
                     -- putStrLn solver_output
                     case parseSMTOutput solver_output of
                         Left err -> do return $ Left (unlines $ map messageString $ errorMessages err)
-                        Right Nothing -> do when (argVerbose options == ON) $ putStrLn $ "== Source " ++ name i ++ " is live."
+                        Right Nothing -> do when (argVerbose options == ON) $ putStrLn $ "== Channel " ++ name i ++ " is live."
                                             return $ Right (False,Nothing)
                         Right (Just model) -> do
-                                            when (argVerbose options == ON) $ putStrLn $ "Source " ++ name i ++ " has a possible deadlock:\n" ++ showModel model
+                                            when (argVerbose options == ON) $ putStrLn $ "Channel " ++ name i ++ " has a possible deadlock:\n" ++ showModel model
                                             return $ Right (True, Just model)
     in
         case argRunMode options of
