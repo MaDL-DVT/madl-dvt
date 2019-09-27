@@ -733,7 +733,7 @@ idleLiteral' loc net colors = Lit . idleLiteral loc net colors
 
 -- | Produces an idle equation for the initiator component of a channel.
 idle_firstcall' :: (Show c) => Source -> XColoredNetwork c -> ChannelID -> Maybe ColorSet -> BlockVariables -> Formula
-idle_firstcall' loc net xID colors vars =
+idle_firstcall' loc net xID colors vars = if (not (subTypeOf colors' (getColorSet net xID))) then T else
     case getComponent net cID of
         Queue{} -> disjunct empty_and_idle some_other_packet_blocked_at_head where
             empty_and_idle = conjunct (Lit $ containsNoneLiteral net cID colors') -- Queue is empty
@@ -768,8 +768,8 @@ idle_all :: IsColorSet a => (Text, Int) -> XColoredNetwork c -> ChannelID -> May
 idle_all loc net xID colors vars =
     if cID `elem` (liveX vars) then F else
     if empty colors' then T else
-    if not (colors' `subTypeOf` colorset xID) then fatal 310 $
-        "Illegal call to idle arsing from " +++showT loc +++ ": colorset " +++ showT (toColorSet colors') +++ " is not a subtype of " +++ showT (colorset xID) else
+    {-if not (colors' `subTypeOf` colorset xID) then fatal 310 $
+        "Illegal call to idle arsing from " +++showT loc +++ ": colorset " +++ showT (toColorSet colors') +++ " is not a subtype of " +++ showT (colorset xID) else-}
     case getComponent net cID of
         Queue{} -> idleLiteral' loc net xID colors' -- Produce an idle literal
         -- The incoming channel is idle for the given colors
