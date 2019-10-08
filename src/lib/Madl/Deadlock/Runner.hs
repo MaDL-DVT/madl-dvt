@@ -13,7 +13,8 @@ module Madl.Deadlock.Runner(
     ReachabilityEngine(..), NuxmvEngine(..), AbcEngine(..),
     ReachabilityOptions(..),
     CommandLineOptions(..), defaultOptions,
-    notFullQueues
+    notFullQueues,
+    ChannelsToCheck(..)
     ) where
 
 -- import              Debug.Trace
@@ -35,6 +36,7 @@ import              System.Process (readProcessWithExitCode)
 import GHC.Conc (numCapabilities)
 import Text.Parsec.Error(errorMessages, messageString)
 
+import              Madl.Base.Identifiers
 import              Utils.Map
 import              Utils.Text
 
@@ -65,6 +67,8 @@ data RunMode = NuxmvModelOnly | ReachabilityOnly | SmtOnly | ReachabilityAfterSm
 data Sources = ALL | ONE
 -- | Verbosity level.
 data Verbose = ON | OFF deriving (Eq)
+-- | Determines what channels are checked for liveness: SRCS is for output of the sources, ND is for outputs of the sources and outputs of all components with non-deterministic outputs, ALL - all channels are checked for liveness
+data ChannelsToCheck = SRCS | ND | WHOLE
 
 -- | Contains user input from command line
 data CommandLineOptions = CommandLineOptions {
@@ -85,7 +89,8 @@ data CommandLineOptions = CommandLineOptions {
     showRings :: Bool, -- ^ Determines whether ring information is displayed
     detectRings :: Bool, -- ^ Determines whether ring detection is done
     detectLivelock :: Bool, -- ^ Determines whether livelock detection is done
-    replaceAutomata :: Bool
+    replaceAutomata :: Bool, -- ^ Replaces all automata in the network, such that behavior of the automata is mimicked using standard primitives
+    whatToCheck :: ChannelsToCheck -- ^ Determines what channels are checked for liveness: SRCS is for output of the sources, ND is for outputs of the sources and outputs of all components with non-deterministic outputs, ALL - all channels are checked for liveness
 
 }
 
@@ -113,9 +118,15 @@ defaultOptions = CommandLineOptions {
     showRings = False,
     detectRings = True,
     detectLivelock = True,
-    replaceAutomata = False
+    replaceAutomata = False,
+    whatToCheck = WHOLE
 }
 
+
+getChannelsToCheck :: ColoredNetwork -> ChannelsToCheck -> [ChannelID]
+getChannelsToCheck net SRCS = filter (\x -> case getComponent net (getInitiator net x) of Source{} -> True; _ -> False) (getChannelIDs net)
+getChannelsToCheck net ND = filter (\x -> case getComponent net (getInitiator net x) of Source{} -> True; Automaton{} -> True; LoadBalancer{} -> True; Match{} -> True; MultiMatch{} -> True; _ -> False) (getChannelIDs net)
+getChannelsToCheck net _ = getChannelIDs net
 
 -- | Function to convert a color to a string.
 show_p :: Color -> String
@@ -164,8 +175,8 @@ notFullQueues net solver invs = fmap (map fst) $ par_filterM isInfeasible (getCo
 -- | Main function to perform deadlock and reachability analysis.
 
 -- some helpers used to calculate formulas for the nuxmv model
-literals :: ColoredNetwork -> Seq Formula
-literals net = Seq.fromList $ map (\x -> AND (Set.fromList [NOT (Lit $ IdleAll (src 174) x (Just (getColorSet net x))),Lit (BlockAny (src 174) x (Just (getColorSet net x)))])) (getChannelIDs net)
+literals :: ColoredNetwork -> [ChannelID] -> Seq Formula
+literals net chans = Seq.fromList $ map (\x -> AND (Set.fromList [NOT (Lit $ IdleAll (src 174) x (Just (getColorSet net x))),Lit (BlockAny (src 174) x (Just (getColorSet net x)))])) chans
 --literals net = Seq.fromList $ map (\(x,y) -> mkLiteral net x y) (getComponentsWithID net)
 
 mkLiteral :: ColoredNetwork -> ComponentID -> Component -> Formula
@@ -175,8 +186,16 @@ mkLiteral net i Source{} = let outs = getOutChannels net i
                            in AND (Set.fromList [NOT (Lit $ IdleAll (src 174) out (Just cols)),Lit (BlockAny (src 174) out (Just cols))])
 mkLiteral _ _ _ = F
 
-spec :: ColoredNetwork -> Formula
-spec net = disjunctive $ literals net
+spec :: ColoredNetwork -> [ChannelID] -> Formula
+spec net chans = disjunctive $ literals net chans
+
+{-debug stuff-}
+testChanID :: ChannelID
+testChanID = (ChannelIDImpl 62)
+
+testFormula :: Formula
+testFormula = Lit $ BlockAny ("",0) testChanID (Just (ColorSet Set.empty))
+{-***********-}
 
 runDeadlockDetection :: ColoredNetwork -> CommandLineOptions -> [Invariant Int] -> [ComponentID] -> IO (Either String (Bool, Maybe SMTModel))
 runDeadlockDetection net options invs nfqs =
@@ -184,7 +203,7 @@ runDeadlockDetection net options invs nfqs =
     let (smtinvs, qs, vars) = export_invariants_to_smt net show_p invs
 
         -- formula for the nuXmv model
-        spec' = spec net
+        spec' = spec net (getChannelsToCheck net (whatToCheck options))
         allFormulas = unfold_formula net (BlockVars Seq.empty nfqs) spec'
         reachability_model = (ReachabilityInput net allFormulas (Just spec') invs)
         reachability_model_invs_only = (ReachabilityInput net Map.empty Nothing invs)
@@ -214,7 +233,7 @@ runDeadlockDetection net options invs nfqs =
                 eq_lst' <- eq_lst
                 foldr f (return $ Right (False,Nothing)) eq_lst' where
                 eq_lst :: IO [Either String (Bool, Maybe SMTModel)]
-                eq_lst = Par.mapM detectDeadlock (getChannelIDs net)
+                eq_lst = Par.mapM detectDeadlock (getChannelsToCheck net (whatToCheck options))
                 f :: (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel))
                 f res b' = do
                     res2 <- b'
@@ -236,7 +255,7 @@ runDeadlockDetection net options invs nfqs =
 
         -- deadlock analysis
         smtSeq :: IO (Either String (Bool, Maybe SMTModel))
-        smtSeq = foldr (\x y -> doDeadlock x y) s (getChannelIDs net) where
+        smtSeq = foldr (\x y -> doDeadlock x y) s (getChannelsToCheck net (whatToCheck options)) where  
                 doDeadlock :: ChannelID -> IO (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel))
                 doDeadlock i dl' = do
                     dl <- dl'
@@ -254,8 +273,8 @@ runDeadlockDetection net options invs nfqs =
         detectDeadlock i = let
             name = utxt . getName . getChannel net
             lit1 = IdleAll (src 174) i (Just (getColorSet net i))
-            lit2 = BlockAny (src 174) i (Just (getColorSet net i))
-            blockLit = (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) in
+            lit2 = BlockAny (src 174) i (Just (getColorSet net i)) in
+            --blockLit = (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) in
                 do
                     --when (argVerbose options == ON) $ putStrLn ("Starting deadlock detection for source " ++ name i)
 --                    nfqs' <- nfqs -- (js) this takes quite a lot of time ! I would turn in off for now.

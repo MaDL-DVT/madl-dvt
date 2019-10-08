@@ -171,6 +171,12 @@ exeOptions =
     , Option "" ["no-livelock"]
         (NoArg (\opts -> opts {detectLivelock = False}))
         "Disable livelock detection."
+    , Option "" ["check-sources"]
+        (NoArg (\opts -> opts {whatToCheck = SRCS}))
+        "Check ouput channels of sources for livess"
+    , Option "" ["check-nd-components"]
+        (NoArg (\opts -> opts {whatToCheck = ND}))
+        "Check ouput channels of sources for livess"
     ]
 
 -- | Main entry point

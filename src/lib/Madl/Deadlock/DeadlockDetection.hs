@@ -56,8 +56,8 @@ allTheSame xs = (not $ null xs) && all ((==) x) xs where
 -- | Unfold a given formula to a map of block and idle literals and their corresponding formula
 --   Typical formulas are BlockSource, BlockAny, or IdleAll, or combinations thereof.
 unfold_formula :: (Show c) => XColoredNetwork c -> BlockVariables -> Formula -> Map Literal Formula
-unfold_formula net vars = -- unfold_formulas .
-    unfold_formula' net vars Set.empty . literals
+unfold_formula net vars f = -- unfold_formulas .
+    unfold_formula' net vars Set.empty (literals f)
 
 
 unfold_formula' :: Show c => XColoredNetwork c -> BlockVariables -> Set Literal -> [Literal]
@@ -498,7 +498,7 @@ automatonBlockedChannel net cID _ chan col = case getComponent net cID of
     (Automaton _ ins _ n ts _) -> let ins = getInChannels net cID
                                       inInd = fromJust $ L.elemIndex chan ins
                                       inTrans = getInputTransitions net cID inInd col
-                                      fs = AND (Set.fromList $ map (\tr -> Lit $ DeadTrans cID (fromJust $ L.elemIndex tr ts)) inTrans)
+                                      fs = if inTrans == [] then T else AND (Set.fromList $ map (\tr -> Lit $ DeadTrans cID (fromJust $ L.elemIndex tr ts)) inTrans)
                                   in fs
     _ -> fatal 94 "AutomatonDead should only be called on automata."
 
@@ -508,7 +508,7 @@ automatonIdleChannel net cID _ chan col = case getComponent net cID of
     (Automaton _ ins _ n ts _) -> let outs = getOutChannels net cID
                                       outInd = fromJust $ L.elemIndex chan outs
                                       outTrans = getOutputTransitions net cID outInd col
-                                      fs = AND (Set.fromList $ map (\tr -> deadTransition net cID tr) outTrans)
+                                      fs = if outTrans == [] then T else AND (Set.fromList $ map (\tr -> Lit $ DeadTrans cID (fromJust $ L.elemIndex tr ts)) outTrans)
                                   in fs
     _ -> fatal 94 "AutomatonDead should only be called on automata."
 
@@ -539,7 +539,9 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
         --               but this transition can never be triggered. Possible unsoundness?
         Automaton _ _ _ _ ts _ -> let (ColorSet cols) = colors'
                                       cols' = Set.toList cols
-                                      fs = OR $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
+                                      fs = if cols' == []
+                                           then F
+                                           else OR $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
                                   in fs
                                                {-conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
             f = automatonDead net cID vars
@@ -747,7 +749,9 @@ idle_firstcall' loc net xID colors vars = if (not (subTypeOf colors' (getColorSe
         -- An automaton is idle for a set of colors, if all of these colors are never produced by the automaton, or if the automaton is dead
         Automaton _ ins _ _ ts _-> let (ColorSet cols) = colors'
                                        cols' = Set.toList cols
-                                       fs = AND $ Set.fromList $ map (\x -> automatonIdleChannel net cID vars xID x) cols'
+                                       fs = if cols' == []
+                                            then T
+                                            else AND $ Set.fromList $ map (\x -> automatonIdleChannel net cID vars xID x) cols'
                                    in fs
                                    {-disjunct (fromBool $ all colorNeverProduced currColors) (automatonDead net cID vars) where
             colorNeverProduced color = all (\t -> all (\i -> all (doesNotProduce t i) (inColors i)) [0..ins-1]) ts where
