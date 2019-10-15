@@ -217,7 +217,7 @@ main = do
     -- Print some output for the users not to wait in front of a blank screen
     putStrLn $ "Reading network completed."
     network' <- if (replaceAutomata options) then return (updateNetwork network) else return network
-    putStrLn $ show network'
+    --putStrLn $ show network'
     --putStrLn $ visualizeNet network
     let comps = getComponents network'
     -- Print some general network statistics.
