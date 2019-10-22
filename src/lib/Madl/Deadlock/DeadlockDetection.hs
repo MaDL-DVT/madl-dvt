@@ -449,7 +449,9 @@ getInTypes net comp chan = case (getComponent net comp) of
 idleState :: XColoredNetwork c -> ComponentID -> Int -> Formula
 idleState net cID p = case getComponent net cID of
                                (Automaton _ _ _ n ts _) -> let incTs = getIncomingTransitions net cID p
-                                                               deadInc = AND $ Set.fromList (map (\tr -> Lit $ DeadTrans cID (fromJust $ L.elemIndex tr ts)) incTs)
+                                                               deadInc = if incTs == []
+                                                                         then T
+                                                                         else AND $ Set.fromList (map (\tr -> Lit $ DeadTrans cID (fromJust $ L.elemIndex tr ts)) incTs)
                                                            in AND $ Set.fromList [NOT $ Lit $ InState cID p,deadInc]
 {-                                                         if p <= n
                                                            then if (L.length (idleStates net cID [p])) == n
@@ -541,7 +543,7 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
                                       cols' = Set.toList cols
                                       fs = if cols' == []
                                            then F
-                                           else OR $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
+                                           else AND $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
                                   in fs
                                                {-conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
             f = automatonDead net cID vars
