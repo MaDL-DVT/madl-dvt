@@ -299,13 +299,13 @@ matrix network = concatMap getEquation $ getComponentsWithID network where
                 -- sum over all transitions going to s, so incoming transitions.
                 -- Note: node = id of the automaton (current component)
                 transitionEquation :: Int -> [(DeleteVariable, Int)]
-                transitionEquation sNr = [(AutomatonTransition node tNr,  1) | (tNr, AutomatonT{startState=s}) <- zip [0..] ts, s == sNr]
+                transitionEquation sNr = [(AutomatonTransition node tNr,  1) | (tNr, AutomatonT{startState=s}) <- zip [0..] ts, s == sNr] -- !!! Does not correspond to the paper. FIx it!
                                       ++ [(AutomatonTransition node tNr, -1) | (tNr, AutomatonT{endState=s}) <- zip [0..] ts, s == sNr]
 
                 -- [(ChannelTransfers (inChannel i) c, 1) | (i, c) <- triggers]
                 -- sum over in/out-coming channels
                 -- [(AutomatonTransition node tNr, -1) | tNr <- enabledTs]
-                -- sim over transitions triggered by event on the channels.
+                -- sum over transitions triggered by event on the channels.
                 inputEquation :: [(Int, Color)] -> [(DeleteVariable, Int)]
                 inputEquation triggers = [(ChannelTransfers (inChannel i) c, 1) | (i, c) <- triggers]
                                     ++ [(AutomatonTransition node tNr, -1) | tNr <- enabledTs] where
@@ -425,8 +425,8 @@ showInvariants2 invs network = T.unlines $ map (showInvariant nameFunction) invs
 -- | Print an invariant in a readable format
 showInvariant :: forall c d . (Show c, Show d, Num d, Eq d) => (ComponentID -> c) -> Invariant d -> Text
 showInvariant nameFunction invariant = case invariant of
-    Invariant qMap aMap c -> "0 = " +++ T.intercalate " + " (map showQ (Map.assocs qMap) ++ map showA (Map.assocs aMap) ++ [showT c | c /= 0]) 
-    LeqInvariant qMap aMap c -> "0 >= " +++ T.intercalate " + " (map showQ (Map.assocs qMap) ++ map showA (Map.assocs aMap) ++ [showT c | c /= 0]) 
+    Invariant qMap aMap c -> "0 = " +++ T.intercalate " + " (map showQ (Map.assocs qMap) ++ map showA (Map.assocs aMap) ++ [showT c | c /= 0])
+    LeqInvariant qMap aMap c -> "0 >= " +++ T.intercalate " + " (map showQ (Map.assocs qMap) ++ map showA (Map.assocs aMap) ++ [showT c | c /= 0])
     where
         showQ :: (ComponentID, (Map (Maybe Color) d)) -> Text
         showQ (i, m) = "[" +++ (T.intercalate ", " (map g $ Map.assocs m)) +++ "]" where

@@ -528,7 +528,7 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
             -- then the queue is blocked iff this formula is true and if any of the given colors is at the head of the queue)
             then conjunct (head fs) (Lit $ atHeadLiteral net cID colors')
             -- Otherwise we check if there is a single color such that its block formula is true, and this color is at the head of the queue.
-            else exists (zip currColors fs) irdy_and_blocked where
+            else exists (zip currColors fs) irdy_and_blocked where -- !!exists is changed to forall
                 irdy_and_blocked (c, f) = conjunct (Lit $ atHeadLiteral net cID c) f
                 fs :: [Formula]
                 fs = map block_one_color currColors
@@ -571,10 +571,10 @@ block_any source net xID colors vars =
     else if empty colors' then F
     -- Precondition: the given set of colors is a subset of the colors that can
     -- reach this channel.
-    else if not (colors' `subTypeOf` colorset xID) then fatal 93 $
+    else if not (colors' `subTypeOf` colorset xID) then F {-fatal 93 $
         "Illegal call to block arsing from " +++showT source +++ ": colorset "
         +++ showT (toColorSet colors') +++ " is not a subtype of "
-        +++ showT (colorset xID)
+        +++ showT (colorset xID)-}
     -- Calculate block equation based on the target component of the given
     -- channel:
     else case getComponent net cID of

@@ -90,8 +90,8 @@ data CommandLineOptions = CommandLineOptions {
     detectRings :: Bool, -- ^ Determines whether ring detection is done
     detectLivelock :: Bool, -- ^ Determines whether livelock detection is done
     replaceAutomata :: Bool, -- ^ Replaces all automata in the network, such that behavior of the automata is mimicked using standard primitives
-    whatToCheck :: ChannelsToCheck -- ^ Determines what channels are checked for liveness: SRCS is for output of the sources, ND is for outputs of the sources and outputs of all components with non-deterministic outputs, ALL - all channels are checked for liveness
-
+    whatToCheck :: ChannelsToCheck, -- ^ Determines what channels are checked for liveness: SRCS is for output of the sources, ND is for outputs of the sources and outputs of all components with non-deterministic outputs, ALL - all channels are checked for liveness
+    smtAllChans :: Bool -- ^ Determines if SMT checks all channels simultaneously or not
 }
 
 -- | Default commandline options.
@@ -119,7 +119,8 @@ defaultOptions = CommandLineOptions {
     detectRings = True,
     detectLivelock = True,
     replaceAutomata = False,
-    whatToCheck = WHOLE
+    whatToCheck = WHOLE,
+    smtAllChans = False
 }
 
 
@@ -176,18 +177,15 @@ notFullQueues net solver invs = fmap (map fst) $ par_filterM isInfeasible (getCo
 
 -- some helpers used to calculate formulas for the nuxmv model
 literals :: ColoredNetwork -> [ChannelID] -> Seq Formula
-literals net chans = Seq.fromList $ map (\x -> AND (Set.fromList [NOT (Lit $ IdleAll (src 174) x (Just (getColorSet net x))),Lit (BlockAny (src 174) x (Just (getColorSet net x)))])) chans
---literals net = Seq.fromList $ map (\(x,y) -> mkLiteral net x y) (getComponentsWithID net)
+literals net chans = Seq.fromList $ map (\x -> NOT $ AND (Set.fromList [NOT (Lit $ IdleAll (src 174) x (Just (getColorSet net x))),Lit (BlockAny (src 174) x (Just (getColorSet net x)))])) chans
+--literals net _ = Seq.fromList $ map (\x -> mkLiteral net x) (getAllSourceIDs net)
 
-mkLiteral :: ColoredNetwork -> ComponentID -> Component -> Formula
-mkLiteral net i Source{} = let outs = getOutChannels net i
-                               out = outs !! 0
-                               cols = getColorSet net out
-                           in AND (Set.fromList [NOT (Lit $ IdleAll (src 174) out (Just cols)),Lit (BlockAny (src 174) out (Just cols))])
-mkLiteral _ _ _ = F
+mkLiteral :: ColoredNetwork -> ComponentID -> Formula
+mkLiteral net i = NOT $ Lit $ BlockSource i
+--mkLiteral _ _ _ = F
 
 spec :: ColoredNetwork -> [ChannelID] -> Formula
-spec net chans = disjunctive $ literals net chans
+spec net chans = conjunctive $ literals net chans
 
 {-debug stuff-}
 testChanID :: ChannelID
@@ -223,9 +221,11 @@ runDeadlockDetection net options invs nfqs =
                 Right b -> return $ Right (b,Nothing)
 
         smt :: IO (Either String (Bool, Maybe SMTModel))
-        smt = case (argSources options) of
-                    ALL -> smtPar
-                    _   -> smtSeq
+        smt = if (smtAllChans options)
+              then detectAllDeadlocks
+              else case (argSources options) of
+                     ALL -> smtPar
+                     _   -> smtSeq
 
         -- deadlock analysis in parallel
         smtPar :: IO (Either String (Bool, Maybe SMTModel))
@@ -255,7 +255,7 @@ runDeadlockDetection net options invs nfqs =
 
         -- deadlock analysis
         smtSeq :: IO (Either String (Bool, Maybe SMTModel))
-        smtSeq = foldr (\x y -> doDeadlock x y) s (getChannelsToCheck net (whatToCheck options)) where  
+        smtSeq = foldr (\x y -> doDeadlock x y) s (getChannelsToCheck net (whatToCheck options)) where
                 doDeadlock :: ChannelID -> IO (Either String (Bool, Maybe SMTModel)) -> IO (Either String (Bool, Maybe SMTModel))
                 doDeadlock i dl' = do
                     dl <- dl'
@@ -304,6 +304,52 @@ runDeadlockDetection net options invs nfqs =
                                             return $ Right (False,Nothing)
                         Right (Just model) -> do
                                             when (argVerbose options == ON) $ putStrLn $ "Channel " ++ name i ++ " has a possible deadlock:\n" ++ showModel model
+                                            return $ Right (True, Just model)
+
+        mkAssertions :: [ChannelID] -> String -> String
+        mkAssertions [] s = "(assert " ++ s ++ ")"
+        mkAssertions (x:xs) s = let lit1 i = IdleAll (src 174) i (Just (getColorSet net i))
+                                    lit2 i = BlockAny (src 174) i (Just (getColorSet net i))
+                                    res = "(and (not " ++ export_literal_to_SMT net show_p (lit1 x) ++ ") " ++ export_literal_to_SMT net show_p (lit2 x) ++ ")"
+                                    res' = if s == ""
+                                           then res
+                                           else "(or " ++ res ++ " " ++ s ++ ")"
+                                in mkAssertions xs res'
+
+
+        detectAllDeadlocks :: IO (Either String (Bool, Maybe SMTModel))
+        detectAllDeadlocks = let name = "all_dls"
+                             in
+            --blockLit = (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) in
+                do
+                    --when (argVerbose options == ON) $ putStrLn ("Starting deadlock detection for source " ++ name i)
+--                    nfqs' <- nfqs -- (js) this takes quite a lot of time ! I would turn in off for now.
+                    --when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model ... ")
+                    let ret  = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options))) --{-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
+                    let file = "deadlock_" ++ name ++ ".smt2"
+                    h <- openFile file WriteMode
+                    hPutStrLn h $ "(set-logic QF_LIA)\n" ++ smtinvs
+                    hPutStrLn h $ export_bi_var_to_smt net show_p (Map.keys ret)
+--export_formula_to_SMT :: ColoredNetwork -> (Set ComponentID) -> (Map ComponentID [Color], Set ComponentID) -> (Color -> String) -> Maybe Literal -> Formula -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
+                    foldM_ (\(qs',vars') (bi, f) -> do
+                                                        let (smt',qs2,vars2) = export_formula_to_SMT net qs' vars' show_p (Just bi) f
+                                                        hPutStrLn h $ smt'
+                                                        return (qs2, vars2))
+                           (qs, vars) (Map.toList ret)
+                    hPutStrLn h $ mkAssertions (getChannelsToCheck net (whatToCheck options)) ""
+                    hPutStrLn h $ "(check-sat)\n(get-model)"
+                    when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model completed. ")
+                    when (argVerbose options == ON) $ putStrLn ("Calling SMT solver ... ")
+                    hClose h
+                    (_exit,solver_output,_err) <- (uncurry readProcessWithExitCode) (solverFunction (argSMTSolver options) file) []
+                    when (not $ argKeepSMTModel options) $ removeFile file
+                    -- putStrLn solver_output
+                    case parseSMTOutput solver_output of
+                        Left err -> do return $ Left (unlines $ map messageString $ errorMessages err)
+                        Right Nothing -> do when (argVerbose options == ON) $ putStrLn $ "All channels are live"
+                                            return $ Right (False,Nothing)
+                        Right (Just model) -> do
+                                            when (argVerbose options == ON) $ putStrLn $ "There is a possible deadlock:\n" ++ showModel model
                                             return $ Right (True, Just model)
     in
         case argRunMode options of

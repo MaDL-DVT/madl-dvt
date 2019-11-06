@@ -483,7 +483,7 @@ syncModel (ReachabilityInput net defs spec invs) = T.unpack . T.unlines $
     invariants = generateInvariants net invs ++ map (nuxmvLiteralDef net) (Map.assocs defs)
     specification = case spec of
         Nothing -> []
-        Just spec' -> ["", nuxmv_invarspec (nuxmv_negate $ nuxmvFormula net spec')]
+        Just spec' -> ["", nuxmv_invarspec (nuxmvFormula net spec')]
 
     types = networkTypes net
     islands = transferIslands contextNet
@@ -554,7 +554,7 @@ nuxmvFormula net (OR fs) = nuxmv_or $ map (nuxmvFormula net) (Set.elems fs)
 nuxmvFormula _ (T) = nuxmv_true
 nuxmvFormula _ (F) = nuxmv_false
 nuxmvFormula net (Lit l@BlockSource{}) = head $ nuxmvLiteral net l
-nuxmvFormula net (Lit l@BlockAny{}) = nuxmv_or $ nuxmvLiteral net l
+nuxmvFormula net (Lit l@BlockAny{}) = nuxmv_and $ nuxmvLiteral net l --using conjunction for block equations
 nuxmvFormula net (Lit l@IdleAll{}) = nuxmv_and $ nuxmvLiteral net l
 nuxmvFormula net (Lit l) = head $ nuxmvLiteral net l
 
