@@ -1,0 +1,39 @@
+const token_t; 
+
+const ok;
+
+const nok;
+
+const go;
+
+const no_go;
+
+enum ok_t{
+     ok;
+     nok;
+};
+
+enum go_t{
+     go;
+     no_go;
+};
+
+macro go_no_go_ctrl(chan in_comp_0__OUT, chan in_comp_1__OUT, chan in_0__OUT, chan in_1__OUT) => chan out {
+let out := Vars(cjn22_copy__OUT);
+pred sw1_p (p: go_t) {
+p == go; };
+chan sw1__OUTA, sw1__OUTB := Switch(in_comp_0__OUT, sw1_p, otherwise)[sw1];
+pred sw2_p (p: go_t) {
+p == go; };
+chan sw2__OUTA, sw2__OUTB := Switch(in_comp_1__OUT, sw2_p, otherwise)[sw2];
+chan cjn19__OUT := CtrlJoin(sw1__OUTA, sw2__OUTA)[cjn19];
+chan cjn19_copy__OUT := CtrlJoin(sw1__OUTB, sw2__OUTB)[cjn19_copy];
+chan mrg20__OUT := Merge(cjn19__OUT, cjn19_copy__OUT)[mrg20];
+chan frk21__OUTA, frk21__OUTB := Fork(mrg20__OUT)[frk21];
+chan cjn22__OUT := CtrlJoin(buffOUT0__OUT, in_0__OUT)[cjn22];
+chan cjn22_copy__OUT := CtrlJoin(buffOUT1__OUT, in_1__OUT)[cjn22_copy];
+Sink(cjn22__OUT)[snk23];
+chan buffOUT0__OUT := Queue(1, frk21__OUTA)[buffOUT0];
+chan buffOUT1__OUT := Queue(1, frk21__OUTB)[buffOUT1];
+
+ };

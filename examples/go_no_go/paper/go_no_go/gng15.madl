@@ -1,0 +1,34 @@
+const token_t;
+
+const ok;
+
+const nok;
+
+const go;
+
+const no_go;
+
+enum ok_t{
+     ok;
+     nok;
+};
+
+enum go_t{
+     go;
+     no_go;
+};
+
+uses go_no_go_macro;
+uses gng3;
+uses gng7;
+
+macro gng15() => chan out {
+
+function f(x:go_t) : ok_t {
+  if (x == go) ok; else nok;
+};
+
+chan gng_out_15 := go_no_go_macro(gng7(),gng7());
+
+let out := Queue(1,gng_out_15);
+};

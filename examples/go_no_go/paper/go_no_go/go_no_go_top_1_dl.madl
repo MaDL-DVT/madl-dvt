@@ -1,0 +1,26 @@
+const token_t;
+
+const ok;
+
+const nok;
+
+const go;
+
+const no_go;
+
+enum ok_t{
+     ok;
+     nok;
+};
+
+enum go_t{
+     go;
+     no_go;
+};
+
+uses go_no_go_macro;
+uses go_no_go_macro_dl;
+
+chan gng_out_1 := go_no_go_macro_dl(Queue(1, Source(ok_t)), Queue(1, Source(ok_t)));
+
+Sink(Queue(1,gng_out_1));
