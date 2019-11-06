@@ -8,8 +8,5 @@ A quick installation guide.
 
 ### Executables
 
-The main executable is the deadlock detection tool. You can find it here:
-
-.stack-work/dist/x86_64-osx/Cabal-1.24.2.0/build/dlockdetect/dlockdetect
-
+The main executable is the deadlock detection tool.
 
