@@ -1,28 +1,25 @@
-const token_t; 
+const token_t;
 
-const ok; 
+const ok;
 
-const nok; 
+const nok;
 
-const go; 
+const go;
 
-const no_go; 
+const no_go;
 
-enum ok_t{ 
-     ok; 
-     nok; 
-}; 
+enum ok_t{
+     ok;
+     nok;
+};
 
-enum go_t{ 
-     go; 
-     no_go; 
-}; 
+enum go_t{
+     go;
+     no_go;
+};
 
 uses go_no_go_macro;
-chan GNG0__out := go_no_go_macro(buffSRC0__OUT, buffSRC1__OUT)[GNG0];
-chan src0__OUT := Source(ok_t)[src0];
-chan buffSRC0__OUT := Queue(1, src0__OUT)[buffSRC0];
-chan src1__OUT := Source(ok_t)[src1];
-chan buffSRC1__OUT := Queue(1, src1__OUT)[buffSRC1];
-Sink(buffOUT__OUT)[snk13];
-chan buffOUT__OUT := Queue(2, GNG0__out)[buffOUT];
+
+chan gng_out_1 := go_no_go_macro(Queue(1, Source(ok_t)), Queue(1, Source(ok_t)));
+
+Sink(Queue(1,gng_out_1));
