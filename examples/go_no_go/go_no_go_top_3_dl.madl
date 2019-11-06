@@ -21,12 +21,8 @@ enum go_t{
 uses go_no_go_macro;
 uses go_no_go_macro_dl;
 
-function f(x:go_t) : ok_t {
-  if (x == go) ok; else nok;
-};
-
-chan gng_out_1 := Function(f,go_no_go_macro(Queue(1, Source(ok_t)), Queue(1, Source(ok_t))));
-chan gng_out_2 := Function(f,go_no_go_macro(Queue(1, Source(ok_t)), Queue(1, Source(ok_t))));
-chan gng_out_3 := Function(f,go_no_go_macro_dl(gng_out_1,gng_out_2));
+chan gng_out_1 := go_no_go_macro(Queue(1, Source(ok_t)), Queue(1, Source(ok_t)));
+chan gng_out_2 := go_no_go_macro(Queue(1, Source(ok_t)), Queue(1, Source(ok_t)));
+chan gng_out_3 := go_no_go_macro_dl(gng_out_1,gng_out_2);
 
 Sink(Queue(1,gng_out_3));

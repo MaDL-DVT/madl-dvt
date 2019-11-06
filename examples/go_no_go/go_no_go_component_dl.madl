@@ -36,14 +36,14 @@ trans {
 state WAIT_FOR_OTHER (ok_t stVar) {
 trans {
     ok_t d <- in_other;
-    go -> out;
+    ok -> out;
     guard d == ok && stVar == ok;
     next INIT();
 
 };
 trans {
     ok_t d <- in_other;
-    no_go -> out;
+    ok -> out;
     guard d == nok || stVar == nok;
     next INIT();
 
@@ -55,7 +55,7 @@ trans {
 };
 state DL() {
  trans {
-  no_go -> out;
+  nok -> out;
   next DL();
  };
 };

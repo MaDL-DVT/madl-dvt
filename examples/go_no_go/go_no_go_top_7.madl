@@ -21,9 +21,6 @@ enum go_t{
 uses go_no_go_macro;
 uses gng3;
 
-function f(x:go_t) : ok_t {
-  if (x == go) ok; else nok;
-};
 
 chan gng_out_7 := go_no_go_macro(gng3(),gng3());
 

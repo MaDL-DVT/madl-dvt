@@ -32,7 +32,7 @@ import Madl.Invariants (getInvariants,showInvariants2)
 import Madl.Cycles
 import Madl.Rings (findRings, showRing, combineRings, getRingInvariants)
 import Madl.Livelock (findPossibleLivelocks)
-import Madl.SimplifyFSM
+--import Madl.SimplifyFSM
 --import Madl.SourceInformation
 
 
@@ -177,6 +177,9 @@ exeOptions =
     , Option "" ["check-nd-components"]
         (NoArg (\opts -> opts {whatToCheck = ND}))
         "Check ouput channels of sources for livess"
+    , Option "" ["simultaneous-smt"]
+        (NoArg (\opts -> opts {smtAllChans = True}))
+        "SMT checks the channels simultaneously"
     ]
 
 -- | Main entry point
@@ -216,8 +219,9 @@ main = do
                 Right net -> return net
     -- Print some output for the users not to wait in front of a blank screen
     putStrLn $ "Reading network completed."
-    network' <- if (replaceAutomata options) then return (updateNetwork network) else return network
-    --putStrLn $ show network'
+    let network' = network
+    --network' <- if (replaceAutomata options) then return (updateNetwork network) else return network
+    putStrLn $ show network'
     --putStrLn $ visualizeNet network
     let comps = getComponents network'
     -- Print some general network statistics.

@@ -20,7 +20,7 @@ enum go_t{
 
 uses go_no_go_macro;
 uses gng7;
-uses gng7_dl
+uses gng7_dl;
 
 macro gng15_dl() => chan out {
 
