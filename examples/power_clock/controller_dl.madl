@@ -1,0 +1,69 @@
+const tok;
+const high;
+const low;
+
+enum signal {high;low;};
+
+macro controller_dl(chan denial, chan activity) => chan request, chan o_power {
+
+process Controller_dl(chan deny,chan active) => chan req, chan o_pow {
+  state CONTROLLER_OFF() {
+    trans {
+      high d <- active;
+      high -> req;
+      next CONTROLLER_TO_ON();
+    };
+  };
+
+  state CONTROLLER_TO_ON() {
+    trans {
+      high -> o_pow;
+      next CONTROLLER_ON();
+    };
+  };
+
+  state CONTROLLER_ON() {
+    trans {
+      low d <- active;
+      low -> req;
+      next CONTROLLER_TO_OFF();
+    };
+    trans {
+      high d <- active;
+      next CONTROLLER_ON();
+    };
+    trans {
+      high d <- active;
+      next CONTROLLER_DL();
+    };
+
+  };
+
+  state CONTROLLER_TO_OFF() {
+    trans {
+      high d <- deny;
+      next CONTROLLER_ON();
+    };
+
+    trans {
+      low d <- deny;
+      low -> o_pow;
+      next CONTROLLER_OFF();
+    };
+  };
+
+  state CONTROLLER_DL(){
+    trans {
+      low d <- active;
+      next CONTROLLER_DL();
+    };
+  };
+
+};
+
+chan o1, o2 := Controller_dl(denial, activity);
+
+let request := Queue(1,o1);
+let o_power := Queue(1,o2);
+
+};

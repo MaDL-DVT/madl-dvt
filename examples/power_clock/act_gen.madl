@@ -1,0 +1,36 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+
+macro act_gen(chan clock) => chan is_active{
+
+process Act(chan clk) => chan act {
+  state ACT_LOW (){
+    trans {
+      tok d <- clk;
+      high -> act;
+      next ACT_HIGH();
+    };
+  };
+
+  state ACT_HIGH(){
+    trans {
+      tok d <- clk;
+      low -> act;
+      next ACT_LOW();
+    };
+  };
+};
+
+let is_active := Queue(1,Act(clock));
+
+};

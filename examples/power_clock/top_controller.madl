@@ -1,0 +1,65 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+
+macro top_controller(chan input_state, chan activity) => chan output_state {
+
+process Top_Controller(chan in_state, chan active) => chan o_state {
+
+state CONTROLLER_OFF() {
+  trans {
+    high d <- active;
+    next CONTROLLER_TO_ON();
+  };
+};
+
+state CONTROLLER_TO_ON() {
+  trans {
+    high d <- in_state;
+    high -> o_state;
+    next CONTROLLER_ON();
+  };
+};
+
+state CONTROLLER_ON() {
+  trans {
+    low d <- active;
+    next CONTROLLER_TO_OFF();
+  };
+
+};
+
+state CONTROLLER_TO_OFF() {
+  trans {
+    high d <- in_state;
+    next CONTROLLER_DENIED();
+  };
+
+  trans {
+    low d <- in_state;
+    low -> o_state;
+    next CONTROLLER_OFF();
+  };
+};
+
+state CONTROLLER_DENIED() {
+  trans {
+    high d <- active;
+    next CONTROLLER_ON();
+  };
+};
+
+};
+
+let output_state := Queue(1,Top_Controller(input_state, activity));
+
+};

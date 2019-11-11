@@ -1,0 +1,92 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+function combo_off():comb {
+  d0 = off;
+  d1 = off;
+};
+
+function combo_fst_on(st_var:comb):comb {
+  d0 = on;
+  d1 = st_var.d1;
+};
+
+function combo_snd_on(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = on;
+};
+
+function combo_fst_off(st_var:comb):comb {
+  d0 = off;
+  d1 = st_var.d1;
+};
+
+function combo_snd_off(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = off;
+};
+
+pred f(act1:signal,act2:signal) {
+  act1 == high;
+};
+
+uses device;
+uses controller;
+uses top_controller;
+uses act_gen;
+uses act_combo;
+uses state_combo;
+uses signal_combo;
+uses signal_combo_3;
+
+chan deny1;
+chan active1;
+chan req1;
+chan state1;
+
+chan deny2;
+chan active2;
+chan req2;
+chan state2;
+
+chan deny3;
+chan active3;
+chan req3;
+chan state3;
+
+chan active1_1;
+chan active1_2;
+chan active2_1;
+chan active2_2;
+chan active3_1;
+chan active3_2;
+
+let req1,state1 := controller(deny1,active1_1);
+let deny1,active1 := device(req1);
+
+let active1_1,active1_2 := Fork(active1);
+
+let req2,state2 := controller(deny2,active2_1);
+let deny2,active2 := device(req2);
+
+let active2_1,active2_2 := Fork(active2);
+
+let req3,state3 := controller(deny3,active3_1);
+let deny3,active3 := device(req3);
+
+let active3_1,active3_2 := Fork(active3);
+
+chan st_comb := signal_combo_3(state1,state2,state3);
+chan act_comb := signal_combo_3(active1_2,active2_2,active3_2);
+
+Sink(top_controller(st_comb,act_comb));

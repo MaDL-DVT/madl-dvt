@@ -1,0 +1,69 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+uses signal_combo;
+
+macro signal_combo_3(chan device_sig1, chan device_sig2, chan device_sig3) => chan combo_sig {
+
+process sig_combo(chan dev_sig1, chan dev_sig2) => chan comb_sig {
+  state SIG_COMBO_OFF(){
+    trans {
+      high d <- dev_sig1;
+      high -> comb_sig;
+      next SIG_COMBO_FST_ON();
+    };
+    trans {
+      high d <- dev_sig2;
+      high -> comb_sig;
+      next SIG_COMBO_SND_ON();
+    };
+  };
+
+  state SIG_COMBO_FST_ON(){
+    trans {
+      low d <- dev_sig1;
+      low -> comb_sig;
+      next SIG_COMBO_OFF();
+    };
+    trans {
+      high d <- dev_sig2;
+      next SIG_COMBO_BOTH();
+    };
+  };
+
+  state SIG_COMBO_SND_ON(){
+    trans {
+      low d <- dev_sig2;
+      low -> comb_sig;
+      next SIG_COMBO_OFF();
+    };
+    trans {
+      high d <- dev_sig1;
+      next SIG_COMBO_BOTH();
+    };
+  };
+
+  state SIG_COMBO_BOTH(){
+    trans {
+      low d <- dev_sig1;
+      next SIG_COMBO_SND_ON();
+    };
+    trans {
+      low d <- dev_sig2;
+      next SIG_COMBO_FST_ON();
+    };
+  };
+};
+
+let combo_sig := Queue(1,sig_combo(Queue(1,sig_combo(Queue(1,device_sig1),Queue(1,device_sig2))),Queue(1,device_sig3)));
+
+};

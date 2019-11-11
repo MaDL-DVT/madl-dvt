@@ -1,0 +1,120 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+function combo_off():comb {
+  d0 = off;
+  d1 = off;
+};
+
+function combo_fst_on(st_var:comb):comb {
+  d0 = on;
+  d1 = st_var.d1;
+};
+
+function combo_snd_on(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = on;
+};
+
+function combo_fst_off(st_var:comb):comb {
+  d0 = off;
+  d1 = st_var.d1;
+};
+
+function combo_snd_off(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = off;
+};
+
+pred f(act1:signal,act2:signal) {
+  act1 == high;
+};
+
+uses device;
+uses controller;
+uses top_controller;
+uses act_gen;
+uses act_combo;
+uses state_combo;
+uses signal_combo;
+
+chan deny1_1;
+chan active1_1;
+chan req1_1;
+chan state1_1;
+
+chan deny2_1;
+chan active2_1;
+chan req2_1;
+chan state2_1;
+
+chan active1_1_1;
+chan active1_2_1;
+chan active2_1_1;
+chan active2_2_1;
+
+chan deny1_2;
+chan active1_2;
+chan req1_2;
+chan state1_2;
+
+chan deny2_2;
+chan active2_2;
+chan req2_2;
+chan state2_2;
+
+chan active1_1_2;
+chan active1_2_2;
+chan active2_1_2;
+chan active2_2_2;
+
+
+let req1_1,state1_1 := controller(deny1_1,active1_1_1);
+let deny1_1,active1_1 := device(req1_1);
+
+let active1_1_1,active1_2_1 := Fork(active1_1);
+
+let req2_1,state2_1 := controller(deny2_1,active2_1_1);
+let deny2_1,active2_1 := device(req2_1);
+
+let active2_1_1,active2_2_1 := Fork(active2_1);
+
+chan st_comb_1 := signal_combo(state1_1,state2_1);
+chan act_comb_1 := signal_combo(active1_2_1,active2_2_1);
+
+let req1_2,state1_2 := controller(deny1_2,active1_1_2);
+let deny1_2,active1_2 := device(req1_2);
+
+let active1_1_2,active1_2_2 := Fork(active1_2);
+
+let req2_2,state2_2 := controller(deny2_2,active2_1_2);
+let deny2_2,active2_2 := device(req2_2);
+
+let active2_1_2,active2_2_2 := Fork(active2_2);
+
+chan st_comb_2 := signal_combo(state1_2,state2_2);
+chan act_comb_2 := signal_combo(active1_2_2,active2_2_2);
+
+
+chan act_comb1_1,act_comb2_1 := Fork(act_comb_1);
+chan act_comb1_2,act_comb2_2 := Fork(act_comb_2);
+
+
+chan top_state_1 := top_controller(act_comb1_1,st_comb_1);
+chan top_state_2 := top_controller(act_comb1_2,st_comb_2);
+
+
+chan global_action := signal_combo(act_comb2_1,act_comb2_2);
+chan global_state := signal_combo(top_state_1,top_state_2);
+
+Sink(top_controller(global_state,global_action));
