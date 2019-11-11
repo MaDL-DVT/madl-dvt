@@ -543,7 +543,7 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
                                       cols' = Set.toList cols
                                       fs = if cols' == []
                                            then F
-                                           else AND $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
+                                           else OR $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
                                   in fs
                                                {-conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
             f = automatonDead net cID vars

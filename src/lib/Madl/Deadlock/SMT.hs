@@ -249,7 +249,7 @@ export_literal_to_SMT x _show_p_t (InState i v)  = smt_equals (export_value_to_s
 export_literal_to_SMT x _ (IdleState cID p) = smt_idle_state x cID p
 export_literal_to_SMT x _ (DeadTrans cID n) = smt_dead_trans x cID n
 export_literal_to_SMT x show_p_t (lit@BlockSource{}) = head $ bi_to_name x show_p_t lit
-export_literal_to_SMT x show_p_t (lit@BlockAny{}) = smt_and $ bi_to_name x show_p_t lit  --using conjunction for block equations
+export_literal_to_SMT x show_p_t (lit@BlockAny{}) = smt_or $ bi_to_name x show_p_t lit  --using conjunction for block equations
 export_literal_to_SMT x show_p_t (lit@IdleAll{})  = smt_and $ bi_to_name x show_p_t lit
 
 -- | Declare a formula in SMT
