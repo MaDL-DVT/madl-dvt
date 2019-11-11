@@ -1,0 +1,43 @@
+const tok;
+const high;
+const low;
+
+enum signal {high;low;};
+
+uses act_gen;
+
+macro device(chan request) => chan denial, chan active {
+
+process Device (chan req) => chan deny {
+  state DEVICE_OFF() {
+    trans {
+      high d <- req;
+      next DEVICE_ON();
+    };
+  };
+
+  state DEVICE_ON() {
+    trans {
+      low d <- req;
+      next DEVICE_TO_OFF();
+    };
+  };
+
+  state DEVICE_TO_OFF() {
+    trans {
+      high -> deny;
+      next DEVICE_ON();
+    };
+
+    trans {
+      low -> deny;
+      next DEVICE_OFF();
+    };
+  };
+};
+
+let active := act_gen(Source(tok));
+
+let denial := Queue(1,Device(request));
+
+};
