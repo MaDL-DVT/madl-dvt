@@ -20,10 +20,10 @@ def check_dlockdetect_exists():
     subprocess.check_call(['dlockdetect', '--help'],
                           stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
-def run_test(tname,suffixes,res_file):
+def run_test(tdir,tname,suffixes,res_file):
     for i in suffixes:
         f = tname + '_' + i + '.madl'
-        name = os.path.join(curdir,'go_no_go',f)
+        name = os.path.join(curdir,tdir,f)
         print("Testing {0} using SMT solver".format(name))
         start_time = time.time()
         gng_res = subprocess.run(['time','dlockdetect','-f',name,'--no-cyclecheck','--simultaneous-smt','--smt-only'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
@@ -42,7 +42,7 @@ check_dlockdetect_exists()
 
 resfile = open(results_name,'w+')
 
-run_test(gng_name,gng_suffixes,resfile)
-run_test(pc_name,pc_suffixes,resfile)
+run_test('go_no_go',gng_name,gng_suffixes,resfile)
+run_test('power_clock',pc_name,pc_suffixes,resfile)
 
 resfile.close()
