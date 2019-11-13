@@ -1,0 +1,121 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+function combo_off():comb {
+  d0 = off;
+  d1 = off;
+};
+
+function combo_fst_on(st_var:comb):comb {
+  d0 = on;
+  d1 = st_var.d1;
+};
+
+function combo_snd_on(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = on;
+};
+
+function combo_fst_off(st_var:comb):comb {
+  d0 = off;
+  d1 = st_var.d1;
+};
+
+function combo_snd_off(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = off;
+};
+
+macro activity_combo(chan device_act1, chan device_act2) => chan combo_act {
+
+process act_combo(chan dev_act1, chan dev_act2) => chan comb_act {
+  state ACT_COMBO_INIT(){
+    trans{
+      low d <- dev_act1;
+      low -> comb_act;
+      next ACT_COMBO_OFF(combo_off());
+    };
+    trans{
+      low d <- dev_act2;
+      low -> comb_act;
+      next ACT_COMBO_OFF(combo_off());
+    };
+    trans{
+      high d <- dev_act1;
+      high -> comb_act;
+      next ACT_COMBO_ON(combo_fst_on(combo_off()));
+    };
+    trans{
+      high d <- dev_act2;
+      high -> comb_act;
+      next ACT_COMBO_ON(combo_snd_on(combo_off()));
+    };
+  };
+
+  state ACT_COMBO_OFF(comb st){
+    trans{
+      low d <- dev_act1;
+      next ACT_COMBO_OFF(st);
+    };
+    trans{
+      low d <- dev_act2;
+      next ACT_COMBO_OFF(st);
+    };
+    trans{
+      high d <- dev_act1;
+      high -> comb_act;
+      next ACT_COMBO_ON(combo_fst_on(st));
+    };
+    trans{
+      high d <- dev_act2;
+      high -> comb_act;
+      next ACT_COMBO_ON(combo_snd_on(st));
+    };
+  };
+
+  state ACT_COMBO_ON(comb st){
+    trans{
+      low d <- dev_act1;
+      low -> comb_act;
+      guard st.d1 == off;
+      next ACT_COMBO_OFF(combo_off());
+    };
+    trans{
+      low d <- dev_act1;
+      guard st.d1 == on;
+      next ACT_COMBO_ON(combo_fst_off(st));
+    };
+    trans{
+      low d <- dev_act2;
+      low -> comb_act;
+      guard st.d0 == off;
+      next ACT_COMBO_OFF(combo_off());
+    };
+    trans{
+      low d <- dev_act1;
+      guard st.d0 == on;
+      next ACT_COMBO_ON(combo_fst_off(st));
+    };
+    trans{
+      high d <- dev_act1;
+      next ACT_COMBO_ON(combo_fst_on(st));
+    };
+    trans{
+      high d <- dev_act2;
+      next ACT_COMBO_ON(combo_snd_on(st));
+    };
+  };
+};
+
+let combo_act := Queue(1,act_combo(Queue(1,device_act1),Queue(1,device_act2)));
+
+};

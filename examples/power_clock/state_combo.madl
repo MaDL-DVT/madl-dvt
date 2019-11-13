@@ -1,0 +1,119 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+function combo_off():comb {
+  d0 = off;
+  d1 = off;
+};
+
+function combo_fst_on(st_var:comb):comb {
+  d0 = on;
+  d1 = st_var.d1;
+};
+
+function combo_snd_on(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = on;
+};
+
+function combo_fst_off(st_var:comb):comb {
+  d0 = off;
+  d1 = st_var.d1;
+};
+
+function combo_snd_off(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = off;
+};
+
+macro state_combo(chan device_st1, chan device_st2) => chan combo_st {
+
+process st_combo(chan dev_st1, chan dev_st2) => chan comb_st {
+  state ST_COMBO_INIT(){
+    trans{
+      low d <- dev_st1;
+      next ST_COMBO_OFF(combo_off());
+    };
+    trans{
+      low d <- dev_st2;
+      next ST_COMBO_OFF(combo_off());
+    };
+    trans{
+      high d <- dev_st1;
+      high -> comb_st;
+      next ST_COMBO_ON(combo_fst_on(combo_off()));
+    };
+    trans{
+      high d <- dev_st2;
+      high -> comb_st;
+      next ST_COMBO_ON(combo_snd_on(combo_off()));
+    };
+  };
+
+  state ST_COMBO_OFF(comb st){
+    trans{
+      low d <- dev_st1;
+      next ST_COMBO_OFF(st);
+    };
+    trans{
+      low d <- dev_st2;
+      next ST_COMBO_OFF(st);
+    };
+    trans{
+      high d <- dev_st1;
+      high -> comb_st;
+      next ST_COMBO_ON(combo_fst_on(st));
+    };
+    trans{
+      high d <- dev_st2;
+      high -> comb_st;
+      next ST_COMBO_ON(combo_snd_on(st));
+    };
+  };
+
+  state ST_COMBO_ON(comb st){
+    trans{
+      low d <- dev_st1;
+      guard st.d1 == off;
+      low -> comb_st;
+      next ST_COMBO_OFF(combo_off());
+    };
+    trans{
+      low d <- dev_st1;
+      guard st.d1 == on;
+      next ST_COMBO_ON(combo_fst_off(st));
+    };
+    trans{
+      low d <- dev_st2;
+      guard st.d0 == off;
+      low -> comb_st;
+      next ST_COMBO_OFF(combo_off());
+    };
+    trans{
+      low d <- dev_st1;
+      guard st.d0 == on;
+      next ST_COMBO_ON(combo_fst_off(st));
+    };
+    trans{
+      high d <- dev_st1;
+      next ST_COMBO_ON(combo_fst_on(st));
+    };
+    trans{
+      high d <- dev_st2;
+      next ST_COMBO_ON(combo_snd_on(st));
+    };
+  };
+};
+
+let combo_st := Queue(1,st_combo(Queue(1,device_st1),Queue(1,device_st2)));
+
+};
