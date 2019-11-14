@@ -221,7 +221,7 @@ main = do
     putStrLn $ "Reading network completed."
     let network' = network
     --network' <- if (replaceAutomata options) then return (updateNetwork network) else return network
-    putStrLn $ show network'
+    --putStrLn $ show network'
     --putStrLn $ visualizeNet network
     let comps = getComponents network'
     -- Print some general network statistics.
