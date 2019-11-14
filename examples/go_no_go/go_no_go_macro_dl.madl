@@ -13,22 +13,21 @@ enum ok_t{
      nok;
 };
 
-enum go_t{
-     go;
-     no_go;
-};
-
 uses go_no_go_component;
-uses go_no_go_component_dl;
-uses go_no_go_ctrl;
-macro go_no_go_macro_dl(chan in_0__OUT, chan in_1__OUT) => chan out {
-let out := Vars(CTRL0__out);
-chan COMP0__out, COMP0__out_other := go_no_go_component(frk15__OUTB, COMP1__out_other)[COMP0];
-chan frk15__OUTA, frk15__OUTB := Fork(in_0__OUT)[frk15];
-chan frk16__OUTA, frk16__OUTB := Fork(in_1__OUT)[frk16];
-chan COMP1__out, COMP1__out_other := go_no_go_component_dl(frk16__OUTA, COMP0__out_other)[COMP1];
-chan CTRL0__out := go_no_go_ctrl(COMP0__out, COMP1__out, buffIN0__OUT, buffIN1__OUT)[CTRL0];
-chan buffIN0__OUT := Queue(1, frk15__OUTA)[buffIN0];
-chan buffIN1__OUT := Queue(1, frk16__OUTB)[buffIN1];
 
- };
+uses go_no_go_component_dl;
+
+macro go_no_go_macro_dl(chan in1, chan in2) => chan out {
+
+chan comp1_out;
+chan comp1_out_other;
+chan comp2_out;
+chan comp2_out_other;
+
+let comp1_out, comp1_out_other := go_no_go_component(in1,comp2_out_other);
+
+let comp2_out, comp2_out_other := go_no_go_component_dl(in2,comp1_out_other);
+
+let out := Queue(1,CtrlJoin(comp1_out,comp2_out));
+
+};
