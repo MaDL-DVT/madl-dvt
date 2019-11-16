@@ -1,0 +1,58 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+function combo_off():comb {
+  d0 = off;
+  d1 = off;
+};
+
+function combo_fst_on(st_var:comb):comb {
+  d0 = on;
+  d1 = st_var.d1;
+};
+
+function combo_snd_on(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = on;
+};
+
+function combo_fst_off(st_var:comb):comb {
+  d0 = off;
+  d1 = st_var.d1;
+};
+
+function combo_snd_off(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = off;
+};
+
+pred f(act1:signal,act2:signal) {
+  act1 == high;
+};
+
+uses top_controller;
+uses signal_combo;
+uses domain4;
+uses domain4_dl
+
+chan state1,action1 := domain4();
+chan state2,action2 := domain4();
+chan state3,action3 := domain4_dl();
+
+chan state12 := signal_combo(state1,state2);
+chan state123 := signal_combo(state12,state3);
+
+chan action12 := signal_combo(action1,action2);
+chan action123 := signal_combo(action12,action3);
+
+Sink(top_controller(state123,action123));

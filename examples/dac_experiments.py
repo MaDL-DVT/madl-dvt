@@ -2,18 +2,24 @@ import os
 import subprocess
 import time
 import errno
+from sys import argv
 
 curdir = os.getcwd()
 gng_dir = os.path.join(curdir,'go_no_go')
 pc_dir = os.path.join(curdir,'power_clock')
 
 gng_name = 'go_no_go_top'
-gng_suffixes = ['1','1_dl','3','3_dl','7','7_dl','11','11_dl','15','15_dl','23','23_dl']
+#gng_suffixes = ['1','1_dl','3','3_dl','7','7_dl','11','11_dl','15','15_dl','23','23_dl']
+gng_suffixes = ['127']
 
 pc_name = 'pc_top'
-pc_suffixes = ['1_2','1_2_dl','1_3','1_3_dl','2_2','2_2_dl','3_2','3_2_dl']
+#pc_suffixes = ['1_2','1_2_dl','1_3','1_3_dl','2_2','2_2_dl','3_2','3_2_dl']
+pc_suffixes = ['3_3','3_3_dl','3_4','3_4_dl','3_5','3_5_dl']
 
-results_name = "results.txt"
+if (len(argv[1]) == 0):
+    results_name = argv[1]
+else:
+    results_name = 'results.txt'
 
 def check_dlockdetect_exists():
     # Call raises an exception if command falls
@@ -29,6 +35,7 @@ def run_test(tdir,tname,suffixes,res_file):
         gng_res = subprocess.run(['time','dlockdetect','-f',name,'--no-cyclecheck','--simultaneous-smt','--smt-only'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         if gng_res.returncode < 0:
             print("Case {0}, SMT failed with exit code {1}".format(name, gng_res.returncode))
+        print(str(time.time()-start_time))
         res_file.write(f + '\t\t\t' + 'smt' + '\t' + str(time.time()-start_time) + '\n')
         start_time = time.time()
         print("Testing {0} using nuXMV (reachability)".format(name))
@@ -37,6 +44,7 @@ def run_test(tdir,tname,suffixes,res_file):
             print("Case {0}, reachability failed with exit code {1}".format(
                 name, gng_res.returncode))
         res_file.write(f + '\t\t\t' + 'smv' + '\t' + str(time.time()-start_time) + '\n')
+        print(str(time.time()-start_time))
 
 check_dlockdetect_exists()
 
