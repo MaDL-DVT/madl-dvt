@@ -49,7 +49,7 @@ uses act_combo;
 uses state_combo;
 uses signal_combo;
 
-macro dev_con () => chan global_state, chan global_action {
+macro dev_con_dl () => chan global_state, chan global_action {
 
 chan deny1;
 chan active1;

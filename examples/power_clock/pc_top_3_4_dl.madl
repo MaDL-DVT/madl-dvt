@@ -43,7 +43,7 @@ pred f(act1:signal,act2:signal) {
 uses top_controller;
 uses signal_combo;
 uses domain4;
-uses domain4_dl
+uses domain4_dl;
 
 chan state1,action1 := domain4();
 chan state2,action2 := domain4();

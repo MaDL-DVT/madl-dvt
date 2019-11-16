@@ -45,7 +45,7 @@ uses signal_combo;
 uses dev_con;
 uses dev_con_dl;
 
-macro domain3() => chan global_state, chan global_action {
+macro domain3_dl() => chan global_state, chan global_action {
 
 chan state1,action1 := dev_con();
 chan state2,action2 := dev_con();
