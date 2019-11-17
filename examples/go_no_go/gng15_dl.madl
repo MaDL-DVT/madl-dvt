@@ -28,7 +28,7 @@ function f(x:go_t) : ok_t {
   if (x == go) ok; else nok;
 };
 
-chan gng_out_15 := go_no_go_macro_dl(gng7(),gng7());
+chan gng_out_15 := go_no_go_macro(gng7(),gng7_dl());
 
 let out := Queue(1,gng_out_15);
 };

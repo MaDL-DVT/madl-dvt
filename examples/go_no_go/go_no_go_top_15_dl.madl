@@ -19,7 +19,6 @@ enum go_t{
 };
 
 uses go_no_go_macro;
-uses gng3;
 uses gng7;
 uses gng7_dl;
 

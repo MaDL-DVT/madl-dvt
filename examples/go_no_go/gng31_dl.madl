@@ -18,8 +18,9 @@ enum go_t{
      no_go;
 };
 
-uses go_no_go_macro_dl;
+uses go_no_go_macro;
 uses gng15;
+uses gng15_dl;
 
 macro gng31_dl() => chan out {
 
@@ -27,7 +28,7 @@ function f(x:go_t) : ok_t {
   if (x == go) ok; else nok;
 };
 
-chan gng_out_31 := go_no_go_macro_dl(gng15(),gng15());
+chan gng_out_31 := go_no_go_macro(gng15(),gng15_dl());
 
 let out := Queue(1,gng_out_31);
 };

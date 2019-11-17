@@ -19,13 +19,13 @@ enum go_t{
 };
 
 uses go_no_go_macro;
-uses gng3;
-uses gng7_dl;
+uses gng3_dl;
+uses gng7;
 
 function f(x:go_t) : ok_t {
   if (x == go) ok; else nok;
 };
 
-chan gng_out_11 := go_no_go_macro(gng7_dl(),gng3());
+chan gng_out_11 := go_no_go_macro(gng7(),gng3_dl());
 
 Sink(Queue(1,gng_out_11));
