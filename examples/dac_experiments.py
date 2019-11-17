@@ -16,7 +16,7 @@ pc_name = 'pc_top'
 pc_suffixes = ['1_2','1_2_dl','1_3','1_3_dl','2_2','2_2_dl','3_2','3_2_dl','3_3','3_3_dl','3_4','3_4_dl','3_5','3_5_dl','3_6','3_6_dl','3_7','3_7_dl']
 
 
-if (len(argv[1]) != 0):
+if (len(argv) > 1):
     results_name = argv[1]
 else:
     results_name = 'results.txt'
