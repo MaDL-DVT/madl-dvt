@@ -189,7 +189,7 @@ main = do
     putStrLn $ "Reading environment variables ..."
     mwb_path_n <- lookupEnv "MWB_PATH_NUXMV"
     _ <- case mwb_path_n of
-        Nothing -> setEnv "MWB_PATH_NUXMV" "/Applications/nuXmv-1.1.1-Darwin/bin/"
+        Nothing -> setEnv "MWB_PATH_NUXMV" "/Applications/nuXmv-2.0.0-Darwin/bin/"
         Just _ -> return ()
     newVal <- getEnv "MWB_PATH_NUXMV"
     putStrLn $ "MWB_PATH_NUXMV = "++newVal
