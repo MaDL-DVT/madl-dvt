@@ -40,22 +40,24 @@ pred f(act1:signal,act2:signal) {
   act1 == high;
 };
 
-
 uses top_controller;
 uses signal_combo;
-uses dev_con;
-uses dev_con_dl;
+uses dev_con3;
+uses dev_con3_dl;
 
-macro dev_con3_dl () => chan global_state, chan global_action {
+macro domain6_dl() => chan global_state, chan global_action {
 
-chan state1,action1 := dev_con();
-chan state2,action2 := dev_con();
-chan state3,action3 := dev_con_dl();
+chan state1,action1 := dev_con3();
+chan state2,action2 := dev_con3_dl();
+
 
 chan state12 := signal_combo(state1,state2);
-let global_state := signal_combo(state12,state3);
 
 chan action12 := signal_combo(action1,action2);
-let global_action := signal_combo(action12,action3);
+
+chan action12_1;
+
+let global_action,action12_1 := Fork(action12);
+let global_state := top_controller(state12,action12_1);
 
 };
