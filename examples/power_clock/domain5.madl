@@ -42,24 +42,29 @@ pred f(act1:signal,act2:signal) {
 
 uses top_controller;
 uses signal_combo;
-uses dev_con;
-uses dev_con3;
+uses dev_con1;
 
 macro domain5() => chan global_state, chan global_action {
 
-chan state1,action1 := dev_con3();
-chan state2,action2 := dev_con();
-chan state3,action3 := dev_con();
+chan state1,action1 := dev_con1();
+chan state2,action2 := dev_con1();
+chan state3,action3 := dev_con1();
+chan state4,action4 := dev_con1();
+chan state5,action5 := dev_con1();
 
 chan state12 := signal_combo(state1,state2);
 chan state123 := signal_combo(state12,state3);
+chan state1234 := signal_combo(state123,state4);
+chan state12345 := signal_combo(state1234,state5);
 
 chan action12 := signal_combo(action1,action2);
 chan action123 := signal_combo(action12,action3);
+chan action1234 := signal_combo(action123,action4);
+chan action12345 := signal_combo(action1234,action5);
 
-chan action123_1;
+chan action12345_1;
 
-let global_action,action123_1 := Fork(action123);
-let global_state := top_controller(state123,action123_1);
+let global_action,action12345_1 := Fork(action12345);
+let global_state := top_controller(state12345,action12345_1);
 
 };

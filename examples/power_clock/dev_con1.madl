@@ -40,10 +40,24 @@ pred f(act1:signal,act2:signal) {
   act1 == high;
 };
 
+uses device;
+uses controller;
 uses top_controller;
+uses act_gen;
+uses act_combo;
+uses state_combo;
 uses signal_combo;
-uses domain2_dl;
 
-chan state1,action1 := domain2_dl();
+macro dev_con1 () => chan global_state, chan global_action {
 
-Sink(top_controller(Queue(1,state1),Queue(1,action1)));
+chan deny1;
+chan req1;
+chan active1;
+chan active1_1;
+
+let req1,global_state := controller(deny1,active1_1);
+let deny1,active1 := device(req1);
+
+let global_action,active1_1 := Fork(active1);
+
+};

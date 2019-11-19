@@ -9,11 +9,11 @@ gng_dir = os.path.join(curdir,'go_no_go')
 pc_dir = os.path.join(curdir,'power_clock')
 
 gng_name = 'go_no_go_top'
-gng_suffixes = ['1','1_dl','3','3_dl','7','7_dl','11','11_dl','15','15_dl','23','23_dl','31','31_dl','63','63_dl','127','127_dl']
+gng_suffixes = ['1','1_dl','3','3_dl','7','7_dl','11','11_dl','15','15_dl','23','23_dl','31','31_dl','63','63_dl']
 
 
 pc_name = 'pc_top'
-pc_suffixes = ['1_2','1_2_dl','1_3','1_3_dl','2_2','2_2_dl','3_2','3_2_dl','3_3','3_3_dl','3_4','3_4_dl','3_5','3_5_dl','3_6','3_6_dl','3_7','3_7_dl']
+pc_suffixes = ['1_5','1_5_dl','2_5','2_5_dl','3_5','3_5_dl','4_5','4_5_dl','5_5','5_5_dl','6_5','6_5_dl','7_5','7_5_dl']
 
 
 if (len(argv) > 1):

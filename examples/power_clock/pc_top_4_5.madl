@@ -42,8 +42,19 @@ pred f(act1:signal,act2:signal) {
 
 uses top_controller;
 uses signal_combo;
-uses domain2_dl;
+uses domain5;
 
-chan state1,action1 := domain2_dl();
+chan state1,action1 := domain5();
+chan state2,action2 := domain5();
+chan state3,action3 := domain5();
+chan state4,action4 := domain5();
 
-Sink(top_controller(Queue(1,state1),Queue(1,action1)));
+chan state12 := signal_combo(state1,state2);
+chan state123 := signal_combo(state12,state3);
+chan state1234 := signal_combo(state123,state4);
+
+chan action12 := signal_combo(action1,action2);
+chan action123 := signal_combo(action12,action3);
+chan action1234 := signal_combo(action123,action4);
+
+Sink(top_controller(state1234,action1234));

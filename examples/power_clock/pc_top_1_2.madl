@@ -40,41 +40,10 @@ pred f(act1:signal,act2:signal) {
   act1 == high;
 };
 
-uses device;
-uses controller;
 uses top_controller;
-uses act_gen;
-uses act_combo;
-uses state_combo;
 uses signal_combo;
+uses domain2;
 
-chan deny1;
-chan active1;
-chan req1;
-chan state1;
+chan state1,action1 := domain2();
 
-chan deny2;
-chan active2;
-chan req2;
-chan state2;
-
-chan active1_1;
-chan active1_2;
-chan active2_1;
-chan active2_2;
-
-
-let req1,state1 := controller(deny1,active1_1);
-let deny1,active1 := device(req1);
-
-let active1_1,active1_2 := Fork(active1);
-
-let req2,state2 := controller(deny2,active2_1);
-let deny2,active2 := device(req2);
-
-let active2_1,active2_2 := Fork(active2);
-
-chan st_comb := signal_combo(state1,state2);
-chan act_comb := signal_combo(active1_2,active2_2);
-
-Sink(top_controller(st_comb,act_comb));
+Sink(top_controller(Queue(1,state1),Queue(1,action1)));
