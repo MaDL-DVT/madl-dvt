@@ -237,6 +237,7 @@ parseNetworkPrimitive =
     <|> parseMultiMatch
     <|> parsePatientSource
     <|> parseQueue
+    <|> parseBuffer
     <|> parseSink
     <|> parseSource
     <|> parseSwitch
@@ -981,6 +982,19 @@ parseQueue = (do
     ) <?> "Queue"
 
 
+-- | Parse a 'Buffer' primitive
+parseBuffer :: Parser NetworkPrimitive
+parseBuffer = (do
+    reserved "Buffer"
+    (k, i) <- parens $ do
+        k <- parseIntegerExpression; comma
+        i <- parseChannelExpression
+        return (k, i)
+    l <- parseLabelDeclaration
+    return $ Buffer k i l
+    ) <?> "Buffer"
+
+
 -- | Parse a label
 -- | Labels may contain underscores, but not two consecutive ones
 parseLabel :: Parser String
@@ -989,10 +1003,10 @@ parseLabel = do
     if isInfixOf "__" x then unexpected $ "Label contains \"__\": " ++ x else return x
 
 -- | Parse a label declaration
--- | A label could be empty 
+-- | A label could be empty
 parseLabelDeclaration :: Parser (Maybe String)
 parseLabelDeclaration = do
-    l <- optionMaybe $ try (do 
+    l <- optionMaybe $ try (do
                                 spaces
                                 _ <- char '['
                                 spaces
@@ -1000,7 +1014,7 @@ parseLabelDeclaration = do
                                 spaces
                                 _ <- char ']'
                                 return x)
-    return l        
+    return l
 
 -- | Parse a 'Sink' primitive
 parseSink :: Parser NetworkPrimitive

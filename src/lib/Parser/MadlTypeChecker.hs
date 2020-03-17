@@ -1707,11 +1707,16 @@ typecheckNetworkPrimitive context networkprimitive = case removeSourceInfo netwo
         checkedPrimitive = fmap setSource $ liftM2 (\p' a' -> MultiMatch p' a' l) checkedPredicate (chans checkedChannels)
         checkedPredicate = checkPredicateInputSize context 2 =<< fmap setSource (typecheckPredicateExpression context $ setSource p)
         checkedChannels = typecheckChannelExpressions context $ setSource a
-    PatientSource e l -> combine (Just 1) (Right context) 
+    PatientSource e l -> combine (Just 1) (Right context)
                          (fmap (\e' -> PatientSource e' l). typecheckTypeExpression context $ setSource e)
     Queue k i l -> combine (Just 1) (fmap fst checkedChannels) checkedPrimitive2 where
         checkedPrimitive2 = join $ liftM2 (checkInputOutputSizes [Just 1]) (sizes checkedChannels) checkedPrimitive
         checkedPrimitive = fmap setSource $ liftM2 (\k' i' -> Queue k' i' l) checkedCapacity (chan 0 checkedChannels)
+        checkedCapacity = typecheckIntegerExpression context (setSource k) <* typecheckIntegerPositive context (setSource k)
+        checkedChannels = typecheckChannelExpressions context $ setSource [i]
+    Buffer k i l -> combine (Just 1) (fmap fst checkedChannels) checkedPrimitive2 where
+        checkedPrimitive2 = join $ liftM2 (checkInputOutputSizes [Just 1]) (sizes checkedChannels) checkedPrimitive
+        checkedPrimitive = fmap setSource $ liftM2 (\k' i' -> Buffer k' i' l) checkedCapacity (chan 0 checkedChannels)
         checkedCapacity = typecheckIntegerExpression context (setSource k) <* typecheckIntegerPositive context (setSource k)
         checkedChannels = typecheckChannelExpressions context $ setSource [i]
     Sink i l -> combine (Just 0) (fmap fst checkedChannels) checkedPrimitive2 where

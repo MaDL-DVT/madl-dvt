@@ -54,7 +54,7 @@ madlDef = emptyDef {
         , "guard", "next", "state", "trans" -- Madl process keywords
         , "const", "enum", "struct", "union", "otherwise" -- Madl data keywords
         , "CtrlJoin", "DeadSink", "FCtrlJoin", "Fork", "Function", "GuardQueue", "Joitch", "LoadBalancer", "Match" -- Madl primitives
-        , "Merge", "MultiMatch", "PatientSource", "Queue", "Sink", "Source", "Switch", "Vars", "Cut" -- Madl primitives
+        , "Merge", "MultiMatch", "PatientSource", "Queue", "Buffer", "Sink", "Source", "Switch", "Vars", "Cut" -- Madl primitives
         , "let" -- Madl assignment keyword
 
         , "for", "if", "else", "uses" -- control keywords

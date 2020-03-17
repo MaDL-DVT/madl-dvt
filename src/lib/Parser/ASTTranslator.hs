@@ -226,6 +226,7 @@ defaultOutputSizes = Hash.fromList [
     ("MultiMatch"    , Nothing),
     ("PatientSource" , Just 1),
     ("Queue"         , Just 1),
+    ("Buffer"        , Just 1),
     ("Sink"          , Just 0),
     ("Source"        , Just 1),
     ("Switch"        , Nothing),
@@ -965,6 +966,7 @@ getPrimitiveName Merge{}                       = "Merge"
 getPrimitiveName MultiMatch{}                  = "MultiMatch"
 getPrimitiveName PatientSource{}               = "PatientSource"
 getPrimitiveName Queue{}                       = "Queue"
+getPrimitiveName Buffer{}                      = "Buffer"
 getPrimitiveName Sink{}                        = "Sink"
 getPrimitiveName Source{}                      = "Source"
 getPrimitiveName Switch{}                      = "Switch"
@@ -987,6 +989,7 @@ getPrimitiveArguments (Merge a b _)                 = [PrimitiveChannel a, Primi
 getPrimitiveArguments (MultiMatch f ins _)          = (PrimitivePredicate f : map PrimitiveChannel ins)
 getPrimitiveArguments (PatientSource e _)           = [PrimitiveType e]
 getPrimitiveArguments (Queue k i _)                 = [PrimitiveInteger k, PrimitiveChannel i]
+getPrimitiveArguments (Buffer k i _)                = [PrimitiveInteger k, PrimitiveChannel i]
 getPrimitiveArguments (Sink i _)                    = [PrimitiveChannel i]
 getPrimitiveArguments (Source e _)                  = [PrimitiveType e]
 getPrimitiveArguments (Switch i sws _)              = (PrimitiveChannel i : map PrimitiveSwitch sws)
@@ -1053,6 +1056,8 @@ addPrimitive spec networkprimitiveSrc name context = addComponents [(component, 
                                                         msgtype = evaluateTypeExpression context e
         Queue                          k _ _      -> (M.C $ M.Queue name cap, spec) where
                                                         cap = evaluateIntegerExpression context k
+        Buffer                         k _ _      -> (M.C $ M.Buffer name cap, spec) where
+                                                        cap = evaluateIntegerExpression context k
         Sink                           _ _        -> (M.C $ M.Sink name, spec)
         Source                         e _        -> (M.C $ M.Source name msgtype, spec) where
                                                         msgtype = evaluateTypeExpression context e
@@ -1078,12 +1083,13 @@ getNameOfComponent networkprimitiveSrc =
         Joitch        _ _ _ (Just l)   -> Just l
         LoadBalancer  _ (Just l)       -> Just l
         Match         _ _ _ (Just l)   -> Just l
-        Merge         _ _ (Just l)     -> Just l 
+        Merge         _ _ (Just l)     -> Just l
         MultiMatch    _ _ (Just l)     -> Just l
-        PatientSource _ (Just l)       -> Just l               
+        PatientSource _ (Just l)       -> Just l
         Queue         _ _ (Just l)     -> Just l
+        Buffer        _ _ (Just l)     -> Just l
         Sink          _ (Just l)       -> Just l
-        Source        _ (Just l)       -> Just l        
+        Source        _ (Just l)       -> Just l
         Switch        _ _ (Just l)     -> Just l
         Vars          _ (Just l)       -> Just l
         Cut           _ (Just l)       -> Just l
@@ -1135,7 +1141,7 @@ translateProcess (Process header contentsSrc) context spec = addPorts ports spec
     MacroHeader _ inputs outputs = removeSourceInfo header
 
     -- | next line fills in the fields of the datastructure for automaton
-    -- components. 
+    -- components.
     automaton = M.C $ M.Automaton "Process" nrIns nrOuts n transitions stateMap
     nrIns = length $ filter (\(_, dest) -> dest == "Process") ports
     nrOuts = length $ filter (\(source, _) -> source == "Process") ports

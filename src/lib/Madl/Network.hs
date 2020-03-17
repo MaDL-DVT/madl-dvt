@@ -240,6 +240,10 @@ data XComponent c =
         componentName :: c,
         capacity :: Int
     }
+    | Buffer {
+        componentName :: c,
+        capacity :: Int
+    }
     -- | Routes packets. Parameter 'switching' determines how packets are routed.
     --   Each incoming packet must match to exactly one of the switching types.
     --   The amount of switching types must be equal to the number of outgoing channels of the switch.
@@ -499,6 +503,7 @@ prop net (_, PatientSource _ t, [xOut]) = updateType net xOut t
 prop _ (_, Sink{}, _) = Nothing
 prop _ (_, DeadSink{}, _) = Nothing
 prop net ([xIn], Queue {}, [xOut]) = updateType net xOut (getColorSet net xIn)
+prop net ([xIn], Buffer {}, [xOut]) = updateType net xOut (getColorSet net xIn)
 prop net ([xIn], Vars {}, [xOut]) = updateType net xOut (getColorSet net xIn)
 prop net ([xIn], Cut {}, [xOut]) = updateType net xOut (getColorSet net xIn)
 prop net ([xIn], Function name typeFunction returntype, [xOut]) =
@@ -556,6 +561,7 @@ prop net (xs, GuardQueue{}, [xOut]) = updateType net xOut newType where
 prop _ (_, Source{}, _) = fatal 283 "invalid network"
 prop _ (_, PatientSource{}, _) = fatal 285 "invalid network"
 prop _ (_, Queue{}, _) = fatal 287 "invalid network"
+prop _ (_, Buffer{}, _) = fatal 564 "invalid network"
 prop _ (_, Vars{}, _) = fatal 288 "invalid network"
 prop _ (_, Cut{}, _) = fatal 289 "invalid network"
 prop _ (_, Function{}, _) = fatal 292 "invalid network"
@@ -716,6 +722,7 @@ instance Flattened (XComponent [Text]) (XComponent Text) where
     unflatten c@DeadSink{} = DeadSink (getNameText c)
     unflatten c@(Function _ fun rt) = Function (getNameText c) fun rt
     unflatten c@(Queue _ cap) = Queue (getNameText c) cap
+    unflatten c@(Buffer _ cap) = Buffer (getNameText c) cap
     unflatten c@Vars{} = Vars $ getNameText c
     unflatten c@Cut{} = Cut $ getNameText c
     unflatten c@(Switch _ swtch) = Switch (getNameText c) swtch
@@ -735,6 +742,7 @@ instance Flattened (XComponent [Text]) (XComponent Text) where
     flatten (DeadSink name) = DeadSink [name]
     flatten (Function name fun rt) = Function [name] fun rt
     flatten (Queue name cap) = Queue [name] cap
+    flatten (Buffer name cap) = Buffer [name] cap
     flatten (Vars name) = Vars [name]
     flatten (Cut name) = Cut [name]
     flatten (Switch name swtch) = Switch [name] swtch
@@ -1072,6 +1080,7 @@ networkTypes = Set.toList . foldr (addTypes) Set.empty . getComponents where
         MultiMatch _ p -> mfboolTypes p
         PatientSource _ msg -> Set.fromList $ colorTypes msg
         Queue{} -> Set.empty
+        Buffer{} -> Set.empty
         Sink{} -> Set.empty
         Source _ msg -> Set.fromList $ colorTypes msg
         Switch _ sws -> Set.unions $ map mfboolTypes sws
@@ -1148,6 +1157,7 @@ networkStructFields = Set.toList . foldr (addStructFields) Set.empty . getCompon
         MultiMatch _ p -> mfboolFields p
         PatientSource _ msg -> Set.fromList $ getStructFields msg
         Queue{} -> Set.empty
+        Buffer{} -> Set.empty
         Sink{} -> Set.empty
         Source _ msg -> Set.fromList $ getStructFields msg
         Switch _ sws -> Set.unions $ map mfboolFields sws
@@ -1388,6 +1398,7 @@ getRequiredPorts Sink{} = ((== 1), (== 0))
 getRequiredPorts DeadSink{} = ((== 1), (== 0))
 getRequiredPorts Function{} = ((== 1), (== 1))
 getRequiredPorts Queue{} = ((== 1), (== 1))
+getRequiredPorts Buffer{} = ((== 1), (== 1))
 getRequiredPorts Vars{} = ((== 1), (== 1))
 getRequiredPorts Cut{} = ((== 1), (== 1))
 getRequiredPorts Switch{} = ((== 1), (>= 2))
@@ -1437,6 +1448,8 @@ validArguments network (node, comp) = case comp of
             args = IM.singleton 0 intype
             [intype] = inputTypes network node
     Queue _ cap -> if cap > 0 then Nothing
+        else Just $ err ["Not a valid capacity: " ++ show cap]
+    Buffer _ cap -> if cap > 0 then Nothing
         else Just $ err ["Not a valid capacity: " ++ show cap]
     Vars{} -> Nothing
     Cut{} -> Nothing

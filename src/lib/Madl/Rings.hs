@@ -36,7 +36,7 @@ findRings net = nub $ concat $ map (findRingsStart net) entryPoints
 
 findRingsStart :: XColoredNetwork c -> ComponentID -> [Ring]
 findRingsStart net cID = concat $ map (\c -> concat $ map (\cs -> findRingsRecurse net c cs (cID, cs) [] [] []) (splitColors $ getColorSet net c)) outChans
-    where 
+    where
         outChans = getOutChannels net cID
         splitColors cs = map toColorSet (getColors cs)
 
@@ -48,11 +48,12 @@ findRingsRecurse net inChan color start@(startC, startCol) ring ins outs = if (e
     else
         case targetComp of
             Queue _ _ -> findRingsRecurse net outChan color start newRing ins outs
+            Buffer _ _ -> findRingsRecurse net outChan color start newRing ins outs
             Function _ typeFunction _ -> findRingsRecurse net outChan (transformColor typeFunction) start newRing ins outs
             Merge _ -> findRingsRecurse net outChan color start newRing (ins ++ inChannels') outs
             Switch _ _ -> concat $ map (\c -> findRingsRecurse net c (typeIntersection color (chanColors c)) start newRing ins outs) outChannels
-            ControlJoin _ -> if inChan == head inChannels 
-                then findRingsRecurse net outChan color start newRing ins outs 
+            ControlJoin _ -> if inChan == head inChannels
+                then findRingsRecurse net outChan color start newRing ins outs
                 else []
             LoadBalancer _ -> concat $ map (\c -> findRingsRecurse net c color start newRing ins (outs ++ outChannels' c)) outChannels
             Fork _ -> concat $ map (\c -> findRingsRecurse net c color start newRing ins outs) outChannels
@@ -101,12 +102,12 @@ isEntryPoint net c = case comp of
     Merge{} -> True
     GuardQueue{} -> True
     _ -> False
-    where 
+    where
         comp = getComponent net c
 
 -- Ring to string
 showRing :: Show c => XColoredNetwork c -> Ring -> String
-showRing net ring = "Ring - Color: " ++ (show $ ringColor ring) ++ "; Queues: " ++ (show $ map componentName queues) ++ "; In: " ++ (show inNames) ++ "; Out: " ++ (show outNames)
+showRing net ring = "Ring - Color: " ++ (show $ ringColor ring) ++ "; Queues/Buffers: " ++ (show $ map componentName queues) ++ "; In: " ++ (show inNames) ++ "; Out: " ++ (show outNames)
     where
         inNames = map (\(channel, _) -> channelName channel) ins'
         outNames = map (\(channel, _) -> channelName channel) outs'
@@ -114,13 +115,14 @@ showRing net ring = "Ring - Color: " ++ (show $ ringColor ring) ++ "; Queues: " 
         outs' = map (getChannel net) (ringOuts ring)
         queues = filter isRingQueue (map (getComponent net . getTarget net) (ringChannels ring))
 
+
 setEqual :: Eq a => [a] -> [a] -> Bool
 setEqual x y = null (x\\y) && null (y\\x)
 
 instance Eq Ring where
     ring1 == ring2 = (setEqual (ringChannels ring1) (ringChannels ring2)) &&
         (setEqual (ringChannels ring1) (ringChannels ring2)) &&
-        (setEqual (ringChannels ring1) (ringChannels ring2)) && 
+        (setEqual (ringChannels ring1) (ringChannels ring2)) &&
         ((ringColor ring1) == (ringColor ring2))
 
 -- Combine all rings with the same queue set
@@ -163,6 +165,7 @@ subTypeProperty net ring = all colorSubset queues where
 isRingQueue :: XComponent c -> Bool
 isRingQueue comp = case comp of
     Queue{} -> True
+    Buffer{} -> True
     GuardQueue{} -> True
     _ -> False
 
@@ -171,7 +174,7 @@ createInvariants :: XColoredNetwork c -> Ring -> [Invariant Int]
 createInvariants net ring = [inv1] where
     inv1 = entryInvariant net ring
 
--- Create entry invariant: 
+-- Create entry invariant:
 -- sum of contents of all queues in ring <= sum of capacities of all queues - min(entry limit)
 -- Note: LeqInvariant! sum(queues) - limit <= 0
 entryInvariant :: XColoredNetwork c -> Ring -> Invariant Int

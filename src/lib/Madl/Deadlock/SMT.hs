@@ -99,6 +99,7 @@ export_row_to_smt x show_p_t inv = if emptyInvariant inv then "" else case inv o
 export_q_data_var_to_smt :: ColoredNetwork -> (Color -> String) -> (ComponentID, Color) -> String
 export_q_data_var_to_smt x show_p_t (i,d) = case getComponent x i of
     Queue{}  -> unwords [smt_fun "Int" name, smt_assert (smt_atleast name "0")]
+    Buffer{}  -> unwords [smt_fun "Int" name, smt_assert (smt_atleast name "0")]
     GuardQueue{}  -> unwords [smt_fun "Int" name, smt_assert (smt_atleast name "0")]
     _ -> fatal 84 "unreachable"
     where
@@ -109,6 +110,11 @@ export_q_var_to_smt :: ColoredNetwork -> ComponentID -> String
 export_q_var_to_smt x i = case getComponent x i of
     Queue _ cap -> unwords[smt_fun "Int" name, smt_assert_inrange name (0, cap)] where
         name = smt_queue x i
+    Buffer _ cap -> unlines[
+                    unwords[smt_fun "Int" name, smt_assert_inrange name (0, cap)],
+                    unwords[smt_fun "Int" name, smt_assert_inrange name_a (0, cap - 1)]] where
+        name = smt_buffer x i
+        name_a = smt_buffer_arbiter x i
     Merge{} -> unwords[smt_fun "Int" name, smt_assert_inrange name (0, getNrInputs x i - 1)] where
         name = smt_merge_arbiter x i
     MultiMatch{} -> unlines[
@@ -225,12 +231,16 @@ export_invariants_to_smt net show_p_t invs =
 export_literal_to_SMT :: ColoredNetwork -> (Color -> String) -> Literal -> String
 export_literal_to_SMT x _show_p_t (Is_Full q) = case getComponent x q of
                                                 Queue _ cap  -> smt_equals (export_value_to_smt cap) (export_q_to_smt x (q,1))
+                                                Buffer _ cap  -> smt_equals (export_value_to_smt cap) (export_q_to_smt x (q,1))
                                                 GuardQueue _ cap -> smt_equals (export_value_to_smt cap) (export_q_to_smt x (q,1))
                                                 _ -> fatal 166 "Is_Full literal is only defined for queues."
 export_literal_to_SMT x _show_p_t (Is_Not_Full q) = case getComponent x q of
                                                 Queue _ cap  -> smt_bin_operator ">" (export_value_to_smt cap) (export_q_to_smt x (q,1))
+                                                Buffer _ cap  -> smt_bin_operator ">" (export_value_to_smt cap) (export_q_to_smt x (q,1))
                                                 _ -> fatal 169 "Is_Not_Full literal is only defined for queues."
 export_literal_to_SMT x show_p_t (Any_At_Head q cs) = smt_atleast nr_of_packets "1" where
+    nr_of_packets = export_q_colorset_to_smt x show_p_t ((q, cs), 1)
+export_literal_to_SMT x show_p_t (Any_In_Buffer q cs) = smt_atleast nr_of_packets "1" where
     nr_of_packets = export_q_colorset_to_smt x show_p_t ((q, cs), 1)
 export_literal_to_SMT x show_p_t (All_Not_At_Head q cs) = smt_equals nr_of_packets "0" where
     nr_of_packets = export_q_colorset_to_smt x show_p_t ((q, cs), 1)
@@ -248,6 +258,9 @@ export_literal_to_SMT x _show_p_t (TSelect i c t)  = smt_and[chan_selected, tran
 export_literal_to_SMT x _show_p_t (InState i v)  = smt_equals (export_value_to_smt v) (smt_automaton_state x i)
 export_literal_to_SMT x _ (IdleState cID p) = smt_idle_state x cID p
 export_literal_to_SMT x _ (DeadTrans cID n) = smt_dead_trans x cID n
+export_literal_to_SMT x _ (BlockBuffer cID) = case getComponent x cID of
+                                                Buffer _ cap  -> smt_equals (export_value_to_smt cap) (export_q_to_smt x (cID,1))
+                                                _ -> fatal 166 "buffer expected"
 export_literal_to_SMT x show_p_t (lit@BlockSource{}) = head $ bi_to_name x show_p_t lit
 export_literal_to_SMT x show_p_t (lit@BlockAny{}) = smt_or $ bi_to_name x show_p_t lit  --using conjunction for block equations
 export_literal_to_SMT x show_p_t (lit@IdleAll{})  = smt_and $ bi_to_name x show_p_t lit
@@ -299,6 +312,8 @@ export_formula_to_SMT x qs vars show_p_t bi f = (ret_s,ret_qs,ret_vars) where
                 ContainsNone q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
                 Any_At_Head q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
                 Any_At_Head q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
+                Any_In_Buffer b Nothing -> (if b `Set.notMember` (snd vars) then Set.singleton b else Set.empty, Set.empty)
+                Any_In_Buffer b (Just _) -> (Set.empty, if b `Map.notMember` (fst vars) then Set.singleton b else Set.empty)
                 All_Not_At_Head q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
                 All_Not_At_Head q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
                 Sum_Compare qs'' _cmp _v -> foldr (\(q,d) (l',r) -> case d of
@@ -306,6 +321,7 @@ export_formula_to_SMT x qs vars show_p_t bi f = (ret_s,ret_qs,ret_vars) where
                                                                 Just _  -> if q `Map.notMember` (fst vars) then (l', Set.insert q r) else (l',r))
                                          (Set.empty, Set.empty) qs''
                 BlockSource{} -> (Set.empty, Set.empty)
+                BlockBuffer{} -> (Set.empty, Set.empty)
                 BlockAny{} -> (Set.empty, Set.empty)
                 IdleAll{} -> (Set.empty, Set.empty)
     colors_from :: Set ComponentID -> Map ComponentID [Color]
@@ -324,10 +340,17 @@ smt_idle_state net cID p = "idle_state_" ++ show p ++ "_" ++ utxt (getName $ get
 smt_dead_trans :: ColoredNetwork -> ComponentID -> Int -> String
 smt_dead_trans net cID n = "dead_trans_" ++ show n ++ "_" ++ utxt (getName $ getComponent net cID)
 
-smt_queue, smt_loadbalancer_arbiter, smt_merge_arbiter, smt_match_arbiter_m, smt_match_arbiter_d, smt_guardqueue_q, smt_guardqueue_m :: ColoredNetwork -> ComponentID -> String
+smt_queue :: ColoredNetwork -> ComponentID -> String
+smt_queue x i = case getComponent x i of
+                  (Queue _ _) -> "Q___" ++ (utxt . getName $ getComponent x i)
+                  (Buffer _ _) -> "B___" ++ (utxt . getName $ getComponent x i) ++ "_state"
+                  _ -> error "smt_queue: either queue or buffer expected"
+
+smt_buffer, smt_buffer_arbiter, smt_loadbalancer_arbiter, smt_merge_arbiter, smt_match_arbiter_m, smt_match_arbiter_d, smt_guardqueue_q, smt_guardqueue_m :: ColoredNetwork -> ComponentID -> String
 smt_automaton_state, smt_automaton_arbiter_c, smt_automaton_arbiter_t :: ColoredNetwork -> ComponentID -> String
 -- For queue variables, we add "Q___" in front to make it easy at the UI level to find queue variables
-smt_queue x i = "Q___" ++ (utxt . getName $ getComponent x i) -- ++ "___" ++ (utxt $ channelName $ fst $ getChannel x ((getOutChannels x i)!!0))
+smt_buffer x i = "B___" ++ (utxt . getName $ getComponent x i) ++ "_state"
+smt_buffer_arbiter x i = "B___" ++ (utxt . getName $ getComponent x i) ++ "_a"
 smt_loadbalancer_arbiter x i = "M___" ++ (utxt . getName $ getComponent x i)
 -- For merge variables, we add "M___" in front to make it easy at the UI level to find merge variables
 smt_merge_arbiter x i = "M___" ++ (utxt . getName $ getComponent x i)

@@ -102,6 +102,18 @@ varDefinition net cID t = case getComponent net cID of
                             nuxmv_array State (int_type size) elemType (nuxmvQueueVar name flds) where
                                     elemType = if Set.size bvVals == 1 then range_type x x else int_type (2^bitSize)
                                     x = Set.elemAt 0 bvVals
+    Buffer name size -> ((nuxmv_int Input size $ buffer_oracle name):(nuxmv_int State (size+1) (nuxmvBufferSizeVar name) --variable to store the number of packets in the queue
+                    : mapMaybe fldVar (disjFields t) ++ map bvVar (bitVectors t))) where
+                        -- Variables to store the values of the type fields of the packets in the queue
+                        fldVar :: (FieldPath, [Text]) -> Maybe Text
+                        fldVar (_, []) = Nothing
+                        fldVar (flds, fieldValues) = Just $ nuxmv_array State (int_type size) (enum_type fieldValues) (nuxmvBufferVar name flds)
+                        -- Variables to store the values of the bitvector fields of the packets in the queue
+                        bvVar :: (FieldPath, Int, Set Int) -> Text
+                        bvVar (flds, bitSize, bvVals) =
+                            nuxmv_array State (int_type size) elemType (nuxmvBufferVar name flds) where
+                                    elemType = if Set.size bvVals == 1 then range_type x x else int_type (2^bitSize)
+                                    x = Set.elemAt 0 bvVals
     Source name msg ->
         (if emptyColorSet msg then [] else [nuxmv_bool Input $ source_oracle name]) --variable to determine whether the source is irdy
         -- Variables to store the values of the type fields of the packets send by the source
@@ -164,6 +176,7 @@ nuxmvEnabled net island = nuxmv_and (irdy_island ++ trdy_island ++ switchConditi
         DeadSink{} -> Nothing
         Function{} -> Nothing
         Queue name _  -> Just $ nuxmv_unequal (nuxmvQueueSizeVar name) "0"
+        Buffer name _ -> Just $ nuxmv_unequal (nuxmvBufferSizeVar name) "0"
         Vars{} -> Nothing
         Cut{} -> Nothing
         Switch{} -> Nothing
@@ -187,6 +200,7 @@ nuxmvEnabled net island = nuxmv_and (irdy_island ++ trdy_island ++ switchConditi
         DeadSink{} -> Just $ nuxmv_false
         Function{} -> Nothing
         Queue name cap  -> Just $ nuxmv_unequal (nuxmvQueueSizeVar name) (showT cap)
+        Buffer name cap -> Just $ nuxmv_unequal (nuxmvBufferSizeVar name) (showT cap)
         Vars{} -> Nothing
         Cut{} -> Nothing
         Switch{} -> Nothing
@@ -262,6 +276,36 @@ queuePosUpdate net c t ins outs i =
         fields = map fst $ filter (\(_,vs) -> length vs > 1) (disjFields t)
         vecs = map (\(a,_,_) -> a) $ filter (\(_,n,vs) -> (n /= 0) && (Set.size vs /= 1)) (bitVectors t)
         --"Q" +++ name +++ "_ = "
+
+
+-- | Produce the init statement for the buffer size variable of the given buffer
+bufferSizeInit :: Component -> Maybe Text
+bufferSizeInit (Buffer name _) = Just $ nuxmv_init (nuxmvBufferSizeVar name) "0"
+bufferSizeInit _ = Nothing
+
+
+-- | Produce the next statement for the buffer size variable of the given buffer
+bufferSizeUpdate :: ColoredNetwork -> Component -> IslandSet ChannelID -> IslandSet ChannelID -> [Text]
+bufferSizeUpdate net (Buffer name size) ins outs = nuxmv_next bs $ nuxmv_switch [
+      (nuxmv_equals bs "0", nuxmv_toint (nuxmvAnyEnabled net ins))
+    , (nuxmv_equals bs (showT size), nuxmv_minus (showT size) (nuxmv_toint $ nuxmvAnyEnabled net outs))
+    , (nuxmv_true, nuxmv_add [nuxmvBufferSizeVar name, nuxmv_minus (nuxmv_toint $ nuxmvAnyEnabled net ins) (nuxmv_toint $ nuxmvAnyEnabled net outs)])
+    ] where
+    bs = nuxmvBufferSizeVar name
+bufferSizeUpdate _ _ _ _ = []
+
+
+-- | Produce the next statement for the buffer field and bitvec value variables
+bufferPosUpdate :: ColoredNetwork -> (ComponentID, Component) -> ColorSet -> IslandSet ChannelID -> IslandSet ChannelID -> Int -> [Text]
+bufferPosUpdate net c t ins outs i =
+    concatMap (assign net outs ins c i) (fields ++ vecs) where
+        fields = map fst $ filter (\(_,vs) -> length vs > 1) (disjFields t)
+        vecs = map (\(a,_,_) -> a) $ filter (\(_,n,vs) -> (n /= 0) && (Set.size vs /= 1)) (bitVectors t)
+
+
+-- | todo(tssb, snnw) : can we remove this?
+bufferPosInit :: Component -> ColorSet -> Int -> Maybe Text
+bufferPosInit _ _ _ = Nothing
 
 
 -- | Produce SMV code for the given mfunctiondisj
@@ -356,6 +400,46 @@ assign net outs ins (node, (Queue baseName size)) i flds = nuxmv_next curVal . n
         sizeName = nuxmv_qsvar (pure baseName)
         [xOut] = getOutChannels net node
         (_, xType) = getChannel net xOut
+assign net outs ins (node, (Buffer baseName size)) i flds = nuxmv_next curVal . nuxmv_switch $
+    mapMaybe pushPop (IM.toList ins) ++ mapMaybe push (IM.toList ins) ++ [pop, none] where
+        pushPop :: (Int, Island ChannelID) -> Maybe (Text, Text)
+        pushPop (_, inIsland) = maybeCase $
+                      (nuxmv_and [pure $ nuxmvAnyEnabled net outs, pure $ nuxmvEnabled net inIsland, matchesFieldValues flds IM.empty cmap f xType],
+                      nuxmv_ite (nuxmv_atmost sizeName (pure $ showT (i+1))) (nuxmvValueT flds IM.empty cmap f) (nuxmv_ite (nuxmv_gt (pure $ buffer_oracle baseName) (pure $ showT i)) (pure curVal) (pure shiftVal)))
+                  where
+                      f = dataPropagation net inIsland x
+                      x :: ChannelID
+                      [x] = getInChannels net node--exec True shiftVal outs
+        push :: (Int, Island ChannelID) -> Maybe (Text, Text)
+        push (_, inIsland) = maybeCase $
+                  (nuxmv_and [pure $ nuxmvAnyEnabled net IM.empty, pure $ nuxmvEnabled net inIsland, matchesFieldValues flds IM.empty cmap f xType],
+                  nuxmv_ite (nuxmv_atmost sizeName (pure $ showT i)) (nuxmvValueT flds IM.empty cmap f) (pure curVal))
+               where
+                  f = dataPropagation net inIsland x
+                  x :: ChannelID
+                  [x] = getInChannels net node --exec False curVal IM.empty
+        {-exec :: Bool -> Text -> IslandSet ChannelID -> (Int, Island ChannelID) -> Maybe (Text, Text)
+        exec pushpop nextVal outIslands (_, inIsland) = maybeCase $
+            (nuxmv_and [pure $ nuxmvAnyEnabled net outIslands, pure $ nuxmvEnabled net inIsland, matchesFieldValues flds IM.empty cmap f xType],
+             nuxmv_ite (nuxmv_atmost sizeName (pure . showT $ if pushpop then i + 1 else i)) (nuxmvValueT flds IM.empty cmap f) (pure nextVal))
+            where
+                f = dataPropagation net inIsland x
+                x :: ChannelID
+                [x] = getInChannels net node-}
+        cmap :: CMap
+        cmap = makeArgs net
+        pop :: (Text, Text)
+        pop = (nuxmvAnyEnabled net outs, shiftVal)
+        none :: (Text, Text)
+        none = (nuxmv_true, curVal)
+        (WA (Just curVal)) = nuxmvValueT flds IM.empty (makeArgsAt i net) (XInput node)
+            -- name +++ "[" +++ showT i +++ "]"
+        (WA (Just shiftVal)) = nuxmvValueT flds IM.empty (makeArgsAt (min (i+1) (size-1)) net) (XInput node)
+            -- name +++ "[" +++ showT (max (i+1) (size-1)) +++ "]"
+        -- name = nuxmvQueueVar c flds
+        sizeName = nuxmv_bsvar (pure baseName)
+        [xOut] = getOutChannels net node
+        (_, xType) = getChannel net xOut
 assign net outs ins (node, (GuardQueue baseName size)) i flds = nuxmv_next curVal $ nuxmv_switch [
         (nuxmv_equals "0" (merge_oracle baseName), T.intercalate "" $ nuxmv_switch $ mapMaybe pushPop (IM.toList ins) ++ mapMaybe push (IM.toList ins) ++ [pop, none])
         ,(nuxmv_equals "1" (merge_oracle baseName), curVal)
@@ -412,26 +496,50 @@ type CMap = Map ComponentID (Maybe (Text, Text))
 -- | Maps argument numbers to the mfunctiondisj that represent the values of these arguments
 type ArgMap = IM.IntMap MFunctionDisj
 
+
+--sel <= cap -> pos = sel
+--sel > cap -> pos = cap
 -- | Make a component map for a given queue position
 makeArgsAt :: Int -> ColoredNetwork -> CMap
 makeArgsAt at net = foldr f Map.empty (getComponentsWithID net) where
     f :: (ComponentID, Component) -> CMap -> CMap
     f (i, (Queue name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_qvar name, nuxmv_array_pos nuxmv_q_end at))
+    f (i, (Buffer name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_bvar name, nuxmv_array_pos nuxmv_q_end at))
     f (i, (GuardQueue name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_qvar name, nuxmv_array_pos nuxmv_q_end at))
     f (i, (Source name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_svar name, nuxmv_s_end))
     f (i, (PatientSource name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_svar name, nuxmv_s_end))
     f _ = id
     dead = emptyColorSet . head . outputTypes net
 
--- | Make a component map for queue position 0
+--((nuxmvBufferSizeVar name) > (buffer_oracle name))? (buffer_oracle name) : 0
+-- | Make a component map for queue position 0/buffer position = sel
 makeArgs :: ColoredNetwork -> CMap
-makeArgs = makeArgsAt 0
+makeArgs net = foldr f Map.empty (getComponentsWithID net) where
+    f :: (ComponentID, Component) -> CMap -> CMap
+    f (i, (Queue name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_qvar name, nuxmv_array_pos nuxmv_q_end 0))
+    f (i, (Buffer name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_bvar name, (txt "v[(") +++ (nuxmvBufferSizeVar name) +++ (txt " > ") +++ (buffer_oracle name) +++ (txt " )? ") +++ (buffer_oracle name) +++ (txt " : 0") +++ (txt "]")))
+    f (i, (GuardQueue name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_qvar name, nuxmv_array_pos nuxmv_q_end 0))
+    f (i, (Source name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_svar name, nuxmv_s_end))
+    f (i, (PatientSource name _)) = Map.insert i (if dead i then Nothing else Just (nuxmv_svar name, nuxmv_s_end))
+    f _ = id
+    dead = emptyColorSet . head . outputTypes net
 
 -- | Update the state of queues according to the transfers specified by the given islandset
 stateUpdate :: ColoredNetwork -> (ComponentID, Component) -> ColorSet -> IslandSet ChannelID -> [Text]
 stateUpdate net (n, c@(Queue _ size)) t islands =
     queueSizeUpdate net c ins outs ++
     concatMap (queuePosUpdate net (n, c) t ins outs) [0..size-1] where
+        ins :: IslandSet ChannelID
+        ins = IM.filter f' islands
+        f :: Island ChannelID -> Bool
+        f = any ((== n) . (getInitiator net)) . islandChannels
+        outs :: IslandSet ChannelID
+        outs = IM.filter f islands
+        f' :: Island ChannelID -> Bool
+        f' = any ((== n) . (getTarget net)) . islandChannels
+stateUpdate net (n, c@(Buffer _ size)) t islands =
+    bufferSizeUpdate net c ins outs ++
+    concatMap (bufferPosUpdate net (n, c) t ins outs) [0..size-1] where
         ins :: IslandSet ChannelID
         ins = IM.filter f' islands
         f :: Island ChannelID -> Bool
@@ -463,6 +571,7 @@ stateUpdate _ _ _ _ = []
 -- | Produce init statements for declared variables (if necessary).
 varInit :: Component -> ColorSet -> [Text]
 varInit c@(Queue _ size) t = catMaybes $ queueSizeInit c : map (queuePosInit c t) [0..size-1]
+varInit c@(Buffer _ size) t = catMaybes $ bufferSizeInit c : map (bufferPosInit c t) [0..size-1]
 varInit c@(GuardQueue _ size) t = catMaybes $ queueSizeInit c : map (queuePosInit c t) [0..size-1]
 varInit (Automaton{componentName=name,nrOfStates=n}) _ = if (n == 1) then [] else [nuxmv_init (nuxmv_psvar name) "0"]
 varInit _ _ = []
@@ -492,11 +601,18 @@ syncModel (ReachabilityInput net defs spec invs) = T.unpack . T.unlines $
     getExtendedContext n _ = n
 
 --[nuxmv_bool State (nuxmv_proc_stvar name i) | i <- [0..n-1]]
-
+--a->b = !a or b. (v[0] in d) -> block(o,d)
+--bigwedge_{0 <= i <= cap} (bigwedge_{d \in C} not(v[i] in d) or block(o,a))
 -- | Translate a literal to nuxmv
 nuxmvLiteral :: ColoredNetwork -> Literal -> [Text]
 -- TODO(snnw): FIFO queues
 nuxmvLiteral net (BlockSource cID) = [nuxmv_block (getName $ getComponent net cID) (fromData Nothing)]
+nuxmvLiteral net (BlockBuffer cID) = case getComponent net cID of
+                                        (Buffer name size) -> [nuxmv_and (map (\(i,d) -> nuxmv_or [(nuxmv_equals "0" (typeInBuffer i net cID (Buffer name size) (Just d, 1))),(nuxmv_block (channelName . fst . getChannel net $ (head $ getOutChannels net cID)) (fromData (Just (head $ getColors d))))]) ps)] where
+                                          [intype] = inputTypes net cID
+                                          ts = map (\x -> toColorSet x) (getColors intype)
+                                          ps = [(i,j)| i <- [0..(size -1)],j <- ts]
+                                        _ -> fatal 330 "expected buffer"
 nuxmvLiteral net (BlockAny _ xID Nothing) = [nuxmv_block name (fromData Nothing)] where
     name = channelName . fst . getChannel net $ xID
 nuxmvLiteral net (BlockAny _ xID (Just cs)) = if empty cs
@@ -511,13 +627,18 @@ nuxmvLiteral net (IdleAll _ xID (Just cs)) = if empty cs
     name = channelName . fst . getChannel net $ xID
 nuxmvLiteral net (Is_Full i) = case getComponent net i of
     (Queue name cap) -> [nuxmv_equals (showT cap) (nuxmvQueueSizeVar name)]
+    (Buffer name cap) -> [nuxmv_equals (showT cap) (nuxmvBufferSizeVar name)]
     (GuardQueue name cap) -> [nuxmv_equals (showT cap) (nuxmvQueueSizeVar name)]
     _ -> fatal 330 "expected queue or guardQueue"
 nuxmvLiteral net (Is_Not_Full i) = case getComponent net i of
     (Queue name cap) -> [nuxmv_gt (showT cap) (nuxmvQueueSizeVar name)]
+    (Buffer name cap) -> [nuxmv_gt (showT cap) (nuxmvBufferSizeVar name)]
     _ -> fatal 330 "expected queue"
 nuxmvLiteral net (Any_At_Head i d) = [nuxmv_atmost "1" (typeAtHead net i c (d, 1))] where
     c = getComponent net i
+nuxmvLiteral net (Any_In_Buffer i d) = case getComponent net i of
+    (Buffer name cap) -> [nuxmv_and (map (\n -> typeInBuffer n net i (Buffer name cap) (d,1)) [0..cap-1])]
+    _ -> fatal 330 "expected buffer"
 nuxmvLiteral net (All_Not_At_Head i d) = [nuxmv_equals "0" (typeAtHead net i c (d, 1))] where
     c = getComponent net i
 nuxmvLiteral net (ContainsNone i d) = [nuxmv_equals "0" (typeInQ net i c (d, 1))] where
@@ -588,18 +709,31 @@ generateInvariants net invs = mapMaybe invToNuxmv invs where
 typeAtHead, typeInQ :: IsColorSet a => ColoredNetwork -> ComponentID -> Component -> (Maybe a, Int) -> Text
 typeAtHead = typeAtPosition (\_ -> [0])
 typeInQ = typeAtPosition (\c -> [0..(capacity c)-1])
+--nuxmvLiteral net (ContainsNone cid d) = [nuxmv_equals "0" (typeInQ net cid c (d, 1))] where
+--    c = getComponent net cid
+
+typeInBuffer :: IsColorSet a => Int -> ColoredNetwork -> ComponentID -> Component -> (Maybe a, Int) -> Text
+typeInBuffer n = typeAtPosition (\_ -> [n])
 
 -- | Calculates the total number of packets of the given type at the given position in the queue
 typeAtPosition :: IsColorSet a => (Component -> [Int]) -> ColoredNetwork -> ComponentID -> Component -> (Maybe a, Int) -> Text
 typeAtPosition r net q c@Queue{} (Just t, mult) = nuxmv_mult [showT mult, nuxmv_count (map (isType net q t) (r c))]
+typeAtPosition r net q c@Buffer{} (Just t, mult) = nuxmv_mult [showT mult, nuxmv_count (map (isTypeB net q t) (r c))]
 typeAtPosition r net q c@GuardQueue{} (Just t, mult) = nuxmv_mult [showT mult, nuxmv_count (map (isType net q t) (r c))]
 typeAtPosition _ _ _ (Queue name _) (Nothing, mult) = nuxmv_mult [showT mult, nuxmvQueueSizeVar name]
+typeAtPosition _ _ _ (Buffer name _) (Nothing, mult) = nuxmv_mult [showT mult, nuxmvBufferSizeVar name]
 typeAtPosition _ _ _ (GuardQueue name _) (Nothing, mult) = nuxmv_mult [showT mult, nuxmvQueueSizeVar name]
 typeAtPosition _ _ _ _ _ = fatal 276 "invariant on a component that is not a queue"
 
 -- | Check if the packet at the given position of the queue is of the given type
 isType :: IsColorSet a => ColoredNetwork -> ComponentID -> a -> Int -> Text
 isType net q t i = nuxmv_and $ (nuxmv_gt (nuxmvQueueSizeVar name) (showT i)):(matchesTypeAt i net (XInput q, t)) where
+    name = getName $ getComponent net q
+
+
+-- | Check if the packet at the given position of the buffer is of the given type
+isTypeB :: IsColorSet a => ColoredNetwork -> ComponentID -> a -> Int -> Text
+isTypeB net q t i = nuxmv_and $ (nuxmv_gt (nuxmvBufferSizeVar name) (showT i)):(matchesTypeAt i net (XInput q, t)) where
     name = getName $ getComponent net q
 
 --toNuxmvAsync :: Network -> Text
@@ -715,12 +849,20 @@ nuxmvQueueVar name flds = nuxmv_qvar . T.intercalate "_" $ name : flds ++ [nuxmv
 nuxmvQueueSizeVar :: Text -> Text
 nuxmvQueueSizeVar = nuxmv_qsvar
 
+nuxmvBufferVar :: Text -> FieldPath -> Text
+nuxmvBufferVar name flds = nuxmv_bvar . T.intercalate "_" $ name : flds ++ [nuxmv_q_end]
+
+nuxmvBufferSizeVar :: Text -> Text
+nuxmvBufferSizeVar = nuxmv_bsvar
+
 nuxmvSourceVar :: Text -> FieldPath -> Text
 nuxmvSourceVar name flds = nuxmv_svar . T.intercalate "_" $ name : flds ++ [nuxmv_s_end]
 
-nuxmv_qvar, nuxmv_qsvar, nuxmv_svar, nuxmv_psvar :: (IsString a, Monoid a) => a -> a
+nuxmv_qvar, nuxmv_qsvar, nuxmv_bvar, nuxmv_bsvar, nuxmv_svar, nuxmv_psvar :: (IsString a, Monoid a) => a -> a
 nuxmv_qvar = ("Q_" <>)
 nuxmv_qsvar = ("Qs_" <>)
+nuxmv_bvar = ("B_" <>)
+nuxmv_bsvar = ("Bs_" <>)
 nuxmv_svar = ("S_" <>)
 nuxmv_psvar = ("P_" <>)
 
@@ -738,10 +880,11 @@ nuxmv_q_end = "v"
 nuxmv_s_end = "i"
 
 -- oracles:
-source_oracle, sink_oracle, merge_oracle, loadbalancer_oracle, mmatch_m_oracle, mmatch_d_oracle :: (IsString a, Monoid a) => a  -> a
+source_oracle, sink_oracle, merge_oracle, buffer_oracle, loadbalancer_oracle, mmatch_m_oracle, mmatch_d_oracle :: (IsString a, Monoid a) => a  -> a
 source_oracle = ("oracle_S_" <>)
 sink_oracle = ("oracle_Z_" <>)
 merge_oracle = ("oracle_M_" <>)
+buffer_oracle = ("oracle_B_" <>)
 loadbalancer_oracle = ("Oracle_L_" <>)
 mmatch_m_oracle = ("oracle_MM_m_" <>)
 mmatch_d_oracle = ("oracle_MM_d_" <>)

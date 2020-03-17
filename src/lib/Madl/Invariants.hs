@@ -173,6 +173,16 @@ matrix network = concatMap getEquation $ getComponentsWithID network where
                 --  and the number of transfers of color c on the outputchannel combined.
                 itypes -> [(Map.fromList [(ChannelTransfers ichan t, 1), (ChannelTransfers ochan t, -1)],
                             Map.singleton (QueueVar node $ Just t) (-1)) | t <- itypes]
+        Buffer{} -> let
+            [(ichan, itype)] = input
+            [(ochan, _)] = output
+            in case getColors itype of
+                -- If the inputType of the buffer is empty, the total number of packets in the biffer is 0.
+                [] -> [(Map.empty, Map.singleton (QueueVar node Nothing) 1)]
+                -- Otherwise, the number of transfers of some color c on the inputchannel is equal to the number of packets with color c in the buffer
+                --  and the number of transfers of color c on the outputchannel combined.
+                itypes -> [(Map.fromList [(ChannelTransfers ichan t, 1), (ChannelTransfers ochan t, -1)],
+                            Map.singleton (QueueVar node $ Just t) (-1)) | t <- itypes]
         Vars{} -> [(Map.fromList [(ChannelTransfers ichan t, 1), (ChannelTransfers ochan t, -1)], Map.empty) | t <- getColors itype] where
             [(ichan, itype)] = input
             [(ochan, _)] = output

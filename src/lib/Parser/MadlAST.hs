@@ -129,6 +129,7 @@ data NetworkPrimitive = ControlJoin ChannelExpression ChannelExpression (Maybe S
                       | MultiMatch PredicateExpression [ChannelExpression] (Maybe String)
                       | PatientSource TypeExpression (Maybe String)
                       | Queue IntegerExpression ChannelExpression (Maybe String)
+                      | Buffer IntegerExpression ChannelExpression (Maybe String)
                       | Sink ChannelExpression (Maybe String)
                       | Source TypeExpression (Maybe String)
                       | Switch ChannelExpression [SwitchExpression] (Maybe String)

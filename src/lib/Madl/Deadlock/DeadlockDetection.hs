@@ -98,6 +98,8 @@ expand_literal net _vars (BlockSource cID) = Just $
     case getComponent net cID of
         Source _ msg -> blockLiteral' (src 58) net o msg
         _ -> fatal 56 "BlockSource can only be used for source component"
+--block_firstcall' :: (Show c) => Source -> XColoredNetwork c -> ChannelID -> Maybe ColorSet -> BlockVariables -> Formula
+expand_literal net vars (BlockBuffer cID) = Nothing --Just $ block_firstcall' (src 102) net (head $ getInChannels net cID) Nothing vars
 -- expand_literal net vars (BlockAny xID colors) = Just $
 --     block_any (src 96) net xID colors vars
 -- expand_literal net vars (IdleAll xID colors) = Just $
@@ -534,6 +536,17 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
                 fs = map block_one_color currColors
                 block_one_color :: Color -> Formula
                 block_one_color c = blockLiteral' (src 118) net (outchan) c
+        Buffer{} -> conjunct (Lit $ Is_Full cID) (Lit $ BlockBuffer cID)
+            {-if allTheSame fs
+            -- then the queue is blocked iff this formula is true and if any of the given colors is at the head of the queue)
+            then conjunct (head fs) (Lit $ atHeadLiteral net cID colors')
+            -- Otherwise we check if there is a single color such that its block formula is true, and this color is at the head of the queue.
+            else exists (zip currColors fs) irdy_and_blocked where -- !!exists is changed to forall
+                irdy_and_blocked (c, f) = conjunct (Lit $ atHeadLiteral net cID c) f
+                fs :: [Formula]
+                fs = map block_one_color currColors
+                block_one_color :: Color -> Formula
+                block_one_color c = blockLiteral' (src 118) net (outchan) c-}
         -- An automaton is blocked for some color from a certain incoming channel if either
         --   the automaton doesn't contain a transition that accepts this color from this channel, or
         --   the automaton is dead
@@ -579,6 +592,7 @@ block_any source net xID colors vars =
     -- channel:
     else case getComponent net cID of
         Queue{} -> Lit $ BlockAny (src 197) xID Nothing
+        Buffer{} -> Lit $ BlockAny (src 197) xID Nothing --TODO update!
         -- For a vars component we just check whether any of the given colors is
         -- blocked on the outgoing channel of this component.
         Vars{} -> blockLiteral' (src 200) net (outChan 0) colors'
@@ -746,6 +760,13 @@ idle_firstcall' loc net xID colors vars = if (not (subTypeOf colors' (getColorSe
             irdy_and_blocked c = conjunct (Lit $ atHeadLiteral net cID c) -- Color is at the head of the queue
                                           (blockLiteral' (src 247) net xID c) -- Color is blocked on outgoing channel
             otherColors = foldr delete (colorsOfChannel xID) currColors
+        Buffer{} -> disjunct empty_and_idle some_other_packet_blocked_at_head where
+            empty_and_idle = conjunct (Lit $ containsNoneLiteral net cID colors') -- Queue is empty
+                             (idleLiteral' (src 244) net (inChan 0) colors') -- Incoming channel is idle
+            some_other_packet_blocked_at_head = exists otherColors irdy_and_blocked
+            irdy_and_blocked c = conjunct (Lit $ atHeadLiteral net cID c) -- Color is at the head of the queue
+                                          (blockLiteral' (src 247) net xID c) -- Color is blocked on outgoing channel
+            otherColors = foldr delete (colorsOfChannel xID) currColors
         --Queue{} -> conjunct' (lit' $ containsNoneLiteral net cID colors') -- Buffer is empty
         --                     (idle_all' (src 244) net (inChan 0) colors' vars fm) -- Incoming channel is idle
         -- An automaton is idle for a set of colors, if all of these colors are never produced by the automaton, or if the automaton is dead
@@ -779,6 +800,7 @@ idle_all loc net xID colors vars =
     case getComponent net cID of
         Queue{} -> idleLiteral' loc net xID colors' -- Produce an idle literal
         -- The incoming channel is idle for the given colors
+        Buffer{} -> idleLiteral' loc net xID colors' --TODO update!
         Vars{} -> idleLiteral' loc net (inChan 0) colors'
         Cut{} -> idleLiteral' loc net (inChan 0) colors'
         Fork{} -> forall currColors idle_one_color where
@@ -882,6 +904,7 @@ irdy_any source net xID currColorSet vars =
         "Illegal call to irdy arsing from " +++showT source +++ ": colorset " +++ showT (toColorSet currColorSet) +++ " is not a subtype of " +++ showT (colorset xID) else
     case getComponent net cID of
         Queue{} -> Lit $ atHeadLiteral net cID currColorSet --Any of the given colors at head of the queue
+        Buffer{} -> Lit $ inBufferLiteral net cID currColorSet --TODO update!
         Vars{} -> irdy_any (src 353) net (inChan 0) currColorSet vars --incoming channel irdy
         Cut{} -> irdy_any (src 353) net (inChan 0) currColorSet vars --incoming channel irdy
         Fork{} -> exists currColors irdy_one_color where --incoming channel irdy and all other outgoing channel trdy
@@ -963,6 +986,7 @@ trdy_any source net xID currColorSet vars =
         "Illegal call to trdy arsing from " +++showT source +++ ": colorset " +++ showT (toColorSet currColorSet) +++ " is not a subtype of " +++ showT (colorset xID) else
     case getComponent net cID of
         Queue{} -> Lit $ Is_Not_Full cID
+        Buffer{} -> Lit $ Is_Not_Full cID
         Vars{} -> trdy_any (src 418) net (outChan 0) currColorSet vars
         Cut{} -> trdy_any (src 418) net (outChan 0) currColorSet vars
         Fork{} -> exists currColors trdy_one_color where

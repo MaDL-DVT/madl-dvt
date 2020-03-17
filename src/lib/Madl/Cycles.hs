@@ -168,6 +168,9 @@ depends :: Show c => XFlattenedNetwork c -> XComponent c -> ComponentID -> WireT
 depends _   (Queue{}) _ Irdy _ = []  -- o.irdy = size > 0
 depends _   (Queue{}) _ Trdy _ = []  -- i.trdy = size < cap
 
+depends _   (Buffer{}) _ Irdy _ = []  -- o.irdy = size > 0
+depends _   (Buffer{}) _ Trdy _ = []  -- i.trdy = size < cap
+
 depends _   (Source{}) _ Irdy _ = []
 depends _   (Source{}) _ Trdy _ = fatal 172 "trdy of a Source does not exist"
 depends _   (PatientSource{}) _ Irdy _ = []

@@ -9,7 +9,7 @@ Authors     : Sanne Wouda 2015-2016, Tessa Belder 2015-2016, Julien Schmaltz 201
 Provides a data type for transfer islands. Provides a function to extract these islands from a madl network.
 -}
 module Madl.Islands (
-    Island(..), IslandSet, 
+    Island(..), IslandSet,
     transferIslands, condition, dataPropagation, islandHasChannel,
     islToChanIDs, islSetToList, getIns, getIslIns, getOuts, getIslOuts
 #ifdef TESTING
@@ -140,7 +140,7 @@ updateIslands' :: forall a. Show a => [Transition a] -> IslandSet a -> IslandSet
 -- return updated island set
 updateIslands' ts isles = if valid isles then foldr f non_con ts else fatal 113 ("inputs without islands: " ++ show all_is) where
     -- initial island set is non-con (non relevant islands)
-    -- 
+    --
     f :: Transition a -> IslandSet a -> IslandSet a
     f (is, trans, os) isles' = IM.union new isles' where
         -- con = connected islands (from split on list) one island per input channel (see 120)
@@ -156,7 +156,7 @@ updateIslands' ts isles = if valid isles then foldr f non_con ts else fatal 113 
     non_con = IM.filter (\Island{islandChannels=xs} -> all (\c -> M.notMember c xs) all_is) isles
     -- from isles, select irrelevant islands for the set of transitions
     valid = all (not . IM.null) . fst . splitOnList all_is
-    -- valid check that islands have at least one channel 
+    -- valid check that islands have at least one channel
 
 updateIslands :: forall a .Show a => ComponentID -> Component -> [ChannelID] -> [(ChannelID, a)] -> IslandSet a -> IslandSet a
 updateIslands _ Sink{} [i] [] isles =
@@ -167,6 +167,8 @@ updateIslands _ Source{} [] [o] islands =
 updateIslands _ PatientSource{} [] [o] islands =
     updateIslands' [([], Nothing, [o])] islands
 updateIslands _ Queue{} _ [o] islands =
+    updateIslands' [([], Nothing, [o])] islands
+updateIslands _ Buffer{} _ [o] islands =
     updateIslands' [([], Nothing, [o])] islands
 updateIslands _ Vars{} [i] [o] islands =
     updateIslands' [([i], Nothing, [o])] islands
@@ -212,6 +214,7 @@ updateIslands _ c@DeadSink{} _ _ _ = fatal 62 ("invalid network; component: " ++
 updateIslands _ c@Source{} _ _ _ = fatal 64 ("invalid network; component: " ++ show c)
 updateIslands _ c@PatientSource{} _ _ _ = fatal 66 ("invalid network; component: " ++ show c)
 updateIslands _ c@Queue{} _ _ _ = fatal 68 ("invalid network; component: " ++ show c)
+updateIslands _ c@Buffer{} _ _ _ = fatal 68 ("invalid network; component: " ++ show c)
 updateIslands _ c@Vars{} _ _ _ = fatal 114 ("invalid network; component: " ++ show c)
 updateIslands _ c@Cut{} _ _ _ = fatal 114 ("invalid network; component: " ++ show c)
 updateIslands _ c@Function{} _ _ _ = fatal 70 ("invalid network; component: " ++ show c)
@@ -229,16 +232,16 @@ cartProd :: IslandSet a -> IslandSet a -> IslandSet a -> IslandSet a
 -- compute product between as and bs
 cartProd islands as bs =
     IM.fromList (zip [newKey islands..] $ catMaybes
-        [ if M.null (M.intersection ts ts') 
+        [ if M.null (M.intersection ts ts')
             -- ts and ts' are automaton transitions
-            -- check intersection between (process) transitions part of the two islands            
+            -- check intersection between (process) transitions part of the two islands
             -- if intersection is empty, return Just and compute union (merge islands)
             -- if intersection not empty, return Nothing and islands not mergeable.
-            -- note that intersection is computed using process ID only. 
+            -- note that intersection is computed using process ID only.
             -- ts and ts' are maps where the key is the component ID
             -- this will not work if processes can write (or read) to more than one channel
-            -- on a transition. 
-            then Just $ Island (M.union xs xs') (M.union ts ts') 
+            -- on a transition.
+            then Just $ Island (M.union xs xs') (M.union ts ts')
             else Nothing |
             (_, Island xs ts)   <- IM.toList as,
             (_, Island xs' ts') <- IM.toList bs
@@ -250,9 +253,9 @@ splitOnList cs is = (islandsByInput, otherIslands) where
     -- is = island set
     -- compute islands relevant to the channels. (example: input channels of a join)
     islandsByInput :: [IslandSet a]
-    islandsByInput = map (flip filterWithChannel is) cs 
-    -- for each channel is cs, returns the set of islands with this channel. 
-    -- otherIslands is the complement, islands without the channel. 
+    islandsByInput = map (flip filterWithChannel is) cs
+    -- for each channel is cs, returns the set of islands with this channel.
+    -- otherIslands is the complement, islands without the channel.
     otherIslands = IM.difference is (foldr IM.union IM.empty islandsByInput)
 
 addChannels :: [(ChannelID, a)] -> Island a -> Island a
@@ -286,6 +289,7 @@ dataPropagation net island x =
     dataPropagation' Sink{} = fatal 90 "a sink cannot be an initiator"
     dataPropagation' DeadSink{} = fatal 117 "a sink cannot be an initiator"
     dataPropagation' Queue{} = XInput cID
+    dataPropagation' Buffer{} = XInput cID
     dataPropagation' Vars{} = forward i
     dataPropagation' Cut{} = forward i
     dataPropagation' Switch{} = forward i
@@ -330,7 +334,7 @@ dataPropagation net island x =
         _ -> fatal 300 $ "Illegal island"
         where
             channelsInIsland = M.keys (islandChannels island)
-     
+
 -- | Produces a list of boolean conditions which must evaluate to True in order for a transtion to take place on the given island.
 condition :: (Show b, Show d) => Network (XComponent c) b -> Island d -> [MFunctionBool]
 condition net island = mapMaybe getCondition (getComponentsWithID net) where

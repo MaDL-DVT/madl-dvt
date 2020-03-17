@@ -22,7 +22,7 @@ findPossibleLivelocks net = msum $ map startSearch sources where
 -- If lasso is found, possible livelock was found.
 -- Either returns first livelock found or Nothing
 searchLivelock :: XColoredNetwork c -> [(ChannelID, ColorSet)] -> ColorSet -> ChannelID -> Maybe [(ChannelID, ColorSet)]
-searchLivelock net seen color inChannel = if emptyColorSet color then Nothing 
+searchLivelock net seen color inChannel = if emptyColorSet color then Nothing
     else case alreadySeen of
         Just a -> Just a
         Nothing -> case targetComp of
@@ -41,6 +41,7 @@ searchLivelock net seen color inChannel = if emptyColorSet color then Nothing
             LoadBalancer _ -> msum $ map (searchLivelock net newSeen color) outChannels
             Merge _ -> searchLivelock net newSeen color outChan
             Queue _ _ -> searchLivelock net newSeen color outChan
+            Buffer _ _ -> searchLivelock net newSeen color outChan
             Switch _ _ -> msum $ map (\c -> searchLivelock net newSeen (typeIntersection color (chanColors c)) c) outChannels
             Vars _ -> searchLivelock net newSeen color outChan
 

@@ -9,7 +9,7 @@ This module contains data types for deadlock and idle equations, as well as func
 -}
 module Madl.Deadlock.Formulas (
     Literal(..), Formula(..), Source,
-    atHeadLiteral, notAtHeadLiteral, blockLiteral, idleLiteral,
+    atHeadLiteral, inBufferLiteral, notAtHeadLiteral, blockLiteral, idleLiteral,
     containsNoneLiteral,
     disjunct, disjunct',
     conjunct, conjunct',
@@ -68,8 +68,9 @@ data Literal
     | ContainsNone ComponentID (Maybe ColorSet)-- ^ None of the given colors are anywhere in the queue. @ComponentID@ should identify a queue.
     -- @ContainsNone q Nothing \<=\> isEmpty q@.
     | Any_At_Head ComponentID (Maybe ColorSet) -- ^ Any of the given colors is at the head of the queue. @ComponentID@ should identify a queue.
+    | Any_In_Buffer ComponentID (Maybe ColorSet) -- ^ Any of the given colors is in the buffer. @ComponentID@ should identify a buffer.
     | All_Not_At_Head ComponentID (Maybe ColorSet) -- ^ None of the given colors is at the head of the queue. @ComponentID@ should identify a queue.
-    | Select ComponentID Int -- ^ Merge arbiter has selected input @Int@, or LoadBalancer arbiter has selected output @Int@. @ComponentID@ should identify a merge or loadbalancer.
+    | Select ComponentID Int -- ^ Buffer arbiter has selected cell @Inp@, Merge arbiter has selected input @Int@, or LoadBalancer arbiter has selected output @Int@. @ComponentID@ should identify a merge or loadbalancer.
     | MSelect ComponentID (Int, Int) -- ^ MultiMatch arbiter has selected (matchInput, dataInput) @(Int, Int)@. @ComponentID@ should identify a multi-match.
     | InState ComponentID Int -- ^ Automaton is in state @Int@. @ComponentID@ should identify an automaton.
     | TSelect ComponentID Int Int -- ^ Automaton arbiter has selected input @Int@ and transition @Int@. @ComponentID@ should identify an automaton.
@@ -77,6 +78,7 @@ data Literal
     | DeadTrans ComponentID Int -- ^ Transition @Int@ of automaton @ComponentID@ is dead
     | Sum_Compare [(ComponentID, Maybe Color)] String Int -- ^ TODO(snnw, frkv) : explain what @Sum_Compare@ means.
     | BlockSource ComponentID -- ^ The outgoing channel of the source identified by @ComponentID@ satisfies @G!trdy@ for at least one of the colors produced by the source.
+    | BlockBuffer ComponentID -- ^ The outgoing channel of the buffer is blocked for the contents of the buffer.
     | BlockAny Source ChannelID (Maybe ColorSet) -- ^ Channel satisfies @G!trdy@ for at least one of the given colors.
     | IdleAll Source ChannelID (Maybe ColorSet) -- ^ Channel satisfies @G!irdy@ for all of the given colors.
     deriving (Show)
@@ -86,6 +88,7 @@ instance Ord Literal where
     Is_Not_Full l <= Is_Not_Full r = l <= r
     ContainsNone l0 l1 <= ContainsNone r0 r1 = (l0, l1) <= (r0, r1)
     Any_At_Head l0 l1 <= Any_At_Head r0 r1 = (l0, l1) <= (r0, r1)
+    Any_In_Buffer l0 l1 <= Any_In_Buffer r0 r1 = (l0, l1) <= (r0, r1)
     All_Not_At_Head l0 l1 <= All_Not_At_Head r0 r1 = (l0, l1) <= (r0, r1)
     Select l0 l1 <= Select r0 r1 = (l0, l1) <= (r0, r1)
     MSelect l0 l1 <= MSelect r0 r1 = (l0, l1) <= (r0, r1)
@@ -95,6 +98,7 @@ instance Ord Literal where
     DeadTrans l0 l1 <= DeadTrans r0 r1 = (l0, l1) <= (r0, r1)
     Sum_Compare l0 l1 l2 <= Sum_Compare r0 r1 r2 = (l0, l1, l2) <= (r0, r1, r2)
     BlockSource l <= BlockSource r = l <= r
+    BlockBuffer l <= BlockBuffer r = l <= r
     BlockAny _ l0 l1 <= BlockAny _ r0 r1 = (l0, l1) <= (r0, r1)
     IdleAll _ l0 l1 <= IdleAll _ r0 r1 = (l0, l1) <= (r0, r1)
     Is_Full{} <= _ = True
@@ -105,6 +109,8 @@ instance Ord Literal where
     _ <= ContainsNone{} = False
     Any_At_Head{} <= _ = True
     _ <= Any_At_Head{} = False
+    Any_In_Buffer{} <= _ = True
+    _ <= Any_In_Buffer{} = False
     All_Not_At_Head{} <= _ = True
     _ <= All_Not_At_Head{} = False
     Select{} <= _ = True
@@ -123,6 +129,8 @@ instance Ord Literal where
     _ <= Sum_Compare{} = False
     BlockSource{} <= _ = True
     _ <= BlockSource{} = False
+    BlockBuffer{} <= _ = True
+    _ <= BlockBuffer{} = False
     BlockAny{} <= _ = True
     _ <= BlockAny{} = False
 
@@ -133,6 +141,13 @@ instance Eq Literal where
 atHeadLiteral :: (IsColorSet c, INetwork n a (WithColors b)) => n a (WithColors b) -> ComponentID -> c -> Literal
 atHeadLiteral net cID cs = Any_At_Head cID cs' where
     cs' = if toColorSet cs == head (inputTypes net cID) then Nothing else Just $ toColorSet cs
+
+
+-- | Constructs an @Any_In_Buffer@ literal. Uses @Nothing@ as colorset if appropriate.
+inBufferLiteral :: (IsColorSet c, INetwork n a (WithColors b)) => n a (WithColors b) -> ComponentID -> c -> Literal
+inBufferLiteral net cID cs = Any_In_Buffer cID cs' where
+    cs' = if toColorSet cs == head (inputTypes net cID) then Nothing else Just $ toColorSet cs
+
 
 -- | Constructs an @All_Not_At_Head@ literal. Uses @Nothing@ as colorset if appropriate.
 notAtHeadLiteral :: INetwork n a (WithColors b) => n a (WithColors b) -> ComponentID -> ColorSet -> Literal
