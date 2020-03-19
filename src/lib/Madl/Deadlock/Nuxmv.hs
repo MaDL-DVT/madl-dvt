@@ -636,9 +636,9 @@ nuxmvLiteral net (Is_Not_Full i) = case getComponent net i of
     _ -> fatal 330 "expected queue"
 nuxmvLiteral net (Any_At_Head i d) = [nuxmv_atmost "1" (typeAtHead net i c (d, 1))] where
     c = getComponent net i
-nuxmvLiteral net (Any_In_Buffer i d) = case getComponent net i of
+{-nuxmvLiteral net (Any_In_Buffer i d) = case getComponent net i of
     (Buffer name cap) -> [nuxmv_and (map (\n -> typeInBuffer n net i (Buffer name cap) (d,1)) [0..cap-1])]
-    _ -> fatal 330 "expected buffer"
+    _ -> fatal 330 "expected buffer"-}
 nuxmvLiteral net (All_Not_At_Head i d) = [nuxmv_equals "0" (typeAtHead net i c (d, 1))] where
     c = getComponent net i
 nuxmvLiteral net (ContainsNone i d) = [nuxmv_equals "0" (typeInQ net i c (d, 1))] where

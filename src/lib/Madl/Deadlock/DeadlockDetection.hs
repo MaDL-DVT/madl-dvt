@@ -536,7 +536,11 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
                 fs = map block_one_color currColors
                 block_one_color :: Color -> Formula
                 block_one_color c = blockLiteral' (src 118) net (outchan) c
-        Buffer{} -> conjunct (Lit $ Is_Full cID) (Lit $ BlockBuffer cID)
+        Buffer{} -> conjunct (Lit $ Is_Full cID) blockBuffer where
+              blockBuffer = AND $ Set.fromList (map (\d -> conjunct (Lit $ ContainsNone cID (Just d)) (Lit $ BlockAny (src 540) out (Just d))) ts) --(Lit $ BlockBuffer cID)
+              [intype] = inputTypes net cID
+              ts = map (\x -> toColorSet x) (getColors intype)
+              out = head $ getOutChannels net cID
             {-if allTheSame fs
             -- then the queue is blocked iff this formula is true and if any of the given colors is at the head of the queue)
             then conjunct (head fs) (Lit $ atHeadLiteral net cID colors')
@@ -904,7 +908,8 @@ irdy_any source net xID currColorSet vars =
         "Illegal call to irdy arsing from " +++showT source +++ ": colorset " +++ showT (toColorSet currColorSet) +++ " is not a subtype of " +++ showT (colorset xID) else
     case getComponent net cID of
         Queue{} -> Lit $ atHeadLiteral net cID currColorSet --Any of the given colors at head of the queue
-        Buffer{} -> Lit $ inBufferLiteral net cID currColorSet --TODO update!
+        Buffer{} -> NOT $ Lit $ ContainsNone cID cs' where 
+          cs' = if toColorSet currColorSet == head (inputTypes net cID) then Nothing else Just $ toColorSet currColorSet --TODO update!
         Vars{} -> irdy_any (src 353) net (inChan 0) currColorSet vars --incoming channel irdy
         Cut{} -> irdy_any (src 353) net (inChan 0) currColorSet vars --incoming channel irdy
         Fork{} -> exists currColors irdy_one_color where --incoming channel irdy and all other outgoing channel trdy

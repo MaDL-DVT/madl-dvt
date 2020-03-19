@@ -9,7 +9,7 @@ This module contains data types for deadlock and idle equations, as well as func
 -}
 module Madl.Deadlock.Formulas (
     Literal(..), Formula(..), Source,
-    atHeadLiteral, inBufferLiteral, notAtHeadLiteral, blockLiteral, idleLiteral,
+    atHeadLiteral, {-inBufferLiteral,-} notAtHeadLiteral, blockLiteral, idleLiteral,
     containsNoneLiteral,
     disjunct, disjunct',
     conjunct, conjunct',
@@ -68,7 +68,7 @@ data Literal
     | ContainsNone ComponentID (Maybe ColorSet)-- ^ None of the given colors are anywhere in the queue. @ComponentID@ should identify a queue.
     -- @ContainsNone q Nothing \<=\> isEmpty q@.
     | Any_At_Head ComponentID (Maybe ColorSet) -- ^ Any of the given colors is at the head of the queue. @ComponentID@ should identify a queue.
-    | Any_In_Buffer ComponentID (Maybe ColorSet) -- ^ Any of the given colors is in the buffer. @ComponentID@ should identify a buffer.
+--    | Any_In_Buffer ComponentID (Maybe ColorSet) -- ^ Any of the given colors is in the buffer. @ComponentID@ should identify a buffer.
     | All_Not_At_Head ComponentID (Maybe ColorSet) -- ^ None of the given colors is at the head of the queue. @ComponentID@ should identify a queue.
     | Select ComponentID Int -- ^ Buffer arbiter has selected cell @Inp@, Merge arbiter has selected input @Int@, or LoadBalancer arbiter has selected output @Int@. @ComponentID@ should identify a merge or loadbalancer.
     | MSelect ComponentID (Int, Int) -- ^ MultiMatch arbiter has selected (matchInput, dataInput) @(Int, Int)@. @ComponentID@ should identify a multi-match.
@@ -88,7 +88,7 @@ instance Ord Literal where
     Is_Not_Full l <= Is_Not_Full r = l <= r
     ContainsNone l0 l1 <= ContainsNone r0 r1 = (l0, l1) <= (r0, r1)
     Any_At_Head l0 l1 <= Any_At_Head r0 r1 = (l0, l1) <= (r0, r1)
-    Any_In_Buffer l0 l1 <= Any_In_Buffer r0 r1 = (l0, l1) <= (r0, r1)
+--    Any_In_Buffer l0 l1 <= Any_In_Buffer r0 r1 = (l0, l1) <= (r0, r1)
     All_Not_At_Head l0 l1 <= All_Not_At_Head r0 r1 = (l0, l1) <= (r0, r1)
     Select l0 l1 <= Select r0 r1 = (l0, l1) <= (r0, r1)
     MSelect l0 l1 <= MSelect r0 r1 = (l0, l1) <= (r0, r1)
@@ -109,8 +109,8 @@ instance Ord Literal where
     _ <= ContainsNone{} = False
     Any_At_Head{} <= _ = True
     _ <= Any_At_Head{} = False
-    Any_In_Buffer{} <= _ = True
-    _ <= Any_In_Buffer{} = False
+--    Any_In_Buffer{} <= _ = True
+--    _ <= Any_In_Buffer{} = False
     All_Not_At_Head{} <= _ = True
     _ <= All_Not_At_Head{} = False
     Select{} <= _ = True
@@ -144,9 +144,9 @@ atHeadLiteral net cID cs = Any_At_Head cID cs' where
 
 
 -- | Constructs an @Any_In_Buffer@ literal. Uses @Nothing@ as colorset if appropriate.
-inBufferLiteral :: (IsColorSet c, INetwork n a (WithColors b)) => n a (WithColors b) -> ComponentID -> c -> Literal
+{-inBufferLiteral :: (IsColorSet c, INetwork n a (WithColors b)) => n a (WithColors b) -> ComponentID -> c -> Literal
 inBufferLiteral net cID cs = Any_In_Buffer cID cs' where
-    cs' = if toColorSet cs == head (inputTypes net cID) then Nothing else Just $ toColorSet cs
+    cs' = if toColorSet cs == head (inputTypes net cID) then Nothing else Just $ toColorSet cs-}
 
 
 -- | Constructs an @All_Not_At_Head@ literal. Uses @Nothing@ as colorset if appropriate.
