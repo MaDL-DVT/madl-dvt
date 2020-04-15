@@ -1,0 +1,139 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+function combo_off():comb {
+  d0 = off;
+  d1 = off;
+};
+
+function combo_fst_on(st_var:comb):comb {
+  d0 = on;
+  d1 = st_var.d1;
+};
+
+function combo_snd_on(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = on;
+};
+
+function combo_fst_off(st_var:comb):comb {
+  d0 = off;
+  d1 = st_var.d1;
+};
+
+function combo_snd_off(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = off;
+};
+
+pred f(act1:signal,act2:signal) {
+  act1 == high;
+};
+
+uses top_controller;
+uses signal_combo;
+uses domain5;
+uses domain5_dl;
+
+chan state1,action1 := domain5();
+chan state2,action2 := domain5();
+chan state3,action3 := domain5();
+chan state4,action4 := domain5();
+chan state5,action5 := domain5();
+chan state6,action6 := domain5();
+chan state7,action7 := domain5();
+chan state8,action8 := domain5();
+chan state9,action9 := domain5();
+chan state10,action10 := domain5();
+chan state11,action11 := domain5();
+chan state12a,action12a := domain5();
+chan state13,action13 := domain5();
+chan state14,action14 := domain5();
+chan state15,action15 := domain5();
+chan state16,action16 := domain5();
+chan state17,action17 := domain5();
+chan state18,action18 := domain5();
+chan state19,action19 := domain5();
+chan state20,action20 := domain5();
+chan state21,action21 := domain5();
+chan state22,action22 := domain5();
+chan state23,action23 := domain5();
+chan state24,action24 := domain5();
+chan state25,action25 := domain5();
+chan state26,action26 := domain5();
+chan state27,action27 := domain5();
+chan state28,action28 := domain5();
+chan state29,action29 := domain5();
+chan state30,action30 := domain5_dl();
+
+chan state_c1 := signal_combo(state1,state2);
+chan state_c2 := signal_combo(state_c1,state3);
+chan state_c3 := signal_combo(state_c2,state4);
+chan state_c4 := signal_combo(state_c3,state5);
+chan state_c5 := signal_combo(state_c4,state6);
+chan state_c6 := signal_combo(state_c5,state7);
+chan state_c7 := signal_combo(state_c6,state8);
+chan state_c8 := signal_combo(state_c7,state9);
+chan state_c9 := signal_combo(state_c8,state10);
+chan state_c10 := signal_combo(state_c9,state11);
+chan state_c11 := signal_combo(state_c10,state12a);
+chan state_c12 := signal_combo(state_c11,state13);
+chan state_c13 := signal_combo(state_c12,state14);
+chan state_c14 := signal_combo(state_c13,state15);
+chan state_c15 := signal_combo(state_c14,state16);
+chan state_c16 := signal_combo(state_c15,state17);
+chan state_c17 := signal_combo(state_c16,state18);
+chan state_c18 := signal_combo(state_c17,state19);
+chan state_c19 := signal_combo(state_c18,state20);
+chan state_c20 := signal_combo(state_c19,state21);
+chan state_c21 := signal_combo(state_c20,state22);
+chan state_c22 := signal_combo(state_c21,state23);
+chan state_c23 := signal_combo(state_c22,state24);
+chan state_c24 := signal_combo(state_c23,state25);
+chan state_c25 := signal_combo(state_c24,state26);
+chan state_c26 := signal_combo(state_c25,state27);
+chan state_c27 := signal_combo(state_c26,state28);
+chan state_c28 := signal_combo(state_c27,state29);
+chan state_c29 := signal_combo(state_c28,state30);
+
+chan action_c1 := signal_combo(action1,action2);
+chan action_c2 := signal_combo(action_c1,action3);
+chan action_c3 := signal_combo(action_c2,action4);
+chan action_c4 := signal_combo(action_c3,action5);
+chan action_c5 := signal_combo(action_c4,action6);
+chan action_c6 := signal_combo(action_c5,action7);
+chan action_c7 := signal_combo(action_c6,action8);
+chan action_c8 := signal_combo(action_c7,action9);
+chan action_c9 := signal_combo(action_c8,action10);
+chan action_c10 := signal_combo(action_c9,action11);
+chan action_c11 := signal_combo(action_c10,action12a);
+chan action_c12 := signal_combo(action_c11,action13);
+chan action_c13 := signal_combo(action_c12,action14);
+chan action_c14 := signal_combo(action_c13,action15);
+chan action_c15 := signal_combo(action_c14,action16);
+chan action_c16 := signal_combo(action_c15,action17);
+chan action_c17 := signal_combo(action_c16,action18);
+chan action_c18 := signal_combo(action_c17,action19);
+chan action_c19 := signal_combo(action_c18,action20);
+chan action_c20 := signal_combo(action_c19,action21);
+chan action_c21 := signal_combo(action_c20,action22);
+chan action_c22 := signal_combo(action_c21,action23);
+chan action_c23 := signal_combo(action_c22,action24);
+chan action_c24 := signal_combo(action_c23,action25);
+chan action_c25 := signal_combo(action_c24,action26);
+chan action_c26 := signal_combo(action_c25,action27);
+chan action_c27 := signal_combo(action_c26,action28);
+chan action_c28 := signal_combo(action_c27,action29);
+chan action_c29 := signal_combo(action_c28,action30);
+
+Sink(top_controller(state_c29,action_c29));

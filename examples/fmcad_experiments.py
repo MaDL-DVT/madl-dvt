@@ -9,11 +9,10 @@ gng_dir = os.path.join(curdir,'go_no_go')
 pc_dir = os.path.join(curdir,'power_clock')
 
 gng_name = 'go_no_go_top'
-gng_suffixes = ['1','1_dl','3','3_dl','7','7_dl','11','11_dl','15','15_dl','23','23_dl','31','31_dl','63','63_dl']
-
+gng_suffixes = ['1','1_dl','2','2_dl','3','3_dl','4','4_dl','5','5_dl','6','6_dl','7','7_dl']
 
 pc_name = 'pc_top'
-pc_suffixes = ['1_5','1_5_dl','2_5','2_5_dl','3_5','3_5_dl','4_5','4_5_dl','5_5','5_5_dl','6_5','6_5_dl','7_5','7_5_dl']
+pc_suffixes = ['10_5','10_5_dl','20_5','20_5_dl','30_5','30_5_dl','40_5','40_5_dl','50_5','50_5_dl']
 
 
 if (len(argv) > 1):
@@ -26,7 +25,7 @@ def check_dlockdetect_exists():
     subprocess.check_call(['dlockdetect', '--help'],
                           stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
-def run_test(tdir,tname,suffixes,res_file):
+def run_test_smt(tdir,tname,suffixes,res_file):
     for i in suffixes:
         f = tname + '_' + i + '.madl'
         name = os.path.join(curdir,tdir,f)
@@ -37,6 +36,11 @@ def run_test(tdir,tname,suffixes,res_file):
             print("Case {0}, SMT failed with exit code {1}".format(name, gng_res.returncode))
         print(str(time.time()-start_time))
         res_file.write(f + '\t\t\t' + 'smt' + '\t' + str(time.time()-start_time) + '\n')
+
+def run_test_smv(tdir,tname,suffixes,res_file):
+    for i in suffixes:
+        f = tname + '_' + i + '.madl'
+        name = os.path.join(curdir,tdir,f)
         start_time = time.time()
         print("Testing {0} using nuXMV (reachability)".format(name))
         gng_res = subprocess.run(['time','dlockdetect','-f',name,'--no-cyclecheck','--simultaneous-smt','--reachability-only'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
@@ -50,7 +54,9 @@ check_dlockdetect_exists()
 
 resfile = open(results_name,'w+')
 
-run_test('go_no_go',gng_name,gng_suffixes,resfile)
-run_test('power_clock',pc_name,pc_suffixes,resfile)
+run_test_smt('go_no_go',gng_name,gng_suffixes,resfile)
+run_test_smt('power_clock',pc_name,pc_suffixes,resfile)
+run_test_smv('go_no_go',gng_name,gng_suffixes,resfile)
+run_test_smv('power_clock',pc_name,pc_suffixes,resfile)
 
 resfile.close()

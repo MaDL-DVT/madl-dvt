@@ -62,6 +62,6 @@ process sig_combo(chan dev_sig1, chan dev_sig2) => chan comb_sig {
   };
 };
 
-let combo_sig := Queue(1,sig_combo(Queue(1,device_sig1),Queue(1,device_sig2)));
+let combo_sig := Queue(1,sig_combo(device_sig1,device_sig2));
 
 };

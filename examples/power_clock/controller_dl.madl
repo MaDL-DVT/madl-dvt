@@ -6,11 +6,11 @@ enum signal {high;low;};
 
 macro controller_dl(chan denial, chan activity) => chan request, chan o_power {
 
-process Controller_dl(chan deny,chan active) => chan req, chan o_pow {
+process Controller(chan deny,chan active) => chan req, chan o_pow {
   state CONTROLLER_OFF() {
     trans {
-      high d <- active;
-      high -> req;
+      low d <- active;
+      low -> req;
       next CONTROLLER_TO_ON();
     };
   };
@@ -24,17 +24,9 @@ process Controller_dl(chan deny,chan active) => chan req, chan o_pow {
 
   state CONTROLLER_ON() {
     trans {
-      low d <- active;
-      low -> req;
+      high d <- active;
+      high -> req;
       next CONTROLLER_TO_OFF();
-    };
-    trans {
-      high d <- active;
-      next CONTROLLER_ON();
-    };
-    trans {
-      high d <- active;
-      next CONTROLLER_DL();
     };
 
   };
@@ -42,7 +34,7 @@ process Controller_dl(chan deny,chan active) => chan req, chan o_pow {
   state CONTROLLER_TO_OFF() {
     trans {
       high d <- deny;
-      next CONTROLLER_ON();
+      next CONTROLLER_DENIED();
     };
 
     trans {
@@ -52,16 +44,16 @@ process Controller_dl(chan deny,chan active) => chan req, chan o_pow {
     };
   };
 
-  state CONTROLLER_DL(){
+  state CONTROLLER_DENIED() {
     trans {
-      low d <- active;
-      next CONTROLLER_DL();
+      high d <- active;
+      next CONTROLLER_ON();
     };
   };
 
 };
 
-chan o1, o2 := Controller_dl(denial, activity);
+chan o1, o2 := Controller(denial, activity);
 
 let request := Queue(1,o1);
 let o_power := Queue(1,o2);

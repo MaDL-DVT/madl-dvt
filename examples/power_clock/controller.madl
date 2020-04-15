@@ -28,23 +28,26 @@ process Controller(chan deny,chan active) => chan req, chan o_pow {
       low -> req;
       next CONTROLLER_TO_OFF();
     };
-    trans {
-      high d <- active;
-      next CONTROLLER_ON();
-    };
 
   };
 
   state CONTROLLER_TO_OFF() {
     trans {
       high d <- deny;
-      next CONTROLLER_ON();
+      next CONTROLLER_DENIED();
     };
 
     trans {
       low d <- deny;
       low -> o_pow;
       next CONTROLLER_OFF();
+    };
+  };
+
+  state CONTROLLER_DENIED() {
+    trans {
+      high d <- active;
+      next CONTROLLER_ON();
     };
   };
 

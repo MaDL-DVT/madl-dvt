@@ -1,0 +1,79 @@
+const tok;
+const high;
+const low;
+const on;
+const off;
+
+enum signal {high;low;};
+enum onoff {on;off;};
+struct comb{
+  d0: onoff;
+  d1: onoff;
+};
+
+function combo_off():comb {
+  d0 = off;
+  d1 = off;
+};
+
+function combo_fst_on(st_var:comb):comb {
+  d0 = on;
+  d1 = st_var.d1;
+};
+
+function combo_snd_on(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = on;
+};
+
+function combo_fst_off(st_var:comb):comb {
+  d0 = off;
+  d1 = st_var.d1;
+};
+
+function combo_snd_off(st_var:comb):comb {
+  d0 = st_var.d0;
+  d1 = off;
+};
+
+pred f(act1:signal,act2:signal) {
+  act1 == high;
+};
+
+uses top_controller;
+uses signal_combo;
+uses domain5;
+uses domain5_dl;
+
+chan state1,action1 := domain5();
+chan state2,action2 := domain5();
+chan state3,action3 := domain5();
+chan state4,action4 := domain5();
+chan state5,action5 := domain5();
+chan state6,action6 := domain5();
+chan state7,action7 := domain5();
+chan state8,action8 := domain5();
+chan state9,action9 := domain5();
+chan state10,action10 := domain5_dl();
+
+chan state12 := signal_combo(state1,state2);
+chan state123 := signal_combo(state12,state3);
+chan state1234 := signal_combo(state123,state4);
+chan state12345 := signal_combo(state1234,state5);
+chan state123456 := signal_combo(state12345,state6);
+chan state1234567 := signal_combo(state123456,state7);
+chan state12345678 := signal_combo(state1234567,state8);
+chan state123456789 := signal_combo(state12345678,state9);
+chan state12345678910 := signal_combo(state123456789,state10);
+
+chan action12 := signal_combo(action1,action2);
+chan action123 := signal_combo(action12,action3);
+chan action1234 := signal_combo(action123,action4);
+chan action12345 := signal_combo(action1234,action5);
+chan action123456 := signal_combo(action12345,action6);
+chan action1234567 := signal_combo(action123456,action7);
+chan action12345678 := signal_combo(action1234567,action8);
+chan action123456789 := signal_combo(action12345678,action9);
+chan action12345678910 := signal_combo(action123456789,action10);
+
+Sink(top_controller(state12345678910,action12345678910));

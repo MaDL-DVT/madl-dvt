@@ -24,7 +24,6 @@ state CONTROLLER_OFF() {
 
 state CONTROLLER_TO_ON() {
   trans {
-    high d <- in_state;
     high -> o_state;
     next CONTROLLER_ON();
   };
