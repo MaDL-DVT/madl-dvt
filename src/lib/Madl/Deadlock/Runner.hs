@@ -177,7 +177,7 @@ notFullQueues net solver invs = fmap (map fst) $ par_filterM isInfeasible (getCo
 
 -- some helpers used to calculate formulas for the nuxmv model
 literals :: ColoredNetwork -> [ChannelID] -> Seq Formula
-literals net chans = Seq.fromList $ map (\x -> NOT $ AND (Set.fromList [NOT (Lit $ IdleAll (src 174) x (Just (getColorSet net x))),Lit (BlockAny (src 174) x (Just (getColorSet net x)))])) chans
+literals net chans = Seq.fromList $ map (\x -> NOT $ AND (Set.fromList [NOT (Lit $ IdleAll (src 174) x Nothing),Lit (BlockAny (src 174) x Nothing)])) chans
 --literals net _ = Seq.fromList $ map (\x -> mkLiteral net x) (getAllSourceIDs net)
 
 mkLiteral :: ColoredNetwork -> ComponentID -> Formula
@@ -272,14 +272,15 @@ runDeadlockDetection net options invs nfqs =
         detectDeadlock :: ChannelID -> IO (Either String (Bool, Maybe SMTModel))
         detectDeadlock i = let
             name = utxt . getName . getChannel net
-            lit1 = IdleAll (src 174) i (Just (getColorSet net i))
-            lit2 = BlockAny (src 174) i (Just (getColorSet net i)) in
+            lit1 = IdleAll (src 174) i Nothing --IdleAll (src 174) i (Just (getColorSet net i))
+            lit2 = BlockAny (src 174) i Nothing {-BlockAny (src 174) i (Just (getColorSet net i))-} in
             --blockLit = (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) in
                 do
                     --when (argVerbose options == ON) $ putStrLn ("Starting deadlock detection for source " ++ name i)
 --                    nfqs' <- nfqs -- (js) this takes quite a lot of time ! I would turn in off for now.
                     --when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model ... ")
-                    let ret  = unfold_formula net (BlockVars live nfqs) (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) --{-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
+                    let ret  = unfold_formula net (BlockVars live nfqs) (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i Nothing),Lit (BlockAny (src 174) i Nothing)]))
+                      --unfold_formula net (BlockVars live nfqs) (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) --{-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
                     let file = "deadlock_" ++ name i ++ ".smt2"
                     h <- openFile file WriteMode
                     hPutStrLn h $ "(set-logic QF_LIA)\n" ++ smtinvs
@@ -308,8 +309,8 @@ runDeadlockDetection net options invs nfqs =
 
         mkAssertions :: [ChannelID] -> String -> String
         mkAssertions [] s = "(assert " ++ s ++ ")"
-        mkAssertions (x:xs) s = let lit1 i = IdleAll (src 174) i (Just (getColorSet net i))
-                                    lit2 i = BlockAny (src 174) i (Just (getColorSet net i))
+        mkAssertions (x:xs) s = let lit1 i = IdleAll (src 174) i Nothing--IdleAll (src 174) i (Just (getColorSet net i))
+                                    lit2 i = BlockAny (src 174) i Nothing--BlockAny (src 174) i (Just (getColorSet net i))
                                     res = "(and (not " ++ export_literal_to_SMT net show_p (lit1 x) ++ ") " ++ export_literal_to_SMT net show_p (lit2 x) ++ ")"
                                     res' = if s == ""
                                            then res

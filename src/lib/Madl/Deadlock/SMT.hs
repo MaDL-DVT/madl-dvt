@@ -110,11 +110,11 @@ export_q_var_to_smt :: ColoredNetwork -> ComponentID -> String
 export_q_var_to_smt x i = case getComponent x i of
     Queue _ cap -> unwords[smt_fun "Int" name, smt_assert_inrange name (0, cap)] where
         name = smt_queue x i
-    Buffer _ cap -> unlines[
-                    unwords[smt_fun "Int" name, smt_assert_inrange name (0, cap)],
-                    unwords[smt_fun "Int" name_a, smt_assert_inrange name_a (0, cap - 1)]] where
+    Buffer _ cap -> --unlines[
+                    unwords[smt_fun "Int" name, smt_assert_inrange name (0, cap)]{-,
+                    unwords[smt_fun "Int" name_a, smt_assert_inrange name_a (0, cap - 1)]]-} where
         name = smt_queue x i
-        name_a = smt_buffer_arbiter x i
+        --name_a = smt_buffer_arbiter x i
     Merge{} -> unwords[smt_fun "Int" name, smt_assert_inrange name (0, getNrInputs x i - 1)] where
         name = smt_merge_arbiter x i
     MultiMatch{} -> unlines[

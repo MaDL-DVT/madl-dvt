@@ -93,10 +93,10 @@ _unfold_formulas fm' = Map.foldlWithKey unfold_formulas' fm' fm' where
 
 -- | Compute the formula corresponding to the literal.
 expand_literal :: Show c => XColoredNetwork c -> BlockVariables -> Literal -> Maybe Formula
-expand_literal net _vars (BlockSource cID) = Just $
+expand_literal net vars (BlockSource cID) = Just $
     let [o] = getOutChannels net cID in
     case getComponent net cID of
-        Source _ msg -> blockLiteral' (src 58) net o msg
+        Source _ msg -> blockLiteral' (src 58) net o vars msg
         _ -> fatal 56 "BlockSource can only be used for source component"
 --block_firstcall' :: (Show c) => Source -> XColoredNetwork c -> ChannelID -> Maybe ColorSet -> BlockVariables -> Formula
 expand_literal net vars (BlockBuffer cID) = Nothing --Just $ block_firstcall' (src 102) net (head $ getInChannels net cID) Nothing vars
@@ -335,7 +335,7 @@ automatonDead net cID vars = case getComponent net cID of
                 outputBlocked :: Formula
                 outputBlocked = case f i color of
                     Nothing -> F
-                    Just (o, c) -> blockLiteral' (src 101) net (outChan o) c
+                    Just (o, c) -> blockLiteral' (src 101) net (outChan o) vars c
     _ -> fatal 94 "AutomatonDead should only be called on automata."
     where
         outChan = lookupM' (src 105) $ getOutChannels net cID
@@ -535,9 +535,9 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
                 fs :: [Formula]
                 fs = map block_one_color currColors
                 block_one_color :: Color -> Formula
-                block_one_color c = blockLiteral' (src 118) net (outchan) c
+                block_one_color c = blockLiteral' (src 118) net (outchan) vars c
         Buffer{} -> conjunct (Lit $ Is_Full cID) blockBuffer where
-              blockBuffer = AND $ Set.fromList (map (\d -> conjunct (Lit $ ContainsNone cID (Just d)) (Lit $ BlockAny (src 540) out (Just d))) ts) --(Lit $ BlockBuffer cID)
+              blockBuffer = OR $ Set.fromList (map (\d -> AND $ Set.fromList [(NOT $ Lit $ ContainsNone cID (Just d)), (Lit $ BlockAny (src 540) out (Just d))]) ts) --(Lit $ BlockBuffer cID)
               [intype] = inputTypes net cID
               ts = map (\x -> toColorSet x) (getColors intype)
               out = head $ getOutChannels net cID
@@ -556,12 +556,17 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
         --   the automaton is dead
         -- todo(tssb): This doesn't cover the situation where some transition does accept the given color from the given channel,
         --               but this transition can never be triggered. Possible unsoundness?
+--Freek's formula
+        {-Automaton _ _ _ _ ts _ -> conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
+            f = automatonDead net cID vars
+            colorNeverExcepted color = all (\AutomatonT{eventFunction=event} -> not $ event port color) ts-}
         Automaton _ _ _ _ ts _ -> let (ColorSet cols) = colors'
                                       cols' = Set.toList cols
                                       fs = if cols' == []
                                            then F
                                            else OR $ Set.fromList $ map (\x -> automatonBlockedChannel net cID vars xID x) cols'
                                   in fs
+
                                                {-conjunct (negation (idleLiteral' loc net xID currColors)) (disjunct (fromBool $ any colorNeverExcepted currColors) f) where
             f = automatonDead net cID vars
             colorNeverExcepted color = all (\AutomatonT{eventFunction=event} -> not $ event port color) ts-}
@@ -572,8 +577,15 @@ block_firstcall' loc net xID colors vars = -- mkLit (BlockAny xID currColorSet) 
         currColors = getColors colors'
         colors' = case colors of Nothing -> snd (getChannel net xID); Just cs -> cs
 
+--block_any :: IsColorSet a => Source -> XColoredNetwork c -> ChannelID -> Maybe a -> BlockVariables -> Formula
+
+{-
 blockLiteral' :: IsColorSet a => Source -> XColoredNetwork c -> ChannelID -> a -> Formula
 blockLiteral' loc net xID = Lit . blockLiteral loc net xID . toColorSet
+-}
+
+blockLiteral' :: IsColorSet a => Source -> XColoredNetwork c -> ChannelID -> BlockVariables -> a -> Formula
+blockLiteral' loc net xID _vars = Lit . blockLiteral loc net xID . toColorSet
 
 -- | Produces a block equation for the given channel with the given set of
 -- colors. Given a channel x, and a colorset C,
@@ -599,17 +611,17 @@ block_any source net xID colors vars =
         Buffer{} -> Lit $ BlockAny (src 197) xID Nothing --TODO update!
         -- For a vars component we just check whether any of the given colors is
         -- blocked on the outgoing channel of this component.
-        Vars{} -> blockLiteral' (src 200) net (outChan 0) colors'
+        Vars{} -> blockLiteral' (src 200) net (outChan 0) vars colors'
         -- Cut similar to vars
-        Cut{} -> blockLiteral' (src 200) net (outChan 0) colors'
+        Cut{} -> blockLiteral' (src 200) net (outChan 0) vars colors'
         -- Some outgoing channel is blocked
-        Fork{} -> exists outChans (\x -> blockLiteral' (src 138) net x colors')
+        Fork{} -> exists outChans (\x -> blockLiteral' (src 138) net x vars colors')
         -- Output blocked or any input other than p is idle
         ControlJoin{} -> disjunct outputBlocked (existsMaybe inChans inputIdle)
             where
             outputBlocked = if empty $ outColorset 0
                 then T
-                else blockLiteral' (src 140) net (outChan 0) blockedcolors
+                else blockLiteral' (src 140) net (outChan 0) vars blockedcolors
             blockedcolors = if port == 0
                 then (toColorSet colors')
                 else (outColorset 0)
@@ -626,15 +638,15 @@ block_any source net xID colors vars =
                 (disjunct block_c block_match) where
                 block_c = if null no_match
                     then F
-                    else blockLiteral' (src 146) net (outChan 0) c
-                block_match = blockLiteral' (src 147) net (outChan 0) match
+                    else blockLiteral' (src 146) net (outChan 0) vars c
+                block_match = blockLiteral' (src 147) net (outChan 0) vars match
                 (match, no_match) = partition pCond currColors
                 pCond = if port == 0
                     then flip (matched f) c
                     else not . matched f c
             other = if port == 0 then 1 else 0
         Switch{} -> exists outChans blocked where -- Any output blocked
-            blocked x = blockLiteral' (src 158) net x $ typeIntersection (colorset x) colors'
+            blocked x = blockLiteral' (src 158) net x vars $ typeIntersection (colorset x) colors'
         Merge{} -> disjunct curr_selected other_selected where
             -- Current input selected, and output blocked
             curr_selected = conjunct
@@ -654,7 +666,7 @@ block_any source net xID colors vars =
         -- Dead sink is always !trdy
         DeadSink{} -> T
         -- Output blocked for result of function
-        Function _ f _ -> blockLiteral' (src 167) net (outChan 0) ((resultingTypeStrict (makeArguments [colors']) f)::ColorSet)
+        Function _ f _ -> blockLiteral' (src 167) net (outChan 0) vars ((resultingTypeStrict (makeArguments [colors']) f)::ColorSet)
         Source{} -> fatal 114 "block should not be called on Source"
         PatientSource{} -> fatal 115 "block should not be called on Source"
         Match _ f -> if port == 0 then --match input: all matching colors of some color idle, or irdy and blocked
@@ -664,10 +676,10 @@ block_any source net xID colors vars =
                 all_matching_idle mColor = idleLiteral' (src 174) net (inChan 1) matchingColors where
                     matchingColors = filter (flip (matched f) mColor) (inColors 1)
                 irdy_and_blocked_d dColor = conjunct (irdy_any (src 176) net (inChan 1)  dColor vars) $ disjunct
-                    (if any (matched f dColor) currColors then blockLiteral' (src 177) net (outChan 0) dColor else F)
-                    (if any (not . matched f dColor) currColors then blockLiteral' (src 178) net (outChan 1) dColor else F)
+                    (if any (matched f dColor) currColors then blockLiteral' (src 177) net (outChan 0) vars dColor else F)
+                    (if any (not . matched f dColor) currColors then blockLiteral' (src 178) net (outChan 1) vars dColor else F)
                 irdy_and_blocked_m mColor = conjunct (irdy_any (src 179) net (inChan 0) mColor vars) $ disjunct
-                    (blockLiteral' (src 180) net (outChan 0) (filter (flip (matched f) mColor) currColors))
+                    (blockLiteral' (src 180) net (outChan 0) vars (filter (flip (matched f) mColor) currColors))
                     (Lit $ BlockAny (src 181) (outChan 1) Nothing) -- XXX: I can't believe this actually works
         MultiMatch _ f -> if port < length outChans
             -- match input: all matching colors of some color idle, or selection
@@ -688,10 +700,10 @@ block_any source net xID colors vars =
 
                 selected_and_blocked_d dIn = conjunct (Lit $ MSelect cID (port, dIn)) (exists matching_colors irdy_and_blocked) where
                     matching_colors = filter (\c -> any (matched f c) currColors) (inColors dIn)
-                    irdy_and_blocked dColor = conjunct (irdy_any (src 196) net (inChan dIn) dColor vars) (blockLiteral' (src 196) net (outChan port) dColor)
+                    irdy_and_blocked dColor = conjunct (irdy_any (src 196) net (inChan dIn) dColor vars) (blockLiteral' (src 196) net (outChan port) vars dColor)
                 selected_and_blocked_m mIn = conjunct (Lit $ MSelect cID (mIn, port)) $ (exists (inColors mIn) irdy_and_blocked) where
                     irdy_and_blocked mColor = conjunct (irdy_any (src 198) net (inChan mIn) mColor vars) $
-                        blockLiteral' (src 199) net (outChan mIn) (filter (flip (matched f) mColor) currColors)
+                        blockLiteral' (src 199) net (outChan mIn) vars (filter (flip (matched f) mColor) currColors)
 
                 other_selected_and_blocked = exists (filter (/= port) matchPorts) (\mIn -> exists (filter (/= port) dataPorts) (sel_and_blocked mIn))
                 sel_and_blocked mIn dIn = conjunct (Lit $ MSelect cID (mIn, dIn)) (exists colorClasses (uncurry irdy_and_blocked_m)) where
@@ -704,29 +716,29 @@ block_any source net xID colors vars =
                     irdy_and_blocked_d dColor =
                         conjunct
                             (irdy_any (src 205) net (inChan dIn) dColor vars)
-                            (blockLiteral' (src 205) net (outChan mIn) dColor)
+                            (blockLiteral' (src 205) net (outChan mIn) vars dColor)
 
                 matchPorts = [0..length outChans-1]
                 dataPorts = [length outChans..length inChans-1]
         LoadBalancer{} -> exists currColors all_outputs_blocked where
             -- note that blocking equations take into account that an output is selected only if it is trdy.
             -- therefore, the deadlock equation checks that for one color all outputs are blocked.
-                all_outputs_blocked c = forall outChans (\chan -> blockLiteral' (src 212) net chan c)
+                all_outputs_blocked c = forall outChans (\chan -> blockLiteral' (src 212) net chan vars c)
         -- Joitch is blocked if either the other incoming channel is idle, or if some color is ready on the other channel and the output is blocked
         Joitch _ preds -> disjunct (idleLiteral' (src 213) net (inChan other) (inColorset other)) (exists (inColors other) irdy_and_blocked) where
             other = 1 - port
             irdy_and_blocked c = conjunct (irdy_any (src 215) net (inChan other) c vars) (exists [0..length preds-1] $ blocked c)
-            blocked c p = disjunct (blockLiteral' (src 216) net (outChan $ 2*p + port) matchingColors) $
-                case matchingColors of [] -> F; _ -> (blockLiteral' (src 217) net (outChan $ 2*p + other) c); where
+            blocked c p = disjunct (blockLiteral' (src 216) net (outChan $ 2*p + port) vars matchingColors) $
+                case matchingColors of [] -> F; _ -> (blockLiteral' (src 217) net (outChan $ 2*p + other) vars c); where
                 matchingColors = filter (matched' (lookupM (src 213) p preds) c) currColors
 
             matched' p = if port == 0 then flip (matched p) else matched p
-        Automaton{} -> blockLiteral' (src 287) net xID colors' -- Produce a block literal
+        Automaton{} -> blockLiteral' (src 287) net xID vars colors' -- Produce a block literal
         GuardQueue{} -> if port == 0 then block_ib
             else block_ig where
                 block_ib = conjunct q_full (output_blocked (inColors 0))
                 block_ig = disjunct (conjunct (Lit $ Select cID 0) (output_blocked (inColors 0))) (output_blocked colors')
-                output_blocked c = blockLiteral' (src 346) net (outChan 0) c
+                output_blocked c = blockLiteral' (src 346) net (outChan 0) vars c
 
                 q_full = Lit $ Is_Full cID
 
@@ -762,18 +774,27 @@ idle_firstcall' loc net xID colors vars = if (not (subTypeOf colors' (getColorSe
                              (idleLiteral' (src 244) net (inChan 0) colors') -- Incoming channel is idle
             some_other_packet_blocked_at_head = exists otherColors irdy_and_blocked
             irdy_and_blocked c = conjunct (Lit $ atHeadLiteral net cID c) -- Color is at the head of the queue
-                                          (blockLiteral' (src 247) net xID c) -- Color is blocked on outgoing channel
+                                          (blockLiteral' (src 247) net xID vars c) -- Color is blocked on outgoing channel
             otherColors = foldr delete (colorsOfChannel xID) currColors
-        Buffer{} -> disjunct empty_and_idle some_other_packet_blocked_at_head where
-            empty_and_idle = conjunct (Lit $ containsNoneLiteral net cID colors') -- Queue is empty
+        Buffer{} -> disjunct empty_and_idle some_other_packet_blocked_at_buffer where
+            empty_and_idle = conjunct (Lit $ containsNoneLiteral net cID colors') -- Buffer is empty
                              (idleLiteral' (src 244) net (inChan 0) colors') -- Incoming channel is idle
-            some_other_packet_blocked_at_head = exists otherColors irdy_and_blocked
-            irdy_and_blocked c = conjunct (Lit $ atHeadLiteral net cID c) -- Color is at the head of the queue
-                                          (blockLiteral' (src 247) net xID c) -- Color is blocked on outgoing channel
+            some_other_packet_blocked_at_buffer = OR $ Set.fromList (map (\d -> AND $ Set.fromList [(NOT $ Lit $ ContainsNone cID (Just d)), (Lit $ BlockAny (src 540) out (Just d))]) ts)
+            --irdy_and_blocked c = conjunct (Lit $ atHeadLiteral net cID c) -- Color is at the head of the queue
+            --                              (blockLiteral' (src 247) net xID c) -- Color is blocked on outgoing channel
             otherColors = foldr delete (colorsOfChannel xID) currColors
+
+            --f = OR $ Set.fromList (map (\d -> AND $ Set.fromList [(NOT $ Lit $ ContainsNone cID (Just d)), (Lit $ BlockAny (src 540) out (Just d))]) ts) --(Lit $ BlockBuffer cID)
+            ts = map (\x -> toColorSet x) otherColors
+            out = head $ getOutChannels net cID
         --Queue{} -> conjunct' (lit' $ containsNoneLiteral net cID colors') -- Buffer is empty
         --                     (idle_all' (src 244) net (inChan 0) colors' vars fm) -- Incoming channel is idle
         -- An automaton is idle for a set of colors, if all of these colors are never produced by the automaton, or if the automaton is dead
+--Freek's formula
+        {-Automaton _ ins _ _ ts _ -> disjunct (fromBool $ all colorNeverProduced currColors) (automatonDead net cID vars) where
+            colorNeverProduced color = all (\t -> all (\i -> all (doesNotProduce t i) (inColors i)) [0..ins-1]) ts where
+                doesNotProduce AutomatonT{eventFunction=e,packetTransformationFunction=f} i c = not (e i c) || (case f i c of Nothing -> True; Just (o, c') -> (o, c') /= (port, color))-}
+
         Automaton _ ins _ _ ts _-> let (ColorSet cols) = colors'
                                        cols' = Set.toList cols
                                        fs = if cols' == []
@@ -811,7 +832,7 @@ idle_all loc net xID colors vars =
             idle_one_color c = disjunct (idleLiteral' (src 270) net (inChan 0) c) -- Idle on input
                                         (existsMaybe outChans (blocked c)) where -- Any output blocked
             blocked c x = if x == xID then Nothing else
-                Just $ blockLiteral' (src 273) net x c -- output blocked for given color
+                Just $ blockLiteral' (src 273) net x vars c -- output blocked for given color
         ControlJoin{} -> exists inPorts inputIdle where -- Any input idle
             inputIdle p = if p == 0 then idleLiteral' (src 275) net (inChan p) colors' else idleLiteral' (src 276) net (inChan p) (inColorset p)
         FControlJoin _ f -> forall currColors idle_one_color where
@@ -825,7 +846,7 @@ idle_all loc net xID colors vars =
         Merge{} -> disjunct (forall inPorts all_idle) (exists inPorts selected_and_blocked) where -- All inputs idle, or some input selected and blocked
             all_idle x = idleLiteral' (src 283) net (inChan x) (typeIntersection (inColorset x) colors')
             selected_and_blocked x = conjunct (Lit $ Select cID x) $ exists (getColors $ typeDifference (inColorset x) colors') (irdy_and_blocked x)
-            irdy_and_blocked x c = conjunct (irdy_any (src 284) net (inChan x) c vars) (blockLiteral' (src 285) net xID c)
+            irdy_and_blocked x c = conjunct (irdy_any (src 284) net (inChan x) c vars) (blockLiteral' (src 285) net xID vars c)
         Function _ f _ -> idleLiteral' (src 286) net (inChan 0) preFunctionColors where --Idle for all colors that may be transformed to any of the given colors
             preFunctionColors = filter rightResult (inColors 0)
             rightResult c = eval (IM.singleton 0 c) f `elem` currColors
@@ -845,7 +866,7 @@ idle_all loc net xID colors vars =
             idle match dColor = disjunct (idleLiteral' (src 296) net (inChan 1) dColor) $
                 idleLiteral' (src 297) net (inChan 0) (filter ((== match) . matched f dColor) (inColors 0))
             irdy_and_blocked match dColor = conjunct (irdy_any (src 297) net (inChan 1) dColor vars) $ conjunct
-                (blockLiteral' (src 299) net (outChan $ if match then 0 else 1) dColor)
+                (blockLiteral' (src 299) net (outChan $ if match then 0 else 1) vars dColor)
                 (irdy_any (src 299) net (inChan 0) (filter ((== match) . matched f dColor) (inColors 0)) vars)
         MultiMatch _ f -> disjunct (forall currColors idle) $ disjunct
             (exists dataPorts selected_and_blocked) other_selected_and_blocked where
@@ -860,13 +881,13 @@ idle_all loc net xID colors vars =
                 colorClasses = equivClasses f (typeDifference (inColorset dIn) colors') (inColorset port)
                 irdy_and_blocked :: [Color] -> [Color] -> Formula
                 irdy_and_blocked dColors mColors = conjunct (irdy_any (src 311) net (inChan port) mColors vars) (exists dColors irdy_and_blocked_d)
-                irdy_and_blocked_d dColor = conjunct (irdy_any (src 312) net (inChan dIn) dColor vars) (blockLiteral' (src 313) net (outChan port) dColor)
+                irdy_and_blocked_d dColor = conjunct (irdy_any (src 312) net (inChan dIn) dColor vars) (blockLiteral' (src 313) net (outChan port) vars dColor)
 
             other_selected_and_blocked = exists (filter (/= port) matchPorts) (\mIn -> exists dataPorts (sel_and_blocked mIn))
             sel_and_blocked mIn dIn = conjunct (Lit $ MSelect cID (mIn, dIn)) (exists colorClasses (uncurry irdy_and_blocked_m)) where
                 colorClasses = equivClasses f (inColors dIn) (inColors mIn)
                 irdy_and_blocked_m dColors mColors = conjunct (irdy_any (src 317) net (inChan mIn) mColors vars) (exists dColors irdy_and_blocked_d)
-                irdy_and_blocked_d dColor = conjunct (irdy_any (src 318) net (inChan dIn) dColor vars) (blockLiteral' (src 319) net (outChan mIn) dColor)
+                irdy_and_blocked_d dColor = conjunct (irdy_any (src 318) net (inChan dIn) dColor vars) (blockLiteral' (src 319) net (outChan mIn) vars dColor)
 
             matchPorts = [0..length outChans-1]
             dataPorts = [length outChans..length inChans-1]
@@ -881,7 +902,7 @@ idle_all loc net xID colors vars =
         GuardQueue{} -> disjunct inputsIdle blockedOther where
             inputsIdle = conjunct (idleLiteral' (src 489) net (inChan 1) (typeIntersection currColors (colorset (inChan 0)))) (idleLiteral' (src 489) net (inChan 1) (typeIntersection currColors (colorset (inChan 1))))
             blockedOther = output_blocked $ typeDifference (colorset $ outChan 0) colors'
-            output_blocked = blockLiteral' (src 492) net (outChan 0)
+            output_blocked = blockLiteral' (src 492) net (outChan 0) vars
             -- GuardQueue idle
             -- o.idle = (idle(ib, c) && idle(ig, c)) || (exists other color c' such that block(o, c')
     where
@@ -908,7 +929,7 @@ irdy_any source net xID currColorSet vars =
         "Illegal call to irdy arsing from " +++showT source +++ ": colorset " +++ showT (toColorSet currColorSet) +++ " is not a subtype of " +++ showT (colorset xID) else
     case getComponent net cID of
         Queue{} -> Lit $ atHeadLiteral net cID currColorSet --Any of the given colors at head of the queue
-        Buffer{} -> NOT $ Lit $ ContainsNone cID cs' where 
+        Buffer{} -> NOT $ Lit $ ContainsNone cID cs' where
           cs' = if toColorSet currColorSet == head (inputTypes net cID) then Nothing else Just $ toColorSet currColorSet --TODO update!
         Vars{} -> irdy_any (src 353) net (inChan 0) currColorSet vars --incoming channel irdy
         Cut{} -> irdy_any (src 353) net (inChan 0) currColorSet vars --incoming channel irdy

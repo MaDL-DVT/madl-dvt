@@ -65,7 +65,10 @@ chan action12345 := signal_combo(action1234,action5);
 
 chan action12345_1;
 
-let global_action,action12345_1 := Fork(action12345);
+chan global_action_1;
+
+let global_action_1,action12345_1 := Fork(action12345);
+let global_action := Queue(1,global_action_1);
 let global_state := top_controller(state12345,action12345_1);
 
 };

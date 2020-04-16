@@ -13,6 +13,7 @@ process Controller(chan deny,chan active) => chan req, chan o_pow {
       high -> req;
       next CONTROLLER_TO_ON();
     };
+
   };
 
   state CONTROLLER_TO_ON() {
