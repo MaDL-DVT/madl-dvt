@@ -12,81 +12,52 @@ struct comb{
 
 macro top_controller(chan i_power, chan i_action) => chan power {
 
-process top_contr(chan i_pow, chan i_act) => chan o_pow {
-  state OFF(){
+process Top_contr(chan deny,chan active) => chan o_pow {
+  state CONTROLLER_OFF() {
     trans {
-      high d <- i_pow;
-      next TO_ON1();
-    };
-
-    trans {
-      high d <- i_act;
-      next TO_ON2();
+      high d <- active;
+      next CONTROLLER_TO_ON();
     };
 
   };
 
-  state TO_ON1(){
+  state CONTROLLER_TO_ON() {
     trans {
-      high d <- i_act;
       high -> o_pow;
-      next ON();
-    };
-    trans {
-      low d <- i_pow;
-      next OFF();
+      next CONTROLLER_ON();
     };
   };
 
-  state TO_OFF1(){
+  state CONTROLLER_ON() {
     trans {
-      high d <- i_act;
-      next ON();
+      low d <- active;
+      next CONTROLLER_TO_OFF();
     };
+
+  };
+
+  state CONTROLLER_TO_OFF() {
     trans {
-      low d <- i_pow;
+      high d <- deny;
+      next CONTROLLER_DENIED();
+    };
+
+    trans {
+      low d <- deny;
       low -> o_pow;
-      next OFF();
+      next CONTROLLER_OFF();
     };
   };
 
-  state TO_ON2(){
+  state CONTROLLER_DENIED() {
     trans {
-      low d <- i_act;
-      next OFF();
-    };
-    trans {
-      high d <- i_pow;
-      high -> o_pow;
-      next ON();
-    };
-  };
-
-  state TO_OFF2(){
-    trans {
-      low d <- i_act;
-      low -> o_pow;
-      next OFF();
-    };
-    trans {
-      high d <- i_pow;
-      next ON();
-    };
-  };
-
-  state ON(){
-    trans {
-      low d <- i_pow;
-      next TO_OFF2();
-    };
-    trans {
-      low d <- i_act;
-      next TO_OFF1();
+      high d <- active;
+      next CONTROLLER_ON();
     };
   };
 
 };
 
-let power := Queue(1,top_contr(i_power,i_action));
+let power := Queue(1,Top_contr(i_power,i_action));
 
 };

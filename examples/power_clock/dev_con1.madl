@@ -54,10 +54,13 @@ chan deny1;
 chan req1;
 chan active1;
 chan active1_1;
+chan global_action_1;
 
 let req1,global_state := controller(deny1,active1_1);
 let deny1,active1 := device(req1);
 
-let global_action,active1_1 := Fork(active1);
+let global_action_1,active1_1 := Fork(active1);
+
+let global_action := Queue(1,global_action_1);
 
 };
