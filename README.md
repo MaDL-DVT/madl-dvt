@@ -10,8 +10,5 @@ A quick installation guide.
 
 The main executable is the deadlock detection tool.
 
-### To reproduce the experiments with idle and block equations for xMAS FSMs
-
-1. Make sure that the folder with dlockdetect is in the system path.
-2. Execute "python3 dac_experiments.py [output_file]". You can find fmcad_experiments.py and the corresponding experimental xMAS models in madl-dvt/examples/.  
+Information related to the experiments reported in Effective System Level Liveness Verification (FMCAD20 submission).
 
