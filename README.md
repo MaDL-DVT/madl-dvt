@@ -10,7 +10,5 @@ A quick installation guide.
 
 The main executable is the deadlock detection tool.
 
-Information related to the experiments reported in Effective System Level Liveness Verification (FMCAD20 submission).
-
-[FMCAD2020 experiments information](https://github.com/MaDL-DVT/madl-dvt/wiki/FMCAD20-Experiments)
+[Description of experiments reported in Effective System Level Liveness Verification (FMCAD20 submission)](https://github.com/MaDL-DVT/madl-dvt/wiki/FMCAD20-Experiments)
 
