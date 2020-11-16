@@ -224,6 +224,8 @@ main = do
     --putStrLn $ show network'
     --putStrLn $ visualizeNet network
     let comps = getComponents network'
+    putStrLn $ "#Queues: " ++ (show $ length (filter isQueue comps))
+    putStrLn $ "#Automata: " ++ (show $ length (filter isAutomaton comps))
     -- Print some general network statistics.
     when (argVerbose options == ON) $ putStrLn $ "#Components: " ++ (show $ length comps)
     when (argVerbose options == ON) $ putStrLn $ "#Queues: " ++ (show $ length (filter isQueue comps))
@@ -281,10 +283,10 @@ main = do
     when (argVerbose options == ON) $ putStrLn $ "Invariants: \n"
     when (argVerbose options == ON) $ putStrLn $ utxt (showInvariants2 invs network')
 
-    putStrLn $ "Computing never full queues ..."
-    nfqs <- {-# SCC "ComputeNeverFullQueues" #-} notFullQueues network' (argSMTSolver options) (invs ++ ringInvs)
-    putStrLn $ "Found " ++ show (length nfqs) ++ " queues that are never full."
-    when (argVerbose options == ON) $ putStrLn ("Never full queues are: " ++ show nfqs)
+    --putStrLn $ "Computing never full queues ..."
+    nfqs <- return [] --{-# SCC "ComputeNeverFullQueues" #-} notFullQueues network' (argSMTSolver options) (invs ++ ringInvs)
+    --putStrLn $ "Found " ++ show (length nfqs) ++ " queues that are never full."
+    --when (argVerbose options == ON) $ putStrLn ("Never full queues are: " ++ show nfqs)
     putStrLn $ "Running deadlock detection."
     -- Run deadlock detection using the options specified by the user
     result <- runDeadlockDetection network' options (invs ++ ringInvs) nfqs
