@@ -11,7 +11,7 @@ module Madl.Deadlock.SMT (
     export_formula_to_SMT, parseSMTOutput,
     export_invariants_to_smt, export_bi_var_to_smt,
     export_literal_to_SMT, SMTModel,
-    bi_to_name, showModel
+    bi_to_name, showModel, smt_automaton_state, smt_queue, smt_queue_packet
 ) where
 
 import Data.Foldable (toList)

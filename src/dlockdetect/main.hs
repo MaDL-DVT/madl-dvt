@@ -180,6 +180,9 @@ exeOptions =
     , Option "" ["simultaneous-smt"]
         (NoArg (\opts -> opts {smtAllChans = True}))
         "SMT checks the channels simultaneously"
+    , Option "" ["backward-reach-invar"]
+        (ReqArg (\n opts -> opts {backwardReachInvar = (read n)}) "Number of steps")
+        "Generate a backward reachability invariant for n steps"
     ]
 
 -- | Main entry point

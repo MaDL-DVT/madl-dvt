@@ -64,10 +64,14 @@ data Formula
 -- | Literals that can be used in formula
 data Literal
     = Is_Full ComponentID -- ^ Queue is full. @ComponentID@ should identify a queue.
+    | Is_Full_Step ComponentID Int
     | Is_Not_Full ComponentID -- ^ Queue is not full. @ComponentID@ should identify a queue.
+    | Is_Not_Full_Step ComponentID Int
     | ContainsNone ComponentID (Maybe ColorSet)-- ^ None of the given colors are anywhere in the queue. @ComponentID@ should identify a queue.
+--    | ContainsNone_Step ComponentID (Maybe ColorSet) Int
     -- @ContainsNone q Nothing \<=\> isEmpty q@.
     | Any_At_Head ComponentID (Maybe ColorSet) -- ^ Any of the given colors is at the head of the queue. @ComponentID@ should identify a queue.
+--    | Any_At_Head_Step ComponentID (Maybe ColorSet) Int
 --    | Any_In_Buffer ComponentID (Maybe ColorSet) -- ^ Any of the given colors is in the buffer. @ComponentID@ should identify a buffer.
     | All_Not_At_Head ComponentID (Maybe ColorSet) -- ^ None of the given colors is at the head of the queue. @ComponentID@ should identify a queue.
     | Select ComponentID Int -- ^ Buffer arbiter has selected cell @Inp@, Merge arbiter has selected input @Int@, or LoadBalancer arbiter has selected output @Int@. @ComponentID@ should identify a merge or loadbalancer.
@@ -81,6 +85,15 @@ data Literal
     | BlockBuffer ComponentID -- ^ The outgoing channel of the buffer is blocked for the contents of the buffer.
     | BlockAny Source ChannelID (Maybe ColorSet) -- ^ Channel satisfies @G!trdy@ for at least one of the given colors.
     | IdleAll Source ChannelID (Maybe ColorSet) -- ^ Channel satisfies @G!irdy@ for all of the given colors.
+--    | Irdy ChannelID Int
+--    | Trdy ChannelID Int
+--    | Data ChannelID Int
+--    | QueueAt ComponentID Int Int
+--    | QueueHas ComponentID Int
+--    | QueueHasDecr ComponentID Int
+--    | QueueHasIncr ComponentID Int
+--    | QueueShift ComponentID Int Int
+--    | QueueDataEq ComponentID Int Int Literal 
     deriving (Show)
 
 instance Ord Literal where

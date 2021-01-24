@@ -46,7 +46,7 @@ module Madl.Network (
     getInChannels, getOutChannels, getAllChannels,
     getNrInputs, getNrOutputs,
     inputTypes, outputTypes,
-    getAllQueues, getAllSwitches,getAllSources,getAllSinks,getAllMerges,
+    getAllQueues, getAllQueueIDs, getAllProcessIDs, getAllSwitches,getAllSources,getAllSinks,getAllMerges,getAllMergeIDs,
     getAllQueuesWithID,getAllSwitchesWithID,getAllSourcesWithID,getAllSourceIDs,
     getAllMergesWithID,getAllSinksWithID,getAllFJoinsWithID,getAllProcessesWithID,
     getAutomatonStateMap,getAllProcesses,getAutomatonStateMapWithProcessName,
@@ -341,12 +341,20 @@ instance Show AutomatonTransition where
     show (AutomatonT{startState=start,endState=end,inPort=ip,epsilon=eps,outPort=op,phi=ph}) = "(" ++ intercalate ", " [show start, show end, show ip, show eps, show op, show ph] ++ ")"
 instance Eq AutomatonTransition where
     (==) (AutomatonT p q ip eps _ op ph _) (AutomatonT p' q' ip' eps' _ op' ph' _) = p == p' &&
-                                                                                                   q == q' &&
-                                                                                                   ip == ip' &&
-                                                                                                   eps == eps' &&
-                                                                                                   op == op' &&
-                                                                                                   ph == ph'
+                                                                                          q == q' &&
+                                                                                          ip == ip' &&
+                                                                                          eps == eps' &&
+                                                                                          op == op' &&
+                                                                                          ph == ph'
       --fatal 291 "Cannot determine equality between automaton transition"
+instance Ord AutomatonTransition where
+    (<=) (AutomatonT p q ip eps _ op ph _) (AutomatonT p' q' ip' eps' _ op' ph' _) = p <= p' &&
+                                                                                          q <= q' &&
+                                                                                          ip <= ip' &&
+                                                                                          eps <= eps' &&
+                                                                                          op <= op' &&
+                                                                                          ph <= ph'
+
 
 -- | A macro instance component of a madl network
 type MacroInstance b = XMacroInstance b Text
@@ -862,6 +870,7 @@ prettyPrintStateMap stMapWithName = case stMapWithName of
 getAllQueuesWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(ComponentID, XComponent c)]
 getAllQueuesWithID net = filter (isQueue . snd) (getComponentsWithID net)
 
+
 -- | Get all switches with ID of a network
 getAllSwitchesWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(ComponentID, XComponent c)]
 getAllSwitchesWithID net = filter (isSwitch . snd) (getComponentsWithID net)
@@ -878,6 +887,19 @@ getAllMergesWithID net = filter (isMerge . snd) (getComponentsWithID net)
 -- | Get ID's of all sources of a network
 getAllSourceIDs :: INetwork n (XComponent c) b => n (XComponent c) b -> [ComponentID]
 getAllSourceIDs net = map fst (getAllSourcesWithID net)
+
+
+getAllQueueIDs :: INetwork n (XComponent c) b => n (XComponent c) b -> [ComponentID]
+getAllQueueIDs net = map fst (getAllQueuesWithID net)
+
+
+getAllMergeIDs :: INetwork n (XComponent c) b => n (XComponent c) b -> [ComponentID]
+getAllMergeIDs net = map fst (getAllMergesWithID net)
+
+
+getAllProcessIDs :: INetwork n (XComponent c) b => n (XComponent c) b -> [ComponentID]
+getAllProcessIDs net = map fst (getAllProcessesWithID net)
+
 
 -- | Get all sinks with ID of a network
 getAllSinksWithID :: INetwork n (XComponent c) b => n (XComponent c) b -> [(ComponentID, XComponent c)]

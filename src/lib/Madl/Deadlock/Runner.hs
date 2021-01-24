@@ -3,7 +3,7 @@
 {-|
 Module      : Madl.Deadlock.Runner
 Description : Main module for deadlock and reachability analysis.
-Copyright   : (c) Freek Verbeek, Sanne Wouda 2015-2016, Tessa Belder 2016
+Copyright   : (c) Freek Verbeek, Sanne Wouda 2015-2016, Tessa Belder 2016, Alexander Fedotov 2016-2020
 
 This module uses command line input to execute the smt and nuxmv deadlock algorithms.
 -}
@@ -43,6 +43,7 @@ import              Utils.Text
 import              Madl.Network
 import              Madl.MsgTypes
 import              Madl.Invariants
+import              Madl.ReachInvariants
 
 import              Madl.Deadlock.Formulas
 import              Madl.Deadlock.DeadlockDetection
@@ -91,7 +92,8 @@ data CommandLineOptions = CommandLineOptions {
     detectLivelock :: Bool, -- ^ Determines whether livelock detection is done
     replaceAutomata :: Bool, -- ^ Replaces all automata in the network, such that behavior of the automata is mimicked using standard primitives
     whatToCheck :: ChannelsToCheck, -- ^ Determines what channels are checked for liveness: SRCS is for output of the sources, ND is for outputs of the sources and outputs of all components with non-deterministic outputs, ALL - all channels are checked for liveness
-    smtAllChans :: Bool -- ^ Determines if SMT checks all channels simultaneously or not
+    smtAllChans :: Bool, -- ^ Determines if SMT checks all channels simultaneously or not
+    backwardReachInvar :: Int
 }
 
 -- | Default commandline options.
@@ -120,7 +122,8 @@ defaultOptions = CommandLineOptions {
     detectLivelock = True,
     replaceAutomata = False,
     whatToCheck = WHOLE,
-    smtAllChans = False
+    smtAllChans = False,
+    backwardReachInvar = 0
 }
 
 
@@ -282,8 +285,10 @@ runDeadlockDetection net options invs nfqs =
                     let ret  = unfold_formula net (BlockVars live nfqs) (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i Nothing),Lit (BlockAny (src 174) i Nothing)]))
                       --unfold_formula net (BlockVars live nfqs) (AND (Set.fromList [NOT (Lit $ IdleAll (src 174) i (Just (getColorSet net i))),Lit (BlockAny (src 174) i (Just (getColorSet net i)))])) --{-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
                     let file = "deadlock_" ++ name i ++ ".smt2"
+                    --error $ "DEBUG-OUT: " ++ invarToSMT net (backwardReachInvar options)
                     h <- openFile file WriteMode
                     hPutStrLn h $ "(set-logic QF_LIA)\n" ++ smtinvs
+                    --hPutStrLn h $ ivars
                     hPutStrLn h $ export_bi_var_to_smt net show_p (Map.keys ret)
 --export_formula_to_SMT :: ColoredNetwork -> (Set ComponentID) -> (Map ComponentID [Color], Set ComponentID) -> (Color -> String) -> Maybe Literal -> Formula -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
                     foldM_ (\(qs',vars') (bi, f) -> do
@@ -291,6 +296,7 @@ runDeadlockDetection net options invs nfqs =
                                                         hPutStrLn h $ smt'
                                                         return (qs2, vars2))
                            (qs, vars) (Map.toList ret)
+                    --hPutStrLn h $ breach
                     hPutStrLn h $ "(assert " ++ "(and (not " ++ export_literal_to_SMT net show_p lit1 ++ ") " ++ export_literal_to_SMT net show_p lit2 ++ "))"
                     hPutStrLn h $ "(check-sat)\n(get-model)"
                     when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model completed. ")
@@ -328,8 +334,15 @@ runDeadlockDetection net options invs nfqs =
                     --when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model ... ")
                     let ret  = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options))) --{-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
                     let file = "deadlock_" ++ name ++ ".smt2"
+                    let ivars = if (backwardReachInvar options) > 0
+                                then makeVars net (backwardReachInvar options)
+                                else ""
+                    let breach = if (backwardReachInvar options) > 0
+                                 then invarToSMT net (backwardReachInvar options)
+                                 else ""
                     h <- openFile file WriteMode
                     hPutStrLn h $ "(set-logic QF_LIA)\n" ++ smtinvs
+                    hPutStrLn h $ ivars
                     hPutStrLn h $ export_bi_var_to_smt net show_p (Map.keys ret)
 --export_formula_to_SMT :: ColoredNetwork -> (Set ComponentID) -> (Map ComponentID [Color], Set ComponentID) -> (Color -> String) -> Maybe Literal -> Formula -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
                     foldM_ (\(qs',vars') (bi, f) -> do
@@ -337,6 +350,7 @@ runDeadlockDetection net options invs nfqs =
                                                         hPutStrLn h $ smt'
                                                         return (qs2, vars2))
                            (qs, vars) (Map.toList ret)
+                    hPutStrLn h $ breach
                     hPutStrLn h $ mkAssertions (getChannelsToCheck net (whatToCheck options)) ""
                     hPutStrLn h $ "(check-sat)\n(get-model)"
                     when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model completed. ")

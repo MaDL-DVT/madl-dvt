@@ -653,6 +653,7 @@ nuxmvLiteral net (IdleState cID s) = [nuxmv_proc_stvar name s] where
 nuxmvLiteral net (DeadTrans cID s) = [nuxmv_proc_deadvar name s] where
     Automaton{componentName=name} = getComponent net cID
 nuxmvLiteral _ (Sum_Compare _ _ _) = fatal 322 "Sum Compare is not supported in Nuxmv invarspec (invariants only)"
+nuxmvLiteral _ _ = error "The literal is not supported"
 
 -- | Declare variables for block and idle literals
 nuxmvLiteralDecl :: ColoredNetwork -> Literal -> [Text]

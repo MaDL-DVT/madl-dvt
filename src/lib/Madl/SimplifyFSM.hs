@@ -22,6 +22,22 @@ debugFromJust :: Maybe a -> String -> a
 debugFromJust (Just a) _ = a
 debugFromJust Nothing s = error ("incorrect from just: " ++ s)
 
+specToDot :: Specification (XComponent T.Text) (XChannel T.Text) T.Text -> Bool -> T.Text
+specToDot (NSpec comps chans ports) _ = let trans = map (\(p,q) -> if L.elem p (map (\x -> getName x) comps)
+                                                                   then let t = filter (\(x,_) -> x == q) ports
+                                                                        in if t == []
+                                                                           then (T.pack "\t") `T.append` ((p `T.append` (T.pack " -> ERR [label=")) `T.append` (q `T.append` (T.pack "];\n")))
+                                                                           else (T.pack "\t") `T.append` ((p `T.append` ((T.pack " -> ") `T.append` (snd (debugInd t 0 "specToDot 1")))) `T.append` (((T.pack " [label=") `T.append` q) `T.append` (T.pack "];\n")))
+                                                                   else error "specToDot: Component is absent") (filter (\(x,_) -> L.elem x (map (\x -> getName x) comps)) ports){-if L.elem q (map (\x -> getName x) comps)
+                                                                        then let t = filter (\(_,x) -> x == p) ports
+                                                                             in if t == []
+                                                                                then (T.pack "\t") `T.append` ((q `T.append` (T.pack " -> ERR [label=")) `T.append` (p `T.append` (T.pack "];\n")))
+                                                                                else (T.pack "\t") `T.append` ((q `T.append` ((T.pack " -> ") `T.append` (fst (t !! 0)))) `T.append` (((T.pack " [label=") `T.append` p) `T.append` (T.pack "];\n")))
+                                                                        else error "specToDot: No components in a given port pair") ports-}
+                                            trans' = foldr (\a b -> a `T.append` b) (T.pack "") trans
+                                            res = ((T.pack "digraph madl {\n") `T.append` trans') `T.append` (T.pack "}")
+                                        in res
+
 getLeftMatch :: MFunctionBool -> MFunctionDisj
 getLeftMatch (XMatch f _) = f
 getLeftMatch _ = error "getLeftMatch: Wrong function"
@@ -112,9 +128,7 @@ getITransColor net tr@(AutomatonT _ _ _ infun _ _ _ _) comp chan = let --incols 
                                                                        ins = getInChannels net comp
                                                                        res = (filter (\x -> eval (makeVArguments []) (getLeftMatch infun) == x) cols')
                                                                        y = (eval (makeVArguments []) (getLeftMatch infun)) :: Color
-                                                                       res' = if res == []
-                                                                              then error $ show (y) --("getITransColor: Can not derive the color")
-                                                                              else debugInd res 0 "getITransColor"
+                                                                       res' = debugInd res 0 "getITransColor"
                                                                    in res'
 
 getOTransColor :: ColoredNetwork -> AutomatonTransition -> Color
@@ -168,6 +182,12 @@ updateNetwork net = updateNetwork' net (getFSMIDs net) 0
         updateNetwork' net [] _ = net
         updateNetwork' net (x:_) fsmind = let net' = replaceFSM net x fsmind in updateNetwork' net' (getFSMIDs net') (fsmind + 1)
 
+
+visualizeNet :: ColoredNetwork -> String
+visualizeNet net = (T.unpack $ specToDot (netToSpec (updateNetwork' net (getFSMIDs net) 0)) True)
+  where updateNetwork' :: ColoredNetwork -> [ComponentID] -> Int -> ColoredNetwork
+        updateNetwork' net [] _ = net
+        updateNetwork' net (x:_) fsmind = let net' = replaceFSM net x fsmind in updateNetwork' net' (getFSMIDs net') (fsmind + 1)
 
 
 translateFSM :: ColoredNetwork -> ComponentID -> Int -> Specification (XComponent T.Text) (XChannel T.Text) T.Text
@@ -334,12 +354,19 @@ inputTemplate net comp chan fsmind = case (getComponent net comp) of
                                                                                      else if (countInputTrans net comp chan x) == 0
                                                                                           then [(DeadSink (inpCompName "ds" fsmind (channelIDtoInt chan) (Just $ debugFromJust (L.elemIndex x cols') "InputTemplate 2")))]
                                                                                           else []) cols'
+                                                                    cuts = L.concat (map (\x -> if (countInputTrans net comp chan x) > 1
+                                                                                                then [(Cut (inpCompCutName "cut" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 4") i)) | i <- [0..((countInputTrans net comp chan x) - 1)]]
+                                                                                                else []
+                                                                                          ) cols')
                                                                     chans = if (L.length cols' > 1)
                                                                             then L.concat (map (\x -> [(Channel (inpChanName "sw" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 3") Nothing))]) cols')
                                                                             else []
                                                                     chans' = L.concat (map (\x -> if (countInputTrans net comp chan x) > 1
                                                                                                   then [(Channel (inpChanName "lb" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 4") (Just i))) | i <- [0..((countInputTrans net comp chan x) - 1)]]
                                                                                                   else []) cols')
+                                                                    chans'' = L.concat (map (\x -> if (countInputTrans net comp chan x) > 1
+                                                                                                   then [(Channel (inpChanName "cut_out" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 4") (Just i))) | i <- [0..((countInputTrans net comp chan x) - 1)]]
+                                                                                                   else []) cols')
                                                                     lbs' = filter (\w -> case w of (DeadSink _) -> False; _ -> True) (L.concat lbs)
                                                                     ports = if (L.length cols' > 1)
                                                                             then [(channelName $ fst $ getChannel net chan,inpCompName "sw" fsmind (channelIDtoInt chan) Nothing)]
@@ -355,9 +382,11 @@ inputTemplate net comp chan fsmind = case (getComponent net comp) of
                                                                                                         then [(inpChanName "sw" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 8") Nothing,inpCompName "ds" fsmind (channelIDtoInt chan) (Just $ debugFromJust (L.elemIndex x cols') "InputTemplate 9"))]
                                                                                                         else []) cols')
                                                                     ports''' = L.concat (map (\x -> if (countInputTrans net comp chan x) > 1
-                                                                                                    then [(inpCompName "lb" fsmind (channelIDtoInt chan) (Just $ debugFromJust (L.elemIndex x cols') "InputTemplate 10"),inpChanName "lb" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 11") (Just i)) | i <- [0..((countInputTrans net comp chan x) - 1)]]
+                                                                                                    then [(inpCompName "lb" fsmind (channelIDtoInt chan) (Just $ debugFromJust (L.elemIndex x cols') "InputTemplate 10"),inpChanName "lb" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 11") (Just i)) | i <- [0..((countInputTrans net comp chan x) - 1)]] ++
+                                                                                                         [(inpChanName "lb" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 11") (Just i),inpCompCutName "cut" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 11") i) | i <- [0..((countInputTrans net comp chan x) - 1)]] ++
+                                                                                                         [(inpCompCutName "cut" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 11") i,inpChanName "cut_out" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex x cols') "InputTemplate 11") (Just i)) | i <- [0..((countInputTrans net comp chan x) - 1)]]
                                                                                                     else []) cols')
-                                                                in NSpec (switch ++ (L.concat lbs)) (chans ++ chans') (ports ++ ports' ++ ports'' ++ ports''')
+                                                                in NSpec (switch ++ (L.concat lbs) ++ cuts) (chans ++ chans' ++ chans'') (ports ++ ports' ++ ports'' ++ ports''')
                                                            else error "inputTemplate: The given channel is not an input channel of the given automaton"
                                 _ -> error "inputTemplate: Automaton expected"
 
@@ -444,7 +473,7 @@ transitionIOTemplate net comp ichan icol ochan ocol p q fsmind =
                                    inputs = getInChannels net comp
                                    outputs = getOutChannels net comp
                                    ins = getOutputTemplateIns net comp ochan fsmind
-                                   i = debugInd ins ((foldr (\a b -> a + b) 0 (L.take colind inds)) + ind){-(ind * (L.length ocols') + colind)-} ("transitionIOTemplate 1" ++ "," ++ show (colind * (L.length ocols') + (inds !! colind)) ++ "," ++ show colind ++ "," ++ show ins ++ "," ++ show ocols' ++ "," ++ show inds)
+                                   i = debugInd ins ((foldr (\a b -> a + b) 0 (L.take colind inds)) + ind){-(ind * (L.length ocols') + colind)-} ("transitionIOTemplate 1" ++ "," ++ show (colind * (L.length ocols') + (debugInd inds colind "new 1")) ++ "," ++ show colind ++ "," ++ show ins ++ "," ++ show ocols' ++ "," ++ show inds)
                                    t'' = if (filter (\(AutomatonT p' q' inport infun _ outport outfun _) -> p == p' && --transitions from p to q that involve x(d)
                                                                                                             q == q' &&
                                                                                                             (case outport of Just outport' -> (debugInd outputs outport' "transitionIOTemplate 2") == ochan; _ -> False) &&
@@ -500,9 +529,7 @@ transitionIOTemplate net comp ichan icol ochan ocol p q fsmind =
 
                                             (transChanName "frk_fun" fsmind p q (Just (channelIDtoInt ichan, debugFromJust (L.elemIndex icol icols') "transitionIOTemplate 36")) (Just (channelIDtoInt ochan, debugFromJust (L.elemIndex ocol ocols') "transitionIOTemplate 37")),transCompName "fun" fsmind p q (Just (channelIDtoInt ichan, debugFromJust (L.elemIndex icol icols') "transitionIOTemplate 38")) (Just (channelIDtoInt ochan, debugFromJust (L.elemIndex ocol ocols') "transitionIOTemplate 39"))),
                                             (transCompName "fun" fsmind p q (Just (channelIDtoInt ichan, debugFromJust (L.elemIndex icol icols') "transitionIOTemplate 40")) (Just (channelIDtoInt ochan, debugFromJust (L.elemIndex ocol ocols') "transitionIOTemplate 41")),i)]
-                               in if (L.elemIndex ocol ocols') == Nothing
-                                  then error $ show (ocol,ocols')
-                                  else NSpec comps chans ports
+                               in NSpec comps chans ports
     _ -> error "transitionOTemplate: Automaton expected"
 
 
@@ -580,37 +607,54 @@ initTemplate net comp fsmind = case (getComponent net comp) of
 stateTemplate :: ColoredNetwork -> ComponentID -> Int -> Int -> Specification (XComponent T.Text) (XChannel T.Text) T.Text
 stateTemplate net comp p fsmind = case (getComponent net comp) of
                              (Automaton _ _ _ _ ts _) -> let --fsmind = getFSMIndex net comp
-                                                             sl = existsSelfLoop ts p
-                                                             k = if sl then 2 else 1
+                                                             --sl = existsSelfLoop ts p
+                                                             ts' = filter (\(AutomatonT _ s _ _ _ _ _ _) -> p == s) ts
+                                                             ks = let k = map (\(AutomatonT s _ _ _ _ _ _ _) -> if s == s then 2 else 1) ts'
+                                                                  in if p == 0
+                                                                     then (1:k)
+                                                                     else k
+                                                             --k = if sl then 2 else 1
                                                              ot = countOutgoingTrans net comp p
                                                              it = if p == 0
                                                                   then (countIncomingTrans net comp p) + 1
                                                                   else (countIncomingTrans net comp p)
-                                                             comps = [Queue (stateCompName "q" fsmind p Nothing) k]
+                                                             comps_q = [Queue (stateCompName "q" fsmind p (Just i)) (debugInd ks i "new state template 1") | i <- [0..it-1]]
                                                              comps_lb = if ot > 1
                                                                         then [LoadBalancer (stateCompName "lb" fsmind p Nothing)]
                                                                         else []
                                                              comps_mrg = if it > 1
                                                                          then [Merge (stateCompName "mrg" fsmind p (Just i)) | i <- [0..it-2]]
                                                                          else []
-                                                             chans = if ot > 1
-                                                                     then (Channel (stateChanName "q_lb" fsmind p Nothing):[Channel (stateChanName "lb" fsmind p (Just i)) | i <- [0..ot-1]])
-                                                                     else [Channel (stateChanName "q_out" fsmind p Nothing)]
-                                                             chans' = if it > 1
-                                                                      then [Channel (stateChanName "mrg" fsmind p (Just i)) | i <- [0..((L.length comps_mrg) * 2)]]
-                                                                      else [Channel (stateChanName "q_in" fsmind p Nothing)]
-                                                             compchans = getCompChans comps_mrg chans'
+                                                             chans_q = if it > 1
+                                                                       then [Channel (stateChanName "q_in" fsmind p (Just i)) | i <- [0..it-1]]
+                                                                       else [Channel (stateChanName "q_out" fsmind p Nothing),Channel (stateChanName "q_in" fsmind p Nothing)]
+                                                             chans_lb = if ot > 1
+                                                                        then [Channel (stateChanName "lb" fsmind p (Just i)) | i <- [0..ot-1]]
+                                                                        else []
+                                                             chans_mrg = if it > 1
+                                                                         then [Channel (stateChanName "mrg" fsmind p (Just i)) | i <- [0..((L.length comps_mrg) * 2)]]
+                                                                         else []
+                                                             s_ins = if it > 1
+                                                                     then (odds chans_mrg) ++ [L.last chans_mrg]
+                                                                     else [(debugInd chans_q 0 "new state template 2")]
+                                                             compchans = getCompChans comps_mrg chans_mrg
                                                              ports = if ot > 1
-                                                                     then [
-                                                                           (getName (debugInd comps 0 "stateTemplate 1"),getName (debugInd chans 0 "stateTemplate 2")),
-                                                                           (getName (debugInd chans 0 "stateTemplate 3"),getName (debugInd comps_lb 0 "stateTemplate 4"))
-                                                                           ] ++
-                                                                           [(stateCompName "lb" fsmind p Nothing,stateChanName "lb" fsmind p (Just i)) | i <- [0..ot-1]]
-                                                                     else [(getName (debugInd comps 0 "stateTemplate 5"),getName (debugInd chans 0 "stateTemplate 6"))]
+                                                                     then [(getName (debugInd comps_lb 0 "new state template 3"),stateChanName "lb" fsmind p (Just i)) | i <- [0..ot-1]]
+                                                                     else []
                                                              ports' = if it > 1
-                                                                      then ((stateChanName "mrg" fsmind p (Just 0),stateCompName "q" fsmind p Nothing):(L.concat (map (\(x,ys) -> [(getName (debugInd ys 1 "stateTemplate 7"),getName x),(getName (debugInd ys 2 "stateTemplate 8"),getName x),(getName x,getName (debugInd ys 0 "stateTemplate 9"))]) compchans)))
-                                                                      else [(stateChanName "q_in" fsmind p Nothing,stateCompName "q" fsmind p Nothing)]
-                                                         in NSpec (comps ++ comps_lb ++ comps_mrg) (chans ++ chans') (ports ++ ports')
+                                                                      then if ot > 1
+                                                                           then [(getName (debugInd chans_mrg 0 "nst 3"),getName (debugInd comps_lb 0 "nst 4"))]
+                                                                           else []
+                                                                      else if ot > 1
+                                                                           then [(getName (debugInd chans_q 0 "nst 5"),getName (debugInd comps_lb 0 "nst 6"))]
+                                                                           else []
+                                                             ports'' = if it > 1
+                                                                       then (L.concat (map (\(x,ys) -> [(getName (debugInd ys 1 "stateTemplate 7"),getName x),(getName (debugInd ys 2 "stateTemplate 8"),getName x),(getName x,getName (debugInd ys 0 "stateTemplate 9"))]) compchans))
+                                                                       else []
+                                                             ports''' = if it > 1
+                                                                        then L.concat $ map (\x -> [(getName (debugInd chans_q x "nst 7"),getName (debugInd comps_q x "nst 8")),(getName (debugInd comps_q x "nst 9"),getName (debugInd s_ins x "nst 14"))]) [0..((L.length s_ins)-1)]
+                                                                        else [(getName (debugInd chans_q 1 "nst 10"),getName (debugInd comps_q 0 "nst 11")),(getName (debugInd comps_q 0 "nst 12"),getName (debugInd chans_q 0 "nst 13"))]
+                                                         in NSpec (comps_q ++ comps_lb ++ comps_mrg) (chans_q ++ chans_lb ++ chans_mrg) (ports ++ ports' ++ ports'' ++ ports''')
                              _ -> error "stateTemplate: Automaton expected"
 
 {- **************************** -}
@@ -622,6 +666,9 @@ inpCompName :: String -> Int -> Int -> Maybe Int -> T.Text
 inpCompName comptype fsmind chanind colind = case colind of
                                                Nothing -> T.pack (comptype ++ "_inp_" ++ show fsmind ++ "_" ++ show chanind)
                                                Just ind -> T.pack (comptype ++ "_inp_" ++ show fsmind ++ "_" ++ show chanind ++ "_" ++ show ind)
+
+inpCompCutName :: String -> Int -> Int -> Int -> Int -> T.Text
+inpCompCutName comptype fsmind chanind colind ind = T.pack (comptype ++ "_inp_" ++ show fsmind ++ "_" ++ show chanind ++ "_" ++ show colind ++ "_" ++ show ind)
 
 --takes a name frefix as a string, three indices and one optional index
 inpChanName :: String -> Int -> Int -> Int -> Maybe Int -> T.Text
@@ -673,7 +720,7 @@ getInputTemplateOuts net comp chan col fsmind = let --(ColorSet cols) = getColor
                                                     res = if ((L.length cols') == 1) && (trans == 1)
                                                           then [(channelName $ fst $ getChannel net chan)]
                                                           else if trans > 1
-                                                               then [inpChanName "lb" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex col cols') "getInputTemplateOuts 1") (Just i) | i <- [0..trans-1]]
+                                                               then [inpChanName "cut_out" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex col cols') "getInputTemplateOuts 1") (Just i) | i <- [0..trans-1]]
                                                                else [inpChanName "sw" fsmind (channelIDtoInt chan) (debugFromJust (L.elemIndex col cols') "getInputTemplateOuts 2") Nothing]
                                                 in res
 
@@ -704,18 +751,24 @@ getStateTemplateIns net comp p fsmind = case (getComponent net comp) of
                                                                        then (countIncomingTrans net comp p) + 1
                                                                        else (countIncomingTrans net comp p)
                                                                   chans = if it > 1
-                                                                          then [stateChanName "mrg" fsmind p (Just i) | i <- [0..((it - 1) * 2)]]
+                                                                          then [stateChanName "q_in" fsmind p (Just i) | i <- [0..it-1]]
                                                                           else [stateChanName "q_in" fsmind p Nothing]
-                                                              in (odds chans) ++ [L.last chans]
+                                                              in chans
                                    _ -> error "getStateTemplateIns: Automaton expected"
+
 
 getStateTemplateOuts :: ColoredNetwork -> ComponentID -> Int -> Int -> [T.Text]
 getStateTemplateOuts net comp p fsmind = case (getComponent net comp) of
                                     (Automaton _ _ _ _ _ _) -> let --fsmind = getFSMIndex net comp
+                                                                   it = if p == 0
+                                                                        then (countIncomingTrans net comp p) + 1
+                                                                        else (countIncomingTrans net comp p)
                                                                    ot = countOutgoingTrans net comp p
                                                                    chans = if ot > 1
                                                                            then [stateChanName "lb" fsmind p (Just i) | i <- [0..ot-1]]
-                                                                           else [stateChanName "q_out" fsmind p Nothing]
+                                                                           else if it > 1
+                                                                                then [stateChanName "mrg" fsmind p (Just 0)]
+                                                                                else [stateChanName "q_out" fsmind p Nothing]
                                                                in chans
                                     _ -> error "getStateTemplateOuts: Automaton expected"
 
@@ -756,6 +809,10 @@ testOutTemplateIns :: ColoredNetwork -> [T.Text]
 testOutTemplateIns net = let fsm = fst ((getAllProcessesWithID net) !! 0)
                              out = (getOutChannels net fsm) !! 0
                          in getOutputTemplateIns net fsm out 0
+
+testStateTemplate :: ColoredNetwork -> ColoredNetwork
+testStateTemplate net = let fsm = fst ((getAllProcessesWithID net) !! 0)
+                        in error $ show $ (stateTemplate net fsm 0 1,getStateTemplateIns net fsm 0 1,getStateTemplateOuts net fsm 0 1)
 
 testTranslateFSM :: ColoredNetwork -> Specification (XComponent T.Text) (XChannel T.Text) T.Text
 testTranslateFSM net = let fsm = fst ((getAllProcessesWithID net) !! 0)
