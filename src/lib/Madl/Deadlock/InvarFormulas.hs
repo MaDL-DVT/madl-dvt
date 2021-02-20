@@ -89,6 +89,47 @@ instance Show InvarFormula where
   show (BVAR v) = show v
   show (CUSTOMBVAR s) = s
 
+{-
+class ShowFormula a where
+  showF :: a -> String -> String
+
+
+instance ShowFormula BoolVar where
+  showF (Irdy cid step) postfix = "irdy_" ++ (show cid) ++ "_" ++ (show step) ++ postfix
+  showF (Trdy cid step) postfix = "trdy_" ++ (show cid) ++ "_" ++ (show step) ++ postfix
+
+
+instance ShowFormula IntVar where
+  showF (QOccupancy cid step) postfix = "qhas_" ++ (show cid) ++ "_" ++ (show step) ++ postfix
+  showF (QCell cid x step) postfix = "qcell_" ++ (show cid) ++ "_" ++ (show x) ++ "_" ++ (show step) ++ postfix
+  showF (Sel cid step) postfix = "sel_" ++ (show cid) ++ "_" ++ (show step) ++ postfix
+  showF (Cur cid step) postfix = "cur_" ++ (show cid) ++ "_" ++ (show step) ++ postfix
+  showF (Data cid step) postfix = "data_" ++ (show cid) ++ "_" ++ (show step) ++ postfix
+
+
+instance ShowFormula IntExpr where
+  showF (INT x) postfix = show x
+  showF (IVAR v) postfix = showF v postfix
+  showF (CUSTOMIVAR s) postfix = s
+  showF (MINUS a b) postfix = "(- " ++ (showF a postfix) ++ " " ++ (showF b postfix) ++ ")"
+  showF (PLUS a b) postfix = "(+ " ++ (showF a postfix) ++ " " ++ (showF b postfix) ++ ")"
+  showF (ITE f f' f'') postfix = "(ite " ++ showF f postfix ++ " " ++ showF f' postfix ++ " " ++ showF f'' postfix ++ " " ++ ")"
+
+
+instance ShowFormula InvarFormula where
+  showF TRUE _ = "true"
+  showF FALSE _ = "false"
+  showF (NEG f) postfix = "(not " ++ showF f postfix ++ ")"
+  showF (CONJ f f') postfix = "(and " ++ showF f postfix ++ " " ++ showF f' postfix ++ ")"
+  showF (DISJ f f') postfix = "(or " ++ showF f postfix ++ " " ++ showF f' postfix ++ ")"
+  showF (IMPL f f') postfix = "(=> " ++ showF f postfix ++ " " ++ showF f' postfix ++ ")"
+  showF (BIIMPL f f') postfix = "(= " ++ showF f postfix ++ " " ++ showF f' postfix ++ ")"
+  showF (EQUALS f f') postfix = "(= " ++ showF f postfix ++ " " ++ showF f' postfix ++ ")"
+  showF (LESS f f') postfix = "(< " ++ showF f postfix ++ " " ++ showF f' postfix ++ ")"
+  showF (GREATER f f') postfix = "(> " ++ showF f postfix ++ " " ++ showF f' postfix ++ ")"
+  showF (BVAR v) postfix = showF v postfix
+  showF (CUSTOMBVAR s) _ = s
+-}
 
 makeIntKeys :: [a] -> Int -> [(a,Int)]
 makeIntKeys [] _ = []
@@ -124,7 +165,7 @@ makeConj (x:xs) = CONJ x (makeConj xs)
 makeDisj :: [InvarFormula] -> InvarFormula
 makeDisj [] = TRUE
 makeDisj (x:[]) = x
-makeDisj (x:xs) = DISJ x (makeConj xs)
+makeDisj (x:xs) = DISJ x (makeDisj xs)
 
 
 makeSum :: [IntExpr] -> IntExpr

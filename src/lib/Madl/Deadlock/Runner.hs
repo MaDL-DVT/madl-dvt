@@ -93,7 +93,9 @@ data CommandLineOptions = CommandLineOptions {
     replaceAutomata :: Bool, -- ^ Replaces all automata in the network, such that behavior of the automata is mimicked using standard primitives
     whatToCheck :: ChannelsToCheck, -- ^ Determines what channels are checked for liveness: SRCS is for output of the sources, ND is for outputs of the sources and outputs of all components with non-deterministic outputs, ALL - all channels are checked for liveness
     smtAllChans :: Bool, -- ^ Determines if SMT checks all channels simultaneously or not
-    backwardReachInvar :: Int
+    backwardReachInvar :: Int,
+    reachInit :: Bool,
+    noLiveness :: Bool
 }
 
 -- | Default commandline options.
@@ -123,7 +125,9 @@ defaultOptions = CommandLineOptions {
     replaceAutomata = False,
     whatToCheck = WHOLE,
     smtAllChans = False,
-    backwardReachInvar = 0
+    backwardReachInvar = 0,
+    reachInit = False,
+    noLiveness = False
 }
 
 
@@ -323,6 +327,16 @@ runDeadlockDetection net options invs nfqs =
                                            else "(or " ++ res ++ " " ++ s ++ ")"
                                 in mkAssertions xs res'
 
+        mkAssertions' :: [ChannelID] -> String -> String
+        mkAssertions' [] s = "(assert " ++ s ++ ")"
+        mkAssertions' (x:xs) s = let lit1 i = IdleAll (src 174) i Nothing--IdleAll (src 174) i (Just (getColorSet net i))
+                                     lit2 i = BlockAny (src 174) i Nothing--BlockAny (src 174) i (Just (getColorSet net i))
+                                     res = "(or " ++ export_literal_to_SMT net show_p (lit1 x) ++ " (not " ++ export_literal_to_SMT net show_p (lit2 x) ++ "))"
+                                     res' = if s == ""
+                                            then res
+                                            else "(and " ++ res ++ " " ++ s ++ ")"
+                                 in mkAssertions xs res'
+
 
         detectAllDeadlocks :: IO (Either String (Bool, Maybe SMTModel))
         detectAllDeadlocks = let name = "all_dls"
@@ -334,15 +348,18 @@ runDeadlockDetection net options invs nfqs =
                     --when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model ... ")
                     let ret  = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options))) --{-# SCC "UnfoldFormula" #-} unfold_formula net (BlockVars live nfqs) (Lit blockLit) -- nfqs') (Lit blockLit)
                     let file = "deadlock_" ++ name ++ ".smt2"
-                    let ivars = if (backwardReachInvar options) > 0
+                    {-let ivars = if (backwardReachInvar options) > 0
                                 then makeVars net (backwardReachInvar options)
-                                else ""
+                                else ""-}
                     let breach = if (backwardReachInvar options) > 0
-                                 then invarToSMT net (backwardReachInvar options)
+                                 then invarToSMT net (backwardReachInvar options) (reachInit options) (noLiveness options)
                                  else ""
+                    let dlcheck = if (noLiveness options)
+                                  then "" --mkAssertions' (getChannelsToCheck net (whatToCheck options)) ""
+                                  else mkAssertions (getChannelsToCheck net (whatToCheck options)) ""
                     h <- openFile file WriteMode
                     hPutStrLn h $ "(set-logic QF_LIA)\n" ++ smtinvs
-                    hPutStrLn h $ ivars
+                    --hPutStrLn h $ ivars
                     hPutStrLn h $ export_bi_var_to_smt net show_p (Map.keys ret)
 --export_formula_to_SMT :: ColoredNetwork -> (Set ComponentID) -> (Map ComponentID [Color], Set ComponentID) -> (Color -> String) -> Maybe Literal -> Formula -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
                     foldM_ (\(qs',vars') (bi, f) -> do
@@ -351,7 +368,7 @@ runDeadlockDetection net options invs nfqs =
                                                         return (qs2, vars2))
                            (qs, vars) (Map.toList ret)
                     hPutStrLn h $ breach
-                    hPutStrLn h $ mkAssertions (getChannelsToCheck net (whatToCheck options)) ""
+                    hPutStrLn h $ dlcheck --mkAssertions (getChannelsToCheck net (whatToCheck options)) ""
                     hPutStrLn h $ "(check-sat)\n(get-model)"
                     when (argVerbose options == ON) $ putStrLn ("Unfolding formulas and writing SMT model completed. ")
                     when (argVerbose options == ON) $ putStrLn ("Calling SMT solver ... ")

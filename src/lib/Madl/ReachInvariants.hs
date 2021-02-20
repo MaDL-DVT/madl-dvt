@@ -41,19 +41,19 @@ getOutColor (AutomatonT _ _ _ _ _ _ _ f) p cols = let (ColorSet cs) = cols
                                                   in if (length res') > 0 then res' !! 0 else error "getOutColor: No output data"
 
 
-getTransInCol :: AutomatonTransition -> Int -> [Color] -> Color
-getTransInCol _ _ [] = error "getTransInCol: No color"
+getTransInCol :: AutomatonTransition -> Int -> [Color] -> Maybe Color
+getTransInCol _ _ [] = Nothing
 getTransInCol t i (c:cs) = if (eventFunction t) i c
-                           then c
+                           then Just c
                            else getTransInCol t i cs
 
 
-getTransOutCol :: AutomatonTransition -> Int -> Int -> [Color] -> [Color] -> Color
-getTransOutCol _ _ 0 [] _ = error "getTransOutCol: No color"
+getTransOutCol :: AutomatonTransition -> Int -> Int -> [Color] -> [Color] -> Maybe Color
+getTransOutCol _ _ 0 [] _ = Nothing
 getTransOutCol t o nr [] cols = getTransOutCol t o (nr-1) cols cols
 getTransOutCol t o nr (c:cs) cols = case (packetTransformationFunction t) nr c of
                                       Just (o',c') -> if o==o'
-                                                      then c'
+                                                      then Just c'
                                                       else getTransOutCol t o nr cs cols
                                       Nothing -> getTransOutCol t o nr cs cols
 
@@ -61,13 +61,17 @@ getTransOutCol t o nr (c:cs) cols = case (packetTransformationFunction t) nr c o
 getReadTrans :: [AutomatonTransition] -> Int -> [Color] -> [(Int,Color)]
 getReadTrans ts i cs = let ts' = filter (\x -> (inPort x) == i) ts
                            r = map (\x -> (fromJust $ elemIndex x ts,getTransInCol x i cs)) ts'
-                       in r
+                           r' = filter (\(_,x) -> case x of (Just _) -> True; _ -> False) r
+                           r'' = map (\(x,y) -> (x,fromJust y)) r'
+                       in r''
 
 
 getWriteTrans :: [AutomatonTransition] -> Int -> Int -> [Color] -> [(Int,Color)]
 getWriteTrans ts o nr cs = let ts' = filter (\x -> case (outPort x) of (Just o') -> o == o'; _ -> False) ts
                                r = map (\x -> (fromJust $ elemIndex x ts,getTransOutCol x o nr cs cs)) ts'
-                           in r
+                               r' = filter (\(_,x) -> case x of (Just _) -> True; _ -> False) r
+                               r'' = map (\(x,y) -> (x,fromJust y)) r'
+                           in r''
 
 
 makeSignals :: ColoredNetwork -> ComponentID -> Int -> InvarFormula
@@ -112,16 +116,18 @@ makeSignals net cid step = case (getComponent net cid) of
                                                    tm = typeMap net
                                                    (ColorSet cols) = getColorSet net i
                                                    cols' = Set.toList cols
-                                                   (cols1 :: [(Int,Bool)]) = map (\x -> (x,eval (makeVArguments [tm BM.!> x]) (funs !! 0))) [1..length cols']
+                                                   (cols1 :: [(Int,Bool)]) = map (\x -> (tm BM.! x,eval (makeVArguments [x]) (funs !! 0))) cols'
                                                    cols1' = map (\(y,_) -> y) (filter (\(_,x) -> x) cols1)
-                                                   (cols2 :: [(Int,Bool)]) = map (\x -> (x,eval (makeVArguments [tm BM.!> x]) (funs !! 1))) [1..length cols']
+                                                   disj1 = makeDisj $ map (\x -> (EQUALS (IVAR $ Data i step) (INT x))) cols1'
+                                                   (cols2 :: [(Int,Bool)]) = map (\x -> (tm BM.! x,eval (makeVArguments [x]) (funs !! 1))) cols'
                                                    cols2' = map (\(y,_) -> y) (filter (\(_,x) -> x) cols2)
-                                                   o0irdy = makeConj $ map (\x -> makeImpl (EQUALS (IVAR $ Data i step) (INT x)) (makeBiimpl (BVAR $ Irdy o0 step) (BVAR $ Irdy i step))) cols1'
-                                                   o1irdy = makeConj $ map (\x -> makeImpl (EQUALS (IVAR $ Data i step) (INT x)) (makeBiimpl (BVAR $ Irdy o1 step) (BVAR $ Irdy i step))) cols2'
+                                                   disj2 = makeDisj $ map (\x -> (EQUALS (IVAR $ Data i step) (INT x))) cols2'
+                                                   o0irdy = makeBiimpl (BVAR $ Irdy o0 step) (CONJ disj1 (BVAR $ Irdy i step))--makeConj $ map (\x -> makeImpl (EQUALS (IVAR $ Data i step) (INT x)) (CONJ (makeBiimpl (BVAR $ Irdy o0 step) (BVAR $ Irdy i step)) (EQUALS (IVAR $ Data o0 step) (IVAR $ Data i step)))) cols1'
+                                                   o1irdy = makeBiimpl (BVAR $ Irdy o1 step) (CONJ disj2 (BVAR $ Irdy i step))--makeConj $ map (\x -> makeImpl (EQUALS (IVAR $ Data i step) (INT x)) (CONJ (makeBiimpl (BVAR $ Irdy o1 step) (BVAR $ Irdy i step)) (EQUALS (IVAR $ Data o1 step) (IVAR $ Data i step)))) cols2'
                                                    itrdy = makeBiimpl (BVAR $ Trdy i step) (DISJ (CONJ (BVAR $ Irdy o0 step) (BVAR $ Trdy o0 step)) (CONJ (BVAR $ Irdy o1 step) (BVAR $ Trdy o1 step)))
-                                                   o0data = EQUALS (IVAR $ Data o0 step) (IVAR $ Data i step)
-                                                   o1data = EQUALS (IVAR $ Data o1 step) (IVAR $ Data i step)
-                                               in makeConj [o0irdy,o1irdy,itrdy,o0data,o1data]
+                                                   --o0data = EQUALS (IVAR $ Data o0 step) (IVAR $ Data i step)
+                                                   --o1data = EQUALS (IVAR $ Data o1 step) (IVAR $ Data i step)
+                                               in makeConj [o0irdy,o1irdy,itrdy{-,o0data,o1data-}]
                               Merge _ -> let i0 = (getInChannels net cid) !! 0
                                              i1 = (getInChannels net cid) !! 1
                                              o = (getOutChannels net cid) !! 0
@@ -133,15 +139,18 @@ makeSignals net cid step = case (getComponent net cid) of
                               Automaton _ _ _ _ tr _  -> let ins = getInChannels net cid
                                                              outs = getOutChannels net cid
                                                              tm = typeMap net
-                                                             f = \x -> makeBiimpl (BVAR $ Trdy x step) (makeDisj (map (\(i,_) -> {-CONJ-} (EQUALS (IVAR $ Sel cid step) (INT (i+1))) {-(EQUALS (IVAR $ Data x step) (INT $ (tm BM.! c)))-}) (getReadTrans tr (fromJust $ elemIndex x ins) (let (ColorSet cols) = getColorSet net x in Set.toList cols))))
-                                                             f' = \x -> makeBiimpl (BVAR $ Irdy x step) (makeDisj (map (\(i,_) -> {-CONJ-} (EQUALS (IVAR $ Sel cid step) (INT (i+1))) {-(EQUALS (IVAR $ Data x step) (INT $ (tm BM.! c)))-}) (getWriteTrans tr (fromJust $ elemIndex x outs) (length ins) (let (ColorSet cols) = getColorSet net x in Set.toList cols))))
-                                                             f'' = \x -> let curs = EQUALS (IVAR $ Cur cid step) (INT $ startState x)
+                                                             f = \x -> let (ColorSet cols) = getColorSet net x
+                                                                           rtrs = getReadTrans tr (fromJust $ elemIndex x ins) (Set.toList cols)
+                                                                       in if Set.null cols then TRUE else makeBiimpl (BVAR $ Trdy x step) (makeDisj (map (\(i,_) -> {-CONJ-} (EQUALS (IVAR $ Sel cid step) (INT (i+1))) {-(EQUALS (IVAR $ Data x step) (INT $ (tm BM.! c)))-}) rtrs))
+                                                             f' = \x -> let (ColorSet cols) = getColorSet net x in if Set.null cols then TRUE else makeBiimpl (BVAR $ Irdy x step) (makeDisj (map (\(i,_) -> {-CONJ-} (EQUALS (IVAR $ Sel cid step) (INT (i+1))) {-(EQUALS (IVAR $ Data x step) (INT $ (tm BM.! c)))-}) (getWriteTrans tr (fromJust $ elemIndex x outs) (length ins) (Set.toList cols))))
+                                                             f'' = \x -> let --(ColorSet cols) = getColorSet net (ins !! (inPort x))
                                                                              icol = getTransInCol x (inPort x) (let (ColorSet cols) = getColorSet net (ins !! (inPort x)) in Set.toList cols)
-                                                                             idata = EQUALS (IVAR $ Data (ins !! (inPort x)) step) (INT $ (tm BM.! icol))
+                                                                         in if (icol == Nothing) then TRUE else
+                                                                         let curs = EQUALS (IVAR $ Cur cid step) (INT $ startState x)
+                                                                             idata = EQUALS (IVAR $ Data (ins !! (inPort x)) step) (INT $ (tm BM.! (fromJust icol)))
                                                                              odata = case (outPort x) of
-                                                                                        (Just o) -> EQUALS (IVAR $ Data (outs !! o) step) (INT $ (tm BM.! (getTransOutCol x o (length outs) (let (ColorSet cols) = getColorSet net (outs !! o) in Set.toList cols) (let (ColorSet cols) = getColorSet net (outs !! o) in Set.toList cols))))
+                                                                                        (Just o) -> EQUALS (IVAR $ Data (outs !! o) step) (INT $ (tm BM.! (fromJust $ getTransOutCol x o (length outs) (let (ColorSet cols) = getColorSet net (outs !! o) in Set.toList cols) (let (ColorSet cols) = getColorSet net (outs !! o) in Set.toList cols))))
                                                                                         _ -> TRUE
-                                                                            --getTransOutCol :: AutomatonTransition -> Int -> Int -> [Color] -> [Color] -> Color
                                                                              iirdy = (BVAR $ Irdy (ins !! (inPort x)) step)
                                                                              otrdy = case (outPort x) of
                                                                                         (Just o) -> (BVAR $ Trdy (outs !! o) step)
@@ -162,6 +171,15 @@ colorSetToColors cs = let (ColorSet cs') = cs
                       in Set.toList cs'
 
 
+makeColorAssertion :: ColoredNetwork -> ChannelID -> [Color] -> Int -> String
+makeColorAssertion net cid cs i = let tm = typeMap net
+                                      r = map (\x -> "(= " ++ (show $ IVAR $ Data cid i) ++ " " ++ (show $ tm BM.! x) ++ ")") cs
+                                      r' = if length r > 1
+                                           then "(assert (or " ++ (foldr (\x y -> if y /= "" then x ++ " " ++ y else x ++ y) "" r) ++ "))"
+                                           else if length r > 0 then "(assert " ++ (r !! 0) ++ ")" else "(assert true)"
+                                  in r'
+
+
 makeInit :: ColoredNetwork -> Int -> InvarFormula
 makeInit net step = let qs = Madl.Network.getAllQueueIDs net
                         as = Madl.Network.getAllProcessIDs net
@@ -178,15 +196,15 @@ makeBiimpl :: InvarFormula -> InvarFormula -> InvarFormula
 makeBiimpl a b = BIIMPL a b --CONJ (makeImpl a b) (makeImpl b a)
 
 
-notSeen :: ColoredNetwork -> Int -> Int -> InvarFormula
-notSeen net step bound = if step < bound
-                         then let qs = Madl.Network.getAllQueueIDs net
-                                  as = Madl.Network.getAllProcessIDs net
-                                  f = \z -> (map (\(x,y) -> (NEG $ EQUALS (IVAR $ QCell x y step) (IVAR $ QCell x y z))) [(a,b) | a <- qs, b <- [0..((getQueueSize net a)-1)]])
-                                  f' = \z -> (map (\x -> (NEG $ EQUALS (IVAR $ Cur x step) (IVAR $ Cur x z))) as)
-                                  f'' = makeConj (map (\x -> makeDisj ((f x) ++ (f' x))) [(step+1)..bound])
-                              in f''
-                         else error "notSeen: step is requited to be less than bound"
+notSeen :: ColoredNetwork -> Int -> Int -> Bool -> InvarFormula
+notSeen net step bound ri = if step < bound
+                            then let qs = Madl.Network.getAllQueueIDs net
+                                     as = Madl.Network.getAllProcessIDs net
+                                     f = \z -> (map (\(x,y) -> (NEG $ EQUALS (IVAR $ QCell x y step) (IVAR $ QCell x y z))) [(a,b) | a <- qs, b <- [0..((getQueueSize net a)-1)]])
+                                     f' = \z -> (map (\x -> (NEG $ EQUALS (IVAR $ Cur x step) (IVAR $ Cur x z))) as)
+                                     f'' = makeConj (map (\x -> makeDisj ((f x) ++ (f' x))) [(step+1)..bound])
+                                 in if ri then TRUE else f''
+                            else error "notSeen: step is requited to be less than bound"
 
 
 queueSame :: ColoredNetwork -> ComponentID -> Int -> InvarFormula
@@ -281,24 +299,33 @@ relateStates net bound = let as = getAllProcessIDs net
                          in makeConj (f ++ f'' ++ m' ++ m'')
 
 
-makeInvar :: ColoredNetwork -> Int -> Int -> InvarFormula
-makeInvar _ 0 _ = TRUE
-makeInvar net k bound = let invar' = makeInvar net (k-1) bound
-                            state = makeConj $ map (\x -> makeSignals net x k) (getComponentIDs net)
-                            notseen = notSeen net (k-1) bound
-                            step = makeConj $ map (\x -> localStep net x k) (getComponentIDs net)
-                            initial = makeInit net k
-                        in DISJ (makeConj [invar',state,notseen,step]) initial
+makeInvar :: ColoredNetwork -> Int -> Int -> Bool -> InvarFormula
+makeInvar _ 0 _ _ = TRUE
+makeInvar net k bound ri = let invar' = makeInvar net (k-1) bound ri
+                               state = makeConj $ map (\x -> makeSignals net x k) (getComponentIDs net)
+                               notseen = notSeen net (k-1) bound ri
+                               step = makeConj $ map (\x -> localStep net x k) (getComponentIDs net)
+                               initial = makeInit net k
+                           in DISJ (makeConj [invar',state,notseen,step]) initial
 
 
 makeInvar' :: ColoredNetwork -> Int -> Int -> String
 makeInvar' _ 0 _ = "true"
 makeInvar' net k bound = let invar' = makeInvar' net (k-1) bound
-                             state = "global_state_" ++ (show k)
                              notseen = "not_seen_" ++ (show (k-1))
                              step = "global_step_" ++ (show k)
                              initial = "initial_" ++ (show k)
-                         in "(or (and " ++ invar' ++ " " ++ state ++ " " ++ notseen ++ " " ++ step ++ ") (and " ++ initial ++ " " ++ state ++ "))"
+                         in "(or (and " ++ invar' ++ " " ++ notseen ++ " " ++ step ++ ") " ++ initial ++ ")"
+
+
+makeInvar'' :: ColoredNetwork -> Int -> Int -> String
+makeInvar'' _ 0 _ = "initial_0"
+makeInvar'' net k bound = let invar' = makeInvar'' net (k-1) bound
+                             --state = "global_state_" ++ (show k)
+                              notseen = "not_seen_" ++ (show (k-1))
+                              step = "global_step_" ++ (show k)
+                              --initial = "initial_" ++ (show k)
+                          in "(and " ++ invar' ++ " " ++ {-state ++ " " ++ -} notseen ++ " " ++ step ++ ")"
 
 
 makeSignals' :: ColoredNetwork -> Int -> String
@@ -311,14 +338,20 @@ makeSteps' net bound = let f = makeConj $ map (\x -> localStep net x bound) (get
                        in "(assert (= global_step_" ++ (show bound) ++ " " ++ (show f) ++ "))"
 
 
-makeFormulas :: ColoredNetwork -> Int -> String
-makeFormulas net bound = let state = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> makeSignals' net x) [1..bound])
-                             notseen = \k -> "(assert (= not_seen_" ++ (show k) ++ " " ++ (show $ notSeen net k bound) ++ "))"
-                             notseen' = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> notseen x) [0..(bound-1)])
-                             step = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> makeSteps' net x) [1..bound])
-                             initial = \k -> "(assert (= initial_" ++ (show k) ++ " " ++ (show $ makeInit net k) ++ "))"
-                             initial' = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> initial x) [0..bound])
-                         in state ++ notseen' ++ step ++ initial'
+makeFormulas :: ColoredNetwork -> Int -> Bool -> String
+makeFormulas net bound ri = let state = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> makeSignals' net x) [0..bound])
+                                notseen = \k -> "(assert (= not_seen" ++ "_" ++ (show k) ++ " " ++ (show $ notSeen net k bound ri) ++ "))"
+                                notseen' = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> notseen x) [0..(bound-1)])
+                                step = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> makeSteps' net x) [1..bound])
+                                initial = \k -> "(assert (= initial" ++ "_" ++ (show k) ++ " " ++ (show (makeInit net k)) ++ "))"
+                                initial' = foldr (\x y -> x ++ "\n\n" ++ y) "" (map (\x -> initial x) [0..bound])
+                            in state ++ notseen' ++ step ++ initial'
+
+
+makeConsistentStates :: Int -> String
+makeConsistentStates bound = let r = map (\x -> "(= global_state_" ++ (show x) ++ " true)") [0..bound]
+                                 r' = foldr (\x y -> if y /= "" then x ++ " " ++ y else x ++ y) "" r
+                             in "(assert (and " ++ r' ++ "))"
 
 
 makeVars :: ColoredNetwork -> Int -> String
@@ -328,22 +361,30 @@ makeVars net bound = let chans = getChannelIDs net
                          mrgs = getAllMergeIDs net
                          irdyVars = map (\(x,y) -> "(declare-fun " ++ (show $ BVAR $ Irdy y x) ++ " () Bool)") [(s,c) | s <- [0..bound], c <- chans]
                          trdyVars = map (\(x,y) -> "(declare-fun " ++ (show $ BVAR $ Trdy y x) ++ " () Bool)") [(s,c) | s <- [0..bound], c <- chans]
-                         dataVars = map (\(x,y) -> "(declare-fun " ++ (show $ IVAR $ Data y x) ++ " () Int) (assert (>= " ++ (show $ IVAR $ Data y x) ++ " 0)) (assert (<= " ++ (show $ IVAR $ Data y x) ++ " " ++ (show ((length (colorSetToColors $ getColorSet net y))+1)) ++ "))") [(s,c) | s <- [0..bound], c <- chans]
-                         qcelVars = map (\(a,b,c) -> "(declare-fun " ++ (show $ IVAR $ QCell a b c) ++ " () Int) (assert (>= " ++ (show $ IVAR $ QCell a b c) ++ " 0)) (assert (<= " ++ (show $ IVAR $ QCell a b c) ++ " " ++ (show ((length (colorSetToColors $ getColorSet net ((getInChannels net a) !! 0))))) ++ "))") [(q,i,s) | q <- qs, i <- [0..(getQueueSize net q)-1], s <- [0..bound]]
+                         dataVars = map (\(x,y) -> "(declare-fun " ++ (show $ IVAR $ Data y x) ++ " () Int) " ++ (makeColorAssertion net y (colorSetToColors $ getColorSet net y) x)) [(s,c) | s <- [0..bound], c <- chans]
+                         qcelVars = map (\(a,b,c) -> "(declare-fun " ++ (show $ IVAR $ QCell a b c) ++ " () Int) (assert (>= " ++ (show $ IVAR $ QCell a b c) ++ " 0)) (assert (<= " ++ (show $ IVAR $ QCell a b c) ++ " " ++ (show ((BM.size (typeMap net))+1)) ++ "))") [(q,i,s) | q <- qs, i <- [0..(getQueueSize net q)-1], s <- [0..bound]]
                          qocVars = map (\(a,b) -> "(declare-fun " ++ (show $ IVAR $ QOccupancy a b) ++ " () Int) (assert (>= " ++ (show $ IVAR $ QOccupancy a b) ++ " 0)) (assert (<= " ++ (show $ IVAR $ QOccupancy a b) ++ " " ++ (show ((getQueueSize net a))) ++ "))") [(q,s) | q <- qs, s <- [0..bound]]
                          stateVars = map (\(a,b) -> "(declare-fun " ++ (show $ IVAR $ Cur a b) ++ " () Int) (assert (>= " ++ (show $ IVAR $ Cur a b) ++ " 0)) (assert (<= " ++ (show $ IVAR $ Cur a b) ++ " " ++ (show ((nrOfStates $ getComponent net a)-1)) ++ "))") [(p,s) | p <- as, s <- [0..bound]]
                          transVars = map (\(a,b) -> "(declare-fun " ++ (show $ IVAR $ Sel a b) ++ " () Int) (assert (>= " ++ (show $ IVAR $ Sel a b) ++ " 0)) (assert (<= " ++ (show $ IVAR $ Sel a b) ++ " " ++ (show ((length $ transitions $ getComponent net a))) ++ "))") [(p,s) | p <- as, s <- [0..bound]]
                          mrgVars = map (\(a,b) -> "(declare-fun " ++ (show $ IVAR $ Sel a b) ++ " () Int) (assert (>= " ++ (show $ IVAR $ Sel a b) ++ " 0)) (assert (<= " ++ (show $ IVAR $ Sel a b) ++ " 1))") [(p,s) | p <- mrgs, s <- [0..bound]]
-                         gsvars = map (\x -> "(declare-fun global_state_" ++ (show x) ++ " () Bool)") [1..bound]
+                         gsvars = map (\x -> "(declare-fun global_state_" ++ (show x) ++ " () Bool)") [0..bound]
                          nsvars = map (\x -> "(declare-fun not_seen_" ++ (show x) ++ " () Bool)") [0..bound-1]
                          svars = map (\x -> "(declare-fun global_step_" ++ (show x) ++ " () Bool)") [1..bound]
                          ivars = map (\x -> "(declare-fun initial_" ++ (show x) ++ " () Bool)") [0..bound]
                      in foldr (\x y -> x ++ "\n" ++ y) "" (irdyVars ++ trdyVars ++ dataVars ++ qcelVars ++ qocVars ++ stateVars ++ transVars ++ mrgVars ++ gsvars ++ nsvars ++ svars ++ ivars)
 
 
-invarToSMT :: ColoredNetwork -> Int -> String
-invarToSMT net bound = let f = relateStates net bound
-                           f' = makeFormulas net bound
-                           f'' = makeInvar' net bound bound
-                       in "(assert (= " ++ show f ++ " true))" ++ "\n\n" ++ f' ++ "\n\n" ++
-                          "(assert (= " ++ f'' ++ " true))" ++ "\n\n"
+invarToSMT :: ColoredNetwork -> Int -> Bool -> Bool -> String
+invarToSMT net bound ri nl = let vars = makeVars net bound
+                                 f = relateStates net bound
+                                 f' = makeFormulas net bound ri
+                                 f'' = makeConsistentStates bound
+                                 f''' = if nl
+                                        then makeInvar'' net bound bound
+                                        else makeInvar' net bound bound
+                                 reachInit = foldr (\x y -> if y /= "" then x ++ " " ++ y else x ++ y) "" (map (\x -> "(= initial_" ++ (show x) ++ " true)") [0..bound])
+                                 reachInit' = if bound > 0 then "(assert (= (or " ++ reachInit ++ ") true))" else ""
+                                 fri = if ri
+                                       then reachInit'
+                                       else ""
+                             in vars ++ "\n\n" ++ "(assert (= " ++ show f ++ " true))" ++ "\n\n" ++ f' ++ "\n\n" ++ f'' ++ "\n\n" ++ fri ++ "\n\n" ++ "(assert (= " ++ f''' ++ " true))" ++ "\n\n"

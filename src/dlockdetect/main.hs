@@ -183,6 +183,12 @@ exeOptions =
     , Option "" ["backward-reach-invar"]
         (ReqArg (\n opts -> opts {backwardReachInvar = (read n)}) "Number of steps")
         "Generate a backward reachability invariant for n steps"
+    , Option "" ["reach-init"]
+        (NoArg (\opts -> opts {reachInit = True}))
+        "Check if the deadlock is reached from the initial state within n steps"
+    , Option "" ["no-liveness"]
+        (NoArg (\opts -> opts {noLiveness = True}))
+        "Disable liveness verification"
     ]
 
 -- | Main entry point
