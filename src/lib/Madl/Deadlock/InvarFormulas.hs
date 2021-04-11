@@ -54,16 +54,16 @@ data BoolVar
 
 
 instance Show BoolVar where
-  show (Irdy cid step) = "irdy_" ++ (show cid) ++ "_" ++ (show step)
-  show (Trdy cid step) = "trdy_" ++ (show cid) ++ "_" ++ (show step)
+  show (Irdy cid step) = "irdy_" ++ (show cid) ++ "-" ++ (show step)
+  show (Trdy cid step) = "trdy_" ++ (show cid) ++ "-" ++ (show step)
 
 
 instance Show IntVar where
-  show (QOccupancy cid step) = "qhas_" ++ (show cid) ++ "_" ++ (show step)
-  show (QCell cid x step) = "qcell_" ++ (show cid) ++ "_" ++ (show x) ++ "_" ++ (show step)
-  show (Sel cid step) = "sel_" ++ (show cid) ++ "_" ++ (show step)
-  show (Cur cid step) = "cur_" ++ (show cid) ++ "_" ++ (show step)
-  show (Data cid step) = "data_" ++ (show cid) ++ "_" ++ (show step)
+  show (QOccupancy cid step) = "qhas_" ++ (show cid) ++ "-" ++ (show step)
+  show (QCell cid x step) = "qcell_" ++ (show cid) ++ "_" ++ (show x) ++ "-" ++ (show step)
+  show (Sel cid step) = "sel_" ++ (show cid) ++ "-" ++ (show step)
+  show (Cur cid step) = "cur_" ++ (show cid) ++ "-" ++ (show step)
+  show (Data cid step) = "data_" ++ (show cid) ++ "-" ++ (show step)
 
 
 instance Show IntExpr where

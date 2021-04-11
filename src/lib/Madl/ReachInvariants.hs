@@ -371,7 +371,8 @@ makeVars net bound = let chans = getChannelIDs net
                          nsvars = map (\x -> "(declare-fun not_seen_" ++ (show x) ++ " () Bool)") [0..bound-1]
                          svars = map (\x -> "(declare-fun global_step_" ++ (show x) ++ " () Bool)") [1..bound]
                          ivars = map (\x -> "(declare-fun initial_" ++ (show x) ++ " () Bool)") [0..bound]
-                     in foldr (\x y -> x ++ "\n" ++ y) "" (irdyVars ++ trdyVars ++ dataVars ++ qcelVars ++ qocVars ++ stateVars ++ transVars ++ mrgVars ++ gsvars ++ nsvars ++ svars ++ ivars)
+                         dlf = ["(declare-fun fls () Bool)"]
+                     in foldr (\x y -> x ++ "\n" ++ y) "" (dlf ++ irdyVars ++ trdyVars ++ dataVars ++ qcelVars ++ qocVars ++ stateVars ++ transVars ++ mrgVars ++ gsvars ++ nsvars ++ svars ++ ivars)
 
 
 invarToSMT :: ColoredNetwork -> Int -> Bool -> Bool -> String
@@ -387,4 +388,4 @@ invarToSMT net bound ri nl = let vars = makeVars net bound
                                  fri = if ri
                                        then reachInit'
                                        else ""
-                             in vars ++ "\n\n" ++ "(assert (= " ++ show f ++ " true))" ++ "\n\n" ++ f' ++ "\n\n" ++ f'' ++ "\n\n" ++ fri ++ "\n\n" ++ "(assert (= " ++ f''' ++ " true))" ++ "\n\n"
+                             in vars ++ "\n\n" ++ "(assert (= " ++ show f ++ " true))" ++ "\n\n" ++ f' ++ "\n\n" ++ f'' ++ "\n\n" ++ fri ++ "\n\n" ++ "(assert (= " ++ f''' ++ " true))" ++ "\n\n(assert dlf)\n\n"

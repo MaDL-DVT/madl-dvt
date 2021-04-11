@@ -8,8 +8,8 @@ Copyright   : (c) Freek Verbeek, Sanne Wouda 2015-2016, Tessa Belder 2016
 This module generates an SMT model from a colored network. It also contains a parser for SMT output.
 -}
 module Madl.Deadlock.SMT (
-    export_formula_to_SMT, parseSMTOutput,
-    export_invariants_to_smt, export_bi_var_to_smt,
+    export_formula_to_SMT, export_formula_to_SMT', export_formula_to_SMT'', parseSMTOutput,
+    export_invariants_to_smt, export_invariants_to_smt', export_invariants_to_smt'', export_bi_var_to_smt,
     export_literal_to_SMT, SMTModel,
     bi_to_name, showModel, smt_automaton_state, smt_queue, smt_queue_packet
 ) where
@@ -95,6 +95,29 @@ export_row_to_smt x show_p_t inv = if emptyInvariant inv then "" else case inv o
         invarQ = uncurry $ export_q_factor_to_smt x show_p_t
         invarA = uncurry $ export_a_factor_to_smt x
 
+
+export_row_to_smt' :: ColoredNetwork -> (Color -> String) -> Invariant Int -> String
+export_row_to_smt' x show_p_t inv = if emptyInvariant inv then "" else case inv of
+    Invariant qMap aMap c -> smt_assert' $ smt_equals "0" invar where
+        invar = smt_add $ concatMap invarQ (Map.assocs qMap) ++ concatMap invarA (Map.assocs aMap) ++ [export_value_to_smt c | c /= 0]
+    LeqInvariant qMap aMap c -> smt_assert' $ smt_atmost invar "0" where
+        invar = smt_add $ concatMap invarQ (Map.assocs qMap) ++ concatMap invarA (Map.assocs aMap) ++ [export_value_to_smt c | c /= 0]
+    where
+        invarQ = uncurry $ export_q_factor_to_smt x show_p_t
+        invarA = uncurry $ export_a_factor_to_smt x
+
+
+export_row_to_smt'' :: ColoredNetwork -> (Color -> String) -> Invariant Int -> String
+export_row_to_smt'' x show_p_t inv = if emptyInvariant inv then "" else case inv of
+    Invariant qMap aMap c -> smt_assert'' $ smt_equals "0" invar where
+        invar = smt_add $ concatMap invarQ (Map.assocs qMap) ++ concatMap invarA (Map.assocs aMap) ++ [export_value_to_smt c | c /= 0]
+    LeqInvariant qMap aMap c -> smt_assert'' $ smt_atmost invar "0" where
+        invar = smt_add $ concatMap invarQ (Map.assocs qMap) ++ concatMap invarA (Map.assocs aMap) ++ [export_value_to_smt c | c /= 0]
+    where
+        invarQ = uncurry $ export_q_factor_to_smt x show_p_t
+        invarA = uncurry $ export_a_factor_to_smt x
+
+
 -- | Declare a variable for the number of packets of the given color in the given queue
 export_q_data_var_to_smt :: ColoredNetwork -> (Color -> String) -> (ComponentID, Color) -> String
 export_q_data_var_to_smt x show_p_t (i,d) = case getComponent x i of
@@ -104,6 +127,27 @@ export_q_data_var_to_smt x show_p_t (i,d) = case getComponent x i of
     _ -> fatal 84 "unreachable"
     where
         name = smt_queue_packet x i d show_p_t
+
+
+export_q_data_var_to_smt' :: ColoredNetwork -> (Color -> String) -> (ComponentID, Color) -> String
+export_q_data_var_to_smt' x show_p_t (i,d) = case getComponent x i of
+    Queue{}  -> unwords [smt_fun "Int" name, smt_assert' (smt_atleast name "0")]
+    Buffer{}  -> unwords [smt_fun "Int" name, smt_assert' (smt_atleast name "0")]
+    GuardQueue{}  -> unwords [smt_fun "Int" name, smt_assert' (smt_atleast name "0")]
+    _ -> fatal 84 "unreachable"
+    where
+        name = smt_queue_packet x i d show_p_t
+
+
+export_q_data_var_to_smt'' :: ColoredNetwork -> (Color -> String) -> (ComponentID, Color) -> String
+export_q_data_var_to_smt'' x show_p_t (i,d) = case getComponent x i of
+    Queue{}  -> unwords [smt_fun "Int" name, smt_assert'' (smt_atleast name "0")]
+    Buffer{}  -> unwords [smt_fun "Int" name, smt_assert'' (smt_atleast name "0")]
+    GuardQueue{}  -> unwords [smt_fun "Int" name, smt_assert'' (smt_atleast name "0")]
+    _ -> fatal 84 "unreachable"
+    where
+        name = smt_queue_packet x i d show_p_t
+
 
 -- | Declare arbiter and size variable(s) for the given component
 export_q_var_to_smt :: ColoredNetwork -> ComponentID -> String
@@ -139,6 +183,71 @@ export_q_var_to_smt x i = case getComponent x i of
             name_m = smt_guardqueue_m x i
     _ -> fatal 91 "unreachable"
 
+
+export_q_var_to_smt' :: ColoredNetwork -> ComponentID -> String
+export_q_var_to_smt' x i = case getComponent x i of
+    Queue _ cap -> unwords[smt_fun "Int" name, smt_assert_inrange' name (0, cap)] where
+        name = smt_queue x i
+    Buffer _ cap -> --unlines[
+                    unwords[smt_fun "Int" name, smt_assert_inrange' name (0, cap)] where
+        name = smt_queue x i
+    Merge{} -> unwords[smt_fun "Int" name, smt_assert_inrange' name (0, getNrInputs x i - 1)] where
+        name = smt_merge_arbiter x i
+    MultiMatch{} -> unlines[
+        unwords[smt_fun "Int" name_m, smt_assert_inrange' name_m (0, length matchIns - 1)],
+        unwords[smt_fun "Int" name_d, smt_assert_inrange' name_d (0, length dataIns - 1)]] where
+            name_m = smt_match_arbiter_m x i
+            name_d = smt_match_arbiter_d x i
+            (matchIns, dataIns) = splitAt (getNrOutputs x i) (getInChannels x i)
+    Automaton _ nrIns _ n ts _ -> unlines[
+        unwords[smt_fun "Int" name_s, smt_assert_inrange' name_s (0, n-1)],
+        unwords[smt_fun "Int" name_c, smt_assert_inrange' name_c (0, nrIns-1)],
+        unwords[smt_fun "Int" name_t, smt_assert_inrange' name_t (0, length ts-1)]] where
+            name_s = smt_automaton_state x i
+            name_c = smt_automaton_arbiter_c x i
+            name_t = smt_automaton_arbiter_t x i
+    LoadBalancer{} -> unwords[smt_fun "Int" name, smt_assert_inrange' name (0, getNrOutputs x i - 1)] where
+        name = smt_loadbalancer_arbiter x i
+    GuardQueue _ cap -> unlines[
+        unwords[smt_fun "Int" name_q, smt_assert_inrange' name_q (0, cap)],
+        unwords[smt_fun "Int" name_m, smt_assert_inrange' name_m (0, getNrInputs x i - 1)]] where
+            name_q = smt_guardqueue_q x i
+            name_m = smt_guardqueue_m x i
+    _ -> fatal 91 "unreachable"
+
+
+export_q_var_to_smt'' :: ColoredNetwork -> ComponentID -> String
+export_q_var_to_smt'' x i = case getComponent x i of
+    Queue _ cap -> unwords[smt_fun "Int" name, smt_assert_inrange'' name (0, cap)] where
+        name = smt_queue x i
+    Buffer _ cap -> --unlines[
+                    unwords[smt_fun "Int" name, smt_assert_inrange'' name (0, cap)] where
+        name = smt_queue x i
+    Merge{} -> unwords[smt_fun "Int" name, smt_assert_inrange'' name (0, getNrInputs x i - 1)] where
+        name = smt_merge_arbiter x i
+    MultiMatch{} -> unlines[
+        unwords[smt_fun "Int" name_m, smt_assert_inrange'' name_m (0, length matchIns - 1)],
+        unwords[smt_fun "Int" name_d, smt_assert_inrange'' name_d (0, length dataIns - 1)]] where
+            name_m = smt_match_arbiter_m x i
+            name_d = smt_match_arbiter_d x i
+            (matchIns, dataIns) = splitAt (getNrOutputs x i) (getInChannels x i)
+    Automaton _ nrIns _ n ts _ -> unlines[
+        unwords[smt_fun "Int" name_s, smt_assert_inrange'' name_s (0, n-1)],
+        unwords[smt_fun "Int" name_c, smt_assert_inrange'' name_c (0, nrIns-1)],
+        unwords[smt_fun "Int" name_t, smt_assert_inrange'' name_t (0, length ts-1)]] where
+            name_s = smt_automaton_state x i
+            name_c = smt_automaton_arbiter_c x i
+            name_t = smt_automaton_arbiter_t x i
+    LoadBalancer{} -> unwords[smt_fun "Int" name, smt_assert_inrange'' name (0, getNrOutputs x i - 1)] where
+        name = smt_loadbalancer_arbiter x i
+    GuardQueue _ cap -> unlines[
+        unwords[smt_fun "Int" name_q, smt_assert_inrange'' name_q (0, cap)],
+        unwords[smt_fun "Int" name_m, smt_assert_inrange'' name_m (0, getNrInputs x i - 1)]] where
+            name_q = smt_guardqueue_q x i
+            name_m = smt_guardqueue_m x i
+    _ -> fatal 91 "unreachable"
+
+
 -- | Get the name(s) of the variable(s) representing the given literal
 bi_to_name :: ColoredNetwork -> (Color -> String) -> Literal -> [String]
 bi_to_name x _show_p_t (BlockSource cID) = [smt_block_source x cID]
@@ -171,6 +280,27 @@ export_color_info_to_smt x show_p_t i =
     in case ds of
         [] -> smt_assert $ smt_equals name "0"
         _ ->  smt_assert . smt_equals name $ smt_add (map dataName ds)
+
+
+export_color_info_to_smt' :: ColoredNetwork -> (Color -> String) -> ComponentID -> String
+export_color_info_to_smt' x show_p_t i =
+    let ds = getColors . head $ inputTypes x i
+        name = smt_queue x i
+        dataName = ((name ++ ".") ++) . show_p_t
+    in case ds of
+        [] -> smt_assert' $ smt_equals name "0"
+        _ ->  smt_assert' . smt_equals name $ smt_add (map dataName ds)
+
+
+export_color_info_to_smt'' :: ColoredNetwork -> (Color -> String) -> ComponentID -> String
+export_color_info_to_smt'' x show_p_t i =
+    let ds = getColors . head $ inputTypes x i
+        name = smt_queue x i
+        dataName = ((name ++ ".") ++) . show_p_t
+    in case ds of
+        [] -> smt_assert'' $ smt_equals name "0"
+        _ ->  smt_assert'' . smt_equals name $ smt_add (map dataName ds)
+
 
 -- | Export the invariants to SMT
 -- Assemble all variables in two sets (one for variables q0.d, others for variables q0).
@@ -226,6 +356,109 @@ export_invariants_to_smt net show_p_t invs =
             (Set.union (Set.fromList (map (\color -> (q,color)) (toList (
                 head $ map (getColors . snd . getChannel net) (getOutChannels net q)
             )))) (fst vars), Set.insert q (snd vars)))
+
+
+export_invariants_to_smt' :: ColoredNetwork -> (Color -> String) -> [Invariant Int] -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
+export_invariants_to_smt' net show_p_t invs =
+    let
+        vars :: (Set (ComponentID, Color), Set ComponentID)
+        vars  = get_variables_in_invariants invs;
+        qs :: Set ComponentID;
+        qs    = get_color_specific_queues (fst vars);
+        vars' :: (Set (ComponentID, Color), Set ComponentID);
+        vars' = add_queues_and_colors vars qs;
+        s     = unlines (map (export_q_var_to_smt' net) $ Set.toList (snd vars'))
+             ++ unlines (map (export_q_data_var_to_smt' net show_p_t) $ Set.toList (fst vars'))
+             ++ "\n\n"
+             ++ unlines (map (export_color_info_to_smt' net show_p_t) $ Set.toList qs)
+             ++ "\n\n"
+             ++ unlines (map (export_row_to_smt' net show_p_t) invs)
+        vars'' :: (Map ComponentID [Color], Set ComponentID)
+        vars'' = mapFst (Map.fromListWith (++) . map (mapSnd (:[])) . Set.toList) vars'
+    in (s, qs, vars'')
+    where
+        get_variables_in_invariants :: [Invariant Int] -> (Set (ComponentID, Color), Set ComponentID);
+        get_variables_in_invariants = foldr f (Set.empty,Set.empty);
+        f :: Invariant Int -> (Set (ComponentID, Color), Set ComponentID) -> (Set (ComponentID, Color), Set ComponentID);
+        f row = mapFst (addKeysWithValue row) . mapSnd (addKeysWithoutValue row);
+
+        addKeysWithValue :: Invariant Int -> Set (ComponentID, Color) -> Set (ComponentID, Color);
+        addKeysWithValue invar = Set.union $ keysTypes invar;
+        keysTypes :: Invariant Int -> Set (ComponentID, Color);
+        keysTypes (Invariant qMap _aMap _c) = Set.fromList . concatMap g $ Map.assocs qMap;
+        keysTypes (LeqInvariant qMap _aMap _c) = Set.fromList . concatMap g $ Map.assocs qMap;
+        g :: (ComponentID, Map (Maybe Color) Int) -> [(ComponentID, Color)];
+        g (i, ts) = zip (repeat i) (catMaybes $ Map.keys ts)
+
+        addKeysWithoutValue :: Invariant Int -> Set ComponentID -> Set ComponentID;
+        addKeysWithoutValue (Invariant qMap aMap _c) = Set.union $ Set.union qKeys aKeys where
+            qKeys = Map.keysSet $ Map.filter (Map.member Nothing) qMap
+            aKeys = Map.keysSet aMap
+        addKeysWithoutValue (LeqInvariant qMap aMap _c) = Set.union $ Set.union qKeys aKeys where
+            qKeys = Map.keysSet $ Map.filter (Map.member Nothing) qMap
+            aKeys = Map.keysSet aMap
+
+        get_color_specific_queues :: Set (ComponentID, Color) -> Set ComponentID;
+        get_color_specific_queues vars = Set.map fst vars;
+        add_queues_and_colors :: (Set (ComponentID, Color), Set ComponentID) -> Set ComponentID -> (Set (ComponentID, Color), Set ComponentID);
+        add_queues_and_colors = Set.foldr h;
+        h :: ComponentID -> (Set (ComponentID, Color), Set ComponentID) -> (Set (ComponentID, Color), Set ComponentID);
+        h = (\q vars ->
+            (Set.union (Set.fromList (map (\color -> (q,color)) (toList (
+                head $ map (getColors . snd . getChannel net) (getOutChannels net q)
+            )))) (fst vars), Set.insert q (snd vars)))
+
+
+export_invariants_to_smt'' :: ColoredNetwork -> (Color -> String) -> [Invariant Int] -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
+export_invariants_to_smt'' net show_p_t invs =
+    let
+        vars :: (Set (ComponentID, Color), Set ComponentID)
+        vars  = get_variables_in_invariants invs;
+        qs :: Set ComponentID;
+        qs    = get_color_specific_queues (fst vars);
+        vars' :: (Set (ComponentID, Color), Set ComponentID);
+        vars' = add_queues_and_colors vars qs;
+        s     = unlines (map (export_q_var_to_smt'' net) $ Set.toList (snd vars'))
+             ++ unlines (map (export_q_data_var_to_smt'' net show_p_t) $ Set.toList (fst vars'))
+             ++ "\n\n"
+             ++ unlines (map (export_color_info_to_smt'' net show_p_t) $ Set.toList qs)
+             ++ "\n\n"
+             ++ unlines (map (export_row_to_smt'' net show_p_t) invs)
+        vars'' :: (Map ComponentID [Color], Set ComponentID)
+        vars'' = mapFst (Map.fromListWith (++) . map (mapSnd (:[])) . Set.toList) vars'
+    in (s, qs, vars'')
+    where
+        get_variables_in_invariants :: [Invariant Int] -> (Set (ComponentID, Color), Set ComponentID);
+        get_variables_in_invariants = foldr f (Set.empty,Set.empty);
+        f :: Invariant Int -> (Set (ComponentID, Color), Set ComponentID) -> (Set (ComponentID, Color), Set ComponentID);
+        f row = mapFst (addKeysWithValue row) . mapSnd (addKeysWithoutValue row);
+
+        addKeysWithValue :: Invariant Int -> Set (ComponentID, Color) -> Set (ComponentID, Color);
+        addKeysWithValue invar = Set.union $ keysTypes invar;
+        keysTypes :: Invariant Int -> Set (ComponentID, Color);
+        keysTypes (Invariant qMap _aMap _c) = Set.fromList . concatMap g $ Map.assocs qMap;
+        keysTypes (LeqInvariant qMap _aMap _c) = Set.fromList . concatMap g $ Map.assocs qMap;
+        g :: (ComponentID, Map (Maybe Color) Int) -> [(ComponentID, Color)];
+        g (i, ts) = zip (repeat i) (catMaybes $ Map.keys ts)
+
+        addKeysWithoutValue :: Invariant Int -> Set ComponentID -> Set ComponentID;
+        addKeysWithoutValue (Invariant qMap aMap _c) = Set.union $ Set.union qKeys aKeys where
+            qKeys = Map.keysSet $ Map.filter (Map.member Nothing) qMap
+            aKeys = Map.keysSet aMap
+        addKeysWithoutValue (LeqInvariant qMap aMap _c) = Set.union $ Set.union qKeys aKeys where
+            qKeys = Map.keysSet $ Map.filter (Map.member Nothing) qMap
+            aKeys = Map.keysSet aMap
+
+        get_color_specific_queues :: Set (ComponentID, Color) -> Set ComponentID;
+        get_color_specific_queues vars = Set.map fst vars;
+        add_queues_and_colors :: (Set (ComponentID, Color), Set ComponentID) -> Set ComponentID -> (Set (ComponentID, Color), Set ComponentID);
+        add_queues_and_colors = Set.foldr h;
+        h :: ComponentID -> (Set (ComponentID, Color), Set ComponentID) -> (Set (ComponentID, Color), Set ComponentID);
+        h = (\q vars ->
+            (Set.union (Set.fromList (map (\color -> (q,color)) (toList (
+                head $ map (getColors . snd . getChannel net) (getOutChannels net q)
+            )))) (fst vars), Set.insert q (snd vars)))
+
 
 -- | Declare the value of the given literal in SMT
 export_literal_to_SMT :: ColoredNetwork -> (Color -> String) -> Literal -> String
@@ -327,6 +560,131 @@ export_formula_to_SMT x qs vars show_p_t bi f = (ret_s,ret_qs,ret_vars) where
                 IdleAll{} -> (Set.empty, Set.empty)
     colors_from :: Set ComponentID -> Map ComponentID [Color]
     colors_from = Map.unions . map (\q -> Map.singleton q (getColors . head $ inputTypes x q)) . Set.toList
+
+
+export_formula_to_SMT' :: ColoredNetwork -> (Set ComponentID) -> (Map ComponentID [Color], Set ComponentID) -> (Color -> String) -> Maybe Literal -> Formula -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
+export_formula_to_SMT' x qs vars show_p_t bi f = (ret_s,ret_qs,ret_vars) where
+    (s,vars',qs') = export_formula_to_SMT_rec $ simplify_singletons f;
+    vars'' = Set.difference vars' qs';
+
+    ret_vars = (Map.union (fst vars) (colors_from qs'), Set.union (snd vars) $ Set.union vars' qs');
+    ret_qs   = Set.union qs qs';
+    ret_s = (Set.fold (++) "" (Set.map (\v -> export_q_var_to_smt' x v ++ "\n") vars''))
+        ++
+        (Set.fold (++) "" (Set.map (\v -> export_q_var_to_smt' x v ++ "\n") (Set.difference qs' (snd vars))))
+        ++
+        (concatMap (\(q, cs) -> concatMap (\c -> export_q_data_var_to_smt' x show_p_t (q, c) ++ "\n") cs) (Map.assocs $ Map.difference (colors_from qs') (fst vars)))
+        ++
+        (Set.fold (++) "" (Set.map (\q -> export_color_info_to_smt' x show_p_t q ++ "\n") qs'))
+        ++ "\n" ++
+        (case bi of
+            Nothing -> smt_assert' s
+            Just bi' -> smt_assert' $ smt_equals (export_literal_to_SMT x show_p_t bi') s
+        )
+        ++ "\n"
+
+    export_formula_to_SMT_rec :: Formula -> (String, Set ComponentID, Set ComponentID)
+    export_formula_to_SMT_rec T = ("true",Set.empty,Set.empty)
+    export_formula_to_SMT_rec F = ("false",Set.empty, Set.empty)
+    export_formula_to_SMT_rec (Lit l) = (export_literal_to_SMT x show_p_t l, fst (new_vars l), snd (new_vars l))
+    export_formula_to_SMT_rec (NOT f') = let (s',v,q) = export_formula_to_SMT_rec f' in
+                                            (smt_un_operator "not" s', v, q)
+    export_formula_to_SMT_rec (AND fs) = let (s',v,q) = unzip3 $ toList $ Set.map export_formula_to_SMT_rec fs in
+                                            (smt_and s', foldl Set.union Set.empty v, foldl Set.union Set.empty q)
+    export_formula_to_SMT_rec (OR fs)  = let (s',v,q) = unzip3 $ toList $ Set.map export_formula_to_SMT_rec fs in
+                                            (smt_or s', foldl Set.union Set.empty v, foldl Set.union Set.empty q)
+    -- Returns a tuple (qs0,qs1) with qs0 new queue variables and qs1 new color-specific queue variables
+    new_vars :: Literal -> (Set ComponentID, Set ComponentID)
+    new_vars l = case l of
+                Select i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                MSelect i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                TSelect i _ _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                InState i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                IdleState i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                DeadTrans i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                Is_Full q -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                Is_Not_Full q -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                ContainsNone q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                ContainsNone q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
+                Any_At_Head q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                Any_At_Head q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
+                --Any_In_Buffer b Nothing -> (if b `Set.notMember` (snd vars) then Set.singleton b else Set.empty, Set.empty)
+                --Any_In_Buffer b (Just _) -> (Set.empty, if b `Map.notMember` (fst vars) then Set.singleton b else Set.empty)
+                All_Not_At_Head q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                All_Not_At_Head q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
+                Sum_Compare qs'' _cmp _v -> foldr (\(q,d) (l',r) -> case d of
+                                                                Nothing -> (if q `Set.notMember` (snd vars) then Set.insert q l' else l',r)
+                                                                Just _  -> if q `Map.notMember` (fst vars) then (l', Set.insert q r) else (l',r))
+                                         (Set.empty, Set.empty) qs''
+                BlockSource{} -> (Set.empty, Set.empty)
+                BlockBuffer{} -> (Set.empty, Set.empty)
+                BlockAny{} -> (Set.empty, Set.empty)
+                IdleAll{} -> (Set.empty, Set.empty)
+    colors_from :: Set ComponentID -> Map ComponentID [Color]
+    colors_from = Map.unions . map (\q -> Map.singleton q (getColors . head $ inputTypes x q)) . Set.toList
+
+
+export_formula_to_SMT'' :: ColoredNetwork -> (Set ComponentID) -> (Map ComponentID [Color], Set ComponentID) -> (Color -> String) -> Maybe Literal -> Formula -> (String, Set ComponentID, (Map ComponentID [Color], Set ComponentID))
+export_formula_to_SMT'' x qs vars show_p_t bi f = (ret_s,ret_qs,ret_vars) where
+    (s,vars',qs') = export_formula_to_SMT_rec $ simplify_singletons f;
+    vars'' = Set.difference vars' qs';
+
+    ret_vars = (Map.union (fst vars) (colors_from qs'), Set.union (snd vars) $ Set.union vars' qs');
+    ret_qs   = Set.union qs qs';
+    ret_s = (Set.fold (++) "" (Set.map (\v -> export_q_var_to_smt'' x v ++ "\n") vars''))
+        ++
+        (Set.fold (++) "" (Set.map (\v -> export_q_var_to_smt'' x v ++ "\n") (Set.difference qs' (snd vars))))
+        ++
+        (concatMap (\(q, cs) -> concatMap (\c -> export_q_data_var_to_smt'' x show_p_t (q, c) ++ "\n") cs) (Map.assocs $ Map.difference (colors_from qs') (fst vars)))
+        ++
+        (Set.fold (++) "" (Set.map (\q -> export_color_info_to_smt'' x show_p_t q ++ "\n") qs'))
+        ++ "\n" ++
+        (case bi of
+            Nothing -> smt_assert'' s
+            Just bi' -> smt_assert'' $ smt_equals (export_literal_to_SMT x show_p_t bi') s
+        )
+        ++ "\n"
+
+    export_formula_to_SMT_rec :: Formula -> (String, Set ComponentID, Set ComponentID)
+    export_formula_to_SMT_rec T = ("true",Set.empty,Set.empty)
+    export_formula_to_SMT_rec F = ("false",Set.empty, Set.empty)
+    export_formula_to_SMT_rec (Lit l) = (export_literal_to_SMT x show_p_t l, fst (new_vars l), snd (new_vars l))
+    export_formula_to_SMT_rec (NOT f') = let (s',v,q) = export_formula_to_SMT_rec f' in
+                                            (smt_un_operator "not" s', v, q)
+    export_formula_to_SMT_rec (AND fs) = let (s',v,q) = unzip3 $ toList $ Set.map export_formula_to_SMT_rec fs in
+                                            (smt_and s', foldl Set.union Set.empty v, foldl Set.union Set.empty q)
+    export_formula_to_SMT_rec (OR fs)  = let (s',v,q) = unzip3 $ toList $ Set.map export_formula_to_SMT_rec fs in
+                                            (smt_or s', foldl Set.union Set.empty v, foldl Set.union Set.empty q)
+    -- Returns a tuple (qs0,qs1) with qs0 new queue variables and qs1 new color-specific queue variables
+    new_vars :: Literal -> (Set ComponentID, Set ComponentID)
+    new_vars l = case l of
+                Select i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                MSelect i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                TSelect i _ _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                InState i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                IdleState i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                DeadTrans i _ -> (if i `Set.notMember` (snd vars) then Set.singleton i else Set.empty, Set.empty)
+                Is_Full q -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                Is_Not_Full q -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                ContainsNone q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                ContainsNone q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
+                Any_At_Head q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                Any_At_Head q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
+                --Any_In_Buffer b Nothing -> (if b `Set.notMember` (snd vars) then Set.singleton b else Set.empty, Set.empty)
+                --Any_In_Buffer b (Just _) -> (Set.empty, if b `Map.notMember` (fst vars) then Set.singleton b else Set.empty)
+                All_Not_At_Head q Nothing -> (if q `Set.notMember` (snd vars) then Set.singleton q else Set.empty, Set.empty)
+                All_Not_At_Head q (Just _) -> (Set.empty, if q `Map.notMember` (fst vars) then Set.singleton q else Set.empty)
+                Sum_Compare qs'' _cmp _v -> foldr (\(q,d) (l',r) -> case d of
+                                                                Nothing -> (if q `Set.notMember` (snd vars) then Set.insert q l' else l',r)
+                                                                Just _  -> if q `Map.notMember` (fst vars) then (l', Set.insert q r) else (l',r))
+                                         (Set.empty, Set.empty) qs''
+                BlockSource{} -> (Set.empty, Set.empty)
+                BlockBuffer{} -> (Set.empty, Set.empty)
+                BlockAny{} -> (Set.empty, Set.empty)
+                IdleAll{} -> (Set.empty, Set.empty)
+    colors_from :: Set ComponentID -> Map ComponentID [Color]
+    colors_from = Map.unions . map (\q -> Map.singleton q (getColors . head $ inputTypes x q)) . Set.toList
+
 
 -- Constants:
 smt_block, smt_idle :: ColoredNetwork -> ChannelID -> String

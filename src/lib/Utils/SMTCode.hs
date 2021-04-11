@@ -20,6 +20,13 @@ smt_fun t name = "(" <> C.unwords ["declare-fun", name, "()", t] <> ")"
 -- | Assert statement
 smt_assert :: (IsString a, Monoid a) => a -> a
 smt_assert = smt_un_operator "assert"
+
+smt_assert' :: (IsString a, Monoid a) => a -> a
+smt_assert' arg = smt_un_operator "assert" ("(! " <> arg <> " :interpolation-group ga)")
+
+smt_assert'' :: (IsString a, Monoid a) => a -> a
+smt_assert'' arg = smt_un_operator "assert" ("(! " <> arg <> " :interpolation-group gb)")
+
 -- | Boolean to integer conversion
 smt_bool_to_int :: (IsString a, Monoid a) => a -> a
 smt_bool_to_int bool = smt_ite bool "1" "0"
@@ -49,7 +56,15 @@ smt_bin_operator op arg1 arg2 = "(" <> C.unwords [op, arg1, arg2] <> ")"
 -- * Tertiary operators
 -- | In range operator (at least "low" and at most "high")
 smt_assert_inrange :: (IsString a, Monoid a) => a -> (Int, Int) -> a
-smt_assert_inrange val (l, h) = C.unwords [smt_assert $ smt_atmost (C.show l) val, smt_assert $ smt_atmost val (C.show h)]
+--smt_assert_inrange val (l, h) = C.unwords [smt_assert $ smt_atmost (C.show l) val, smt_assert $ smt_atmost val (C.show h)]
+smt_assert_inrange val (l, h) = (smt_assert $ smt_atmost (C.show l) val) <> (smt_assert $ smt_atmost val (C.show h))
+
+smt_assert_inrange' :: (IsString a, Monoid a) => a -> (Int, Int) -> a
+smt_assert_inrange' val (l, h) = (smt_assert' $ smt_atmost (C.show l) val) <> (smt_assert' $ smt_atmost val (C.show h))
+
+smt_assert_inrange'' :: (IsString a, Monoid a) => a -> (Int, Int) -> a
+smt_assert_inrange'' val (l, h) = (smt_assert'' $ smt_atmost (C.show l) val) <> (smt_assert'' $ smt_atmost val (C.show h))
+
 -- | If-then-else statement
 smt_ite :: (IsString a, Monoid a) => a -> a -> a -> a
 smt_ite i t e = "(" <> C.unwords ["ite", i, t, e] <> ")"
