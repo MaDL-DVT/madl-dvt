@@ -189,6 +189,12 @@ exeOptions =
     , Option "" ["no-liveness"]
         (NoArg (\opts -> opts {noLiveness = True}))
         "Disable liveness verification"
+    , Option "" ["backward-inter"]
+        (ReqArg (\n opts -> opts {backInter = (read n)}) "k (precision of over-approximation)")
+        "Backward reachability using interpolation"
+    , Option "" ["forward-inter"]
+        (ReqArg (\n opts -> opts {forwardInter = (read n)}) "k (precision of over-approximation)")
+        "Forward reachability using interpolation"
     ]
 
 -- | Main entry point

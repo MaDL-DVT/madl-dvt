@@ -362,7 +362,9 @@ runDeadlockDetection net options invs nfqs =
         interpolate :: Int -> String -> IO (Either String (Bool, Maybe SMTModel))
         interpolate k "" = do let ret = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options)))
                               let file = "zero_run.smt2"
-                              let zeroRun = (makeZeroRun net k (makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k))
+                              --let rst0 = "(and " ++ (show $ Madl.BackInterpolation.relateStates net 0) ++ " dlf)"
+                              let rstk = "(and " ++ (show $ Madl.BackInterpolation.relateStates net k) ++ " dlf)"
+                              let zeroRun = (makeZeroRun net k ((makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) ++ "\n\n" ++ "(assert " ++ rstk ++ ")"))
                               putStrLn "Checking existence of a 0-length backward run..."
                               h <- openFile file WriteMode
                               hPutStrLn h zeroRun
@@ -371,7 +373,7 @@ runDeadlockDetection net options invs nfqs =
                               case solver_output of
                                 "unsat\n" -> do putStrLn "There is no 0-length backward run."
                                                 let kfile = "k_run.smt2"
-                                                let kRun = (makeKRun net k (makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k))
+                                                let kRun = (makeKRun net k ((makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) ++ "\n\n" ++ "(assert " ++ rstk ++ ")"))
                                                 putStrLn $ "Checking existence of a " ++ (show k) ++ "-length backward run from F..."
                                                 h <- openFile kfile WriteMode
                                                 hPutStrLn h kRun
@@ -380,7 +382,7 @@ runDeadlockDetection net options invs nfqs =
                                                 case solver_output of
                                                   "unsat\n" -> do putStrLn $ "There is no " ++ (show k) ++ "-length backward run from F."
                                                                   let pfile = "back_inter.smt2"
-                                                                  let ipl = (makeIPL net k (makeInitialApprox net ret invs (mkAssertions' (getChannelsToCheck net (whatToCheck options)) "") k) (show $ Madl.BackInterpolation.relateStates net k))
+                                                                  let ipl = (makeIPL net k (makeInitialApprox net ret invs (mkAssertions' (getChannelsToCheck net (whatToCheck options)) "") k) rstk)
                                                                   putStrLn "Computing the interpolant..."
                                                                   h <- openFile pfile WriteMode
                                                                   hPutStrLn h ipl
@@ -389,7 +391,7 @@ runDeadlockDetection net options invs nfqs =
                                                                   let solver_output' = lines solver_output
                                                                   case solver_output' !! 0 of
                                                                     "unsat" -> do let ffile = "check_fix.smt2"
-                                                                                  let fp = (checkFixpoint net k (makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) (show $ Madl.BackInterpolation.relateStates net k) (substituteVars k $ solver_output' !! 1))
+                                                                                  let fp = (checkFixpoint net k (makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) rstk (substituteVars k $ solver_output' !! 1))
                                                                                   putStrLn "Checking fixpoint..."
                                                                                   h <- openFile ffile WriteMode
                                                                                   hPutStrLn h fp
@@ -397,13 +399,13 @@ runDeadlockDetection net options invs nfqs =
                                                                                   (_,solver_output,_) <- readProcessWithExitCode "mathsat" [ffile] ""
                                                                                   case solver_output of
                                                                                     "unsat\n" -> return $ Left $ "There are no deadlocks!"
-                                                                                    _ -> interpolate k ("(or " ++ (substituteVars k $ solver_output' !! 1) ++ " " ++ (show $ Madl.BackInterpolation.relateStates net k) ++ ")")
+                                                                                    _ -> interpolate k ("(or " ++ (substituteVars k $ solver_output' !! 1) ++ " " ++ rstk ++ ")")
                                                                     _ -> return $ Left "Unable to compute an interpolant (A && B is not unsat)"
                                                   _ -> return $ Left $ "Deadlock (Reachable in " ++ (show k) ++ " or less steps)!"
                                 _ -> return $ Left "Deadlock (Reachable in 0 steps)!"
         interpolate k r = do let kfile = "k_run.smt2"
                              let ret = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options)))
-                             let kRun = (makeKRun net k ((makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) ++ "\n\n(assert " ++ r ++ ")\n\n"))
+                             let kRun = (makeKRun net k ((makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) ++ "\n\n(assert " ++ r ++ ")\n\n"))
                              putStrLn $ "Checking existence of a " ++ (show k) ++ "-length backward run from R..."
                              h <- openFile kfile WriteMode
                              hPutStrLn h kRun
@@ -416,7 +418,7 @@ runDeadlockDetection net options invs nfqs =
                                                let p = (makeInitialApprox net ret invs (mkAssertions' (getChannelsToCheck net (whatToCheck options)) "") k)
                                                let ipl = (makeIPL net k p r)
                                                let p' = (makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) ++ "\n\n(assert " ++ r ++ ")"
-                                               let p'' = (makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k)
+                                               let p'' = (makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k)
                                                putStrLn "Computing the interpolant..."
                                                h <- openFile pfile WriteMode
                                                hPutStrLn h ipl
@@ -442,20 +444,25 @@ runDeadlockDetection net options invs nfqs =
         interpolateF k "" = do let ret = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options)))
                                let file = "zero_run.smt2"
                                let zeroRun = (IP.makeZeroRun net (IP.makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "")))
+                               putStrLn "Checking existence of a 0-length run..."
                                h <- openFile file WriteMode
                                hPutStrLn h zeroRun
                                hClose h
                                (_,solver_output,_) <- readProcessWithExitCode "mathsat" [file] ""
                                case solver_output of
-                                 "unsat\n" -> do let kfile = "k_run.smt2"
+                                 "unsat\n" -> do putStrLn "There is no 0-length run."
+                                                 let kfile = "k_run.smt2"
                                                  let kRun = (IP.makeKRun net k (IP.makeInitialApprox' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "")))
+                                                 putStrLn $ "Checking existence of a " ++ (show k) ++ "-length run from I..."
                                                  h <- openFile kfile WriteMode
                                                  hPutStrLn h kRun
                                                  hClose h
                                                  (_,solver_output,_) <- readProcessWithExitCode "mathsat" [kfile] ""
                                                  case solver_output of
-                                                   "unsat\n" -> do let pfile = "inter.smt2"
+                                                   "unsat\n" -> do putStrLn $ "There is no " ++ (show k) ++ "-length run from F."
+                                                                   let pfile = "inter.smt2"
                                                                    let ipl = (IP.makeIPL net k (IP.makeInitialApprox net ret invs (mkAssertions'' (getChannelsToCheck net (whatToCheck options)) "")) "initial-0")
+                                                                   putStrLn "Computing the interpolant..."
                                                                    h <- openFile pfile WriteMode
                                                                    hPutStrLn h ipl
                                                                    hClose h
@@ -464,6 +471,7 @@ runDeadlockDetection net options invs nfqs =
                                                                    case solver_output' !! 0 of
                                                                      "unsat" -> do let ffile = "check_fix.smt2"
                                                                                    let fp = (IP.checkFixpoint net (IP.makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "")) "initial-0" (IP.substituteVars $ solver_output' !! 1))
+                                                                                   putStrLn "Checking fixpoint..."
                                                                                    h <- openFile ffile WriteMode
                                                                                    hPutStrLn h fp
                                                                                    hClose h
@@ -474,19 +482,10 @@ runDeadlockDetection net options invs nfqs =
                                                                      _ -> return $ Left "Unable to compute an interpolant (A && B is not unsat)"
                                                    _ -> return $ Left $ "Deadlock (Reachable in " ++ (show k) ++ " or less steps)!"
                                  _ -> return $ Left "Deadlock (Reachable in 0 steps)!"
-{-
-let kfile = "k_run.smt2"
-                     let ret = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options)))
-                     let kRun = (makeKRun net k ((makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") k) ++ "\n\n(assert " ++ r ++ ")\n\n"))
-                     putStrLn $ "Checking existence of a " ++ (show k) ++ "-length backward run from R..."
-                     h <- openFile kfile WriteMode
-                     hPutStrLn h kRun
-                     hClose h
-                     (_,solver_output,_) <- readProcessWithExitCode "mathsat" [kfile] ""
--}
         interpolateF k r = do let kfile = "k_run.smt2"
                               let ret = unfold_formula net (BlockVars live nfqs) (spec net (getChannelsToCheck net (whatToCheck options)))
                               let kRun = (IP.makeKRun net k (IP.makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "") ++ "\n\n(assert " ++ r ++ ")\n\n"))
+                              putStrLn $ "Checking existence of a " ++ (show k) ++ "-length run from R..."
                               h <- openFile kfile WriteMode
                               hPutStrLn h kRun
                               hClose h
@@ -498,6 +497,7 @@ let kfile = "k_run.smt2"
                                                 let ipl = (IP.makeIPL net k p r)
                                                 let p' = (IP.makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) "")) ++ "\n\n(assert " ++ r ++ ")"
                                                 let p'' = (IP.makeInitialApprox'' net ret invs (mkAssertions (getChannelsToCheck net (whatToCheck options)) ""))
+                                                putStrLn "Computing the interpolant..."
                                                 h <- openFile pfile WriteMode
                                                 hPutStrLn h ipl
                                                 hClose h
@@ -506,6 +506,7 @@ let kfile = "k_run.smt2"
                                                 case solver_output' !! 0 of
                                                   "unsat" -> do let ffile = "check_fix.smt2"
                                                                 let fp = (IP.checkFixpoint net p'' r (IP.substituteVars $ solver_output' !! 1))
+                                                                putStrLn "Checking fixpoint..."
                                                                 h <- openFile ffile WriteMode
                                                                 hPutStrLn h fp
                                                                 hClose h
